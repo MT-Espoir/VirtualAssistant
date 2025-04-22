@@ -1,0 +1,18 @@
+{
+  "common_apps": {
+    "notepad": ["notepad", "notepad++", "sổ tay", "ghi chú"],
+    "chrome": ["chrome", "google chrome", "trình duyệt google"],
+    "edge": ["edge", "microsoft edge", "trình duyệt edge"],
+    "firefox": ["firefox", "mozilla", "firefox browser"],
+    "calculator": ["calculator", "calc", "máy tính"],
+    "explorer": ["explorer", "file explorer", "quản lý tệp"],
+    "paint": ["paint", "mspaint", "vẽ"],
+    "word": ["word", "microsoft word", "văn bản"],
+    "excel": ["excel", "microsoft excel", "bảng tính"],
+    "cmd": ["cmd", "command prompt", "terminal", "dòng lệnh"]
+  },
+  "command_keywords": {
+    "open": ["mở", "chạy", "khởi động", "open", "run", "start", "launch"],
+    "close": ["đóng", "tắt", "dừng", "close", "exit", "quit"]
+  }
+}

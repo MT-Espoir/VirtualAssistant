@@ -1,0 +1,37 @@
+{
+  "common_websites": {
+    "youtube": ["youtube", "yt", "tube"],
+    "facebook": ["facebook", "fb", "face"],
+    "google": ["google", "gg"],
+    "gmail": ["gmail", "email", "mail"],
+    "twitter": ["twitter", "x"],
+    "instagram": ["instagram", "insta", "ig"],
+    "linkedin": ["linkedin"],
+    "github": ["github", "git"],
+    "netflix": ["netflix"],
+    "amazon": ["amazon"],
+    "reddit": ["reddit"],
+    "wikipedia": ["wikipedia", "wiki"],
+    "tiktok": ["tiktok", "tik", "tok"],
+    "shopee": ["shopee", "shop"]
+  },
+  "search_urls": {
+    "facebook": "https://www.facebook.com/search/top/?q={query}",
+    "youtube": "https://www.youtube.com/results?search_query={query}",
+    "google": "https://www.google.com/search?q={query}",
+    "twitter": "https://twitter.com/search?q={query}",
+    "instagram": "https://www.instagram.com/explore/tags/{query_no_spaces}",
+    "linkedin": "https://www.linkedin.com/search/results/all/?keywords={query}",
+    "github": "https://github.com/search?q={query}",
+    "tiktok": "https://www.tiktok.com/search?q={query}",
+    "shopee": "https://shopee.vn/search?keyword={query}",
+    "amazon": "https://www.amazon.com/s?k={query}",
+    "reddit": "https://www.reddit.com/search/?q={query}",
+    "wikipedia": "https://en.wikipedia.org/wiki/Special:Search?search={query}",
+    "netflix": "https://www.netflix.com/search?q={query}"
+  },
+  "command_keywords": [
+    "mở trang", "mở website", "truy cập", "vào trang", 
+    "open website", "go to", "visit", "mở", "open"
+  ]
+}

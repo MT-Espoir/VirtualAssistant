@@ -1,0 +1,338 @@
+// App and things ==================================================================================
+{"text": "tắt google", "intent": "close_appp"}
+{"text": "tắt ứng dụng google", "intent": "close_app"}
+{"text": "đóng google", "intent": "close_app"}
+{"text": "đóng ứng dụng google", "intent": "close_app"}
+
+{"text": "bật cmd lên", "intent": "open_app"}
+{"text": "chạy notepad", "intent": "open_app"}
+{"text": "open explorer", "intent": "open_app"}
+{"text": "chạy explorer", "intent": "open_app"}
+{"text": "chạy chrome", "intent": "open_app"}
+{"text": "launch calculator", "intent": "open_app"}
+{"text": "open cmd", "intent": "open_app"}
+{"text": "run edge", "intent": "open_app"}
+{"text": "open excel", "intent": "open_app"}
+{"text": "bật paint lên", "intent": "open_app"}
+{"text": "launch cmd", "intent": "open_app"}
+{"text": "run notepad", "intent": "open_app"}
+{"text": "mở excel", "intent": "open_app"}
+{"text": "mở ứng dụng paint", "intent": "open_app"}
+{"text": "khởi động chrome", "intent": "open_app"}
+{"text": "chạy spotify", "intent": "open_app"}
+{"text": "open explorer", "intent": "open_app"}
+{"text": "chạy excel", "intent": "open_app"}
+{"text": "bật word lên", "intent": "open_app"}
+{"text": "khởi động firefox", "intent": "open_app"}
+{"text": "mở ứng dụng notepad", "intent": "open_app"}
+{"text": "open explorer", "intent": "open_app"}
+{"text": "khởi động firefox", "intent": "open_app"}
+{"text": "open calculator", "intent": "open_app"}
+{"text": "khởi động excel", "intent": "open_app"}
+{"text": "open notepad", "intent": "open_app"}
+{"text": "open paint", "intent": "open_app"}
+{"text": "mở spotify", "intent": "open_app"}
+{"text": "chạy notepad", "intent": "open_app"}
+{"text": "open excel", "intent": "open_app"}
+{"text": "start cmd", "intent": "open_app"}
+{"text": "mở spotify", "intent": "open_app"}
+{"text": "start word", "intent": "open_app"}
+{"text": "launch notepad", "intent": "open_app"}
+{"text": "bật firefox lên", "intent": "open_app"}
+{"text": "mở ứng dụng spotify", "intent": "open_app"}
+{"text": "bật calculator lên", "intent": "open_app"}
+{"text": "bật word lên", "intent": "open_app"}
+{"text": "mở ứng dụng excel", "intent": "open_app"}
+{"text": "open cmd", "intent": "open_app"}
+{"text": "launch excel", "intent": "open_app"}
+{"text": "khởi động notepad", "intent": "open_app"}
+{"text": "mở ứng dụng notepad", "intent": "open_app"}
+{"text": "mở ứng dụng spotify", "intent": "open_app"}
+{"text": "start calculator", "intent": "open_app"}
+{"text": "khởi động word", "intent": "open_app"}
+{"text": "run edge", "intent": "open_app"}
+{"text": "mở ứng dụng notepad", "intent": "open_app"}
+{"text": "start chrome", "intent": "open_app"}
+{"text": "bật firefox lên", "intent": "open_app"}
+{"text": "đóng explorer", "intent": "close_app"}
+{"text": "đóng edge", "intent": "close_app"}
+{"text": "exit paint", "intent": "close_app"}
+{"text": "đóng explorer", "intent": "close_app"}
+{"text": "close word", "intent": "close_app"}
+{"text": "dừng explorer", "intent": "close_app"}
+{"text": "tắt word", "intent": "close_app"}
+{"text": "exit explorer", "intent": "close_app"}
+{"text": "close notepad", "intent": "close_app"}
+{"text": "ngừng edge", "intent": "close_app"}
+{"text": "close word", "intent": "close_app"}
+{"text": "tắt explorer", "intent": "close_app"}
+{"text": "dừng firefox", "intent": "close_app"}
+{"text": "ngừng cmd", "intent": "close_app"}
+{"text": "exit chrome", "intent": "close_app"}
+{"text": "tắt edge", "intent": "close_app"}
+{"text": "quit notepad", "intent": "close_app"}
+{"text": "stop word", "intent": "close_app"}
+{"text": "exit firefox", "intent": "close_app"}
+{"text": "exit cmd", "intent": "close_app"}
+{"text": "tắt edge", "intent": "close_app"}
+{"text": "dừng notepad", "intent": "close_app"}
+{"text": "quit firefox", "intent": "close_app"}
+{"text": "quit calculator", "intent": "close_app"}
+{"text": "đóng cmd", "intent": "close_app"}
+{"text": "tắt firefox", "intent": "close_app"}
+{"text": "stop notepad", "intent": "close_app"}
+{"text": "stop firefox", "intent": "close_app"}
+{"text": "close firefox", "intent": "close_app"}
+{"text": "stop spotify", "intent": "close_app"}
+{"text": "đóng explorer", "intent": "close_app"}
+{"text": "quit explorer", "intent": "close_app"}
+{"text": "exit calculator", "intent": "close_app"}
+{"text": "stop spotify", "intent": "close_app"}
+{"text": "đóng notepad", "intent": "close_app"}
+{"text": "tắt explorer", "intent": "close_app"}
+{"text": "ngừng paint", "intent": "close_app"}
+{"text": "stop edge", "intent": "close_app"}
+{"text": "đóng chrome", "intent": "close_app"}
+{"text": "tắt paint", "intent": "close_app"}
+{"text": "tắt excel", "intent": "close_app"}
+{"text": "close chrome", "intent": "close_app"}
+{"text": "tắt excel", "intent": "close_app"}
+{"text": "tắt explorer", "intent": "close_app"}
+{"text": "quit calculator", "intent": "close_app"}
+{"text": "tắt word", "intent": "close_app"}
+{"text": "dừng calculator", "intent": "close_app"}
+{"text": "exit paint", "intent": "close_app"}
+{"text": "quit cmd", "intent": "close_app"}
+{"text": "tắt notepad", "intent": "close_app"}
+// Control system =========================================================================================================
+{"text": "âm lượng 80%", "intent": "system_volume"}
+{"text": "âm lượng 10%", "intent": "system_volume"}
+{"text": "set volume to 30%", "intent": "system_volume"}
+{"text": "tăng âm lượng lên 80%", "intent": "system_volume"}
+{"text": "giảm âm lượng xuống 100%", "intent": "system_volume"}
+{"text": "decrease volume to 40%", "intent": "system_volume"}
+{"text": "set volume to 60%", "intent": "system_volume"}
+{"text": "tăng âm lượng lên 40%", "intent": "system_volume"}
+{"text": "âm lượng 30%", "intent": "system_volume"}
+{"text": "decrease volume to 80%", "intent": "system_volume"}
+{"text": "tăng âm lượng", "intent": "system_volume"}
+{"text": "giảm âm lượng xuống 70%", "intent": "system_volume"}
+{"text": "đặt âm lượng 70%", "intent": "system_volume"}
+{"text": "đặt âm lượng 20%", "intent": "system_volume"}
+{"text": "giảm âm lượng xuống 10%", "intent": "system_volume"}
+{"text": "giảm âm lượng xuống 10%", "intent": "system_volume"}
+{"text": "đặt âm lượng 20%", "intent": "system_volume"}
+{"text": "giảm âm lượng xuống 70%", "intent": "system_volume"}
+{"text": "tăng âm lượng lên 90%", "intent": "system_volume"}
+{"text": "đặt âm lượng 60%", "intent": "system_volume"}
+{"text": "set volume to 90%", "intent": "system_volume"}
+{"text": "giảm âm lượng xuống 90%", "intent": "system_volume"}
+{"text": "giảm âm lượng xuống 60%", "intent": "system_volume"}
+{"text": "set volume to 30%", "intent": "system_volume"}
+{"text": "set volume to 90%", "intent": "system_volume"}
+{"text": "decrease volume to 100%", "intent": "system_volume"}
+{"text": "increase volume to 50%", "intent": "system_volume"}
+{"text": "set volume to 20%", "intent": "system_volume"}
+{"text": "giảm âm lượng", "intent": "system_volume"}
+{"text": "giảm âm lượng", "intent": "system_volume"}
+{"text": "decrease volume to 80%", "intent": "system_volume"}
+{"text": "giảm âm lượng xuống 40%", "intent": "system_volume"}
+{"text": "decrease volume to 70%", "intent": "system_volume"}
+{"text": "decrease volume to 90%", "intent": "system_volume"}
+{"text": "đặt âm lượng 60%", "intent": "system_volume"}
+{"text": "giảm âm lượng", "intent": "system_volume"}
+{"text": "tăng âm lượng lên 50%", "intent": "system_volume"}
+{"text": "increase volume to 30%", "intent": "system_volume"}
+{"text": "set volume to 80%", "intent": "system_volume"}
+{"text": "âm lượng 100%", "intent": "system_volume"}
+{"text": "giảm âm lượng xuống 50%", "intent": "system_volume"}
+{"text": "tăng âm lượng lên 100%", "intent": "system_volume"}
+{"text": "tăng âm lượng lên 70%", "intent": "system_volume"}
+{"text": "tăng âm lượng", "intent": "system_volume"}
+{"text": "âm lượng 80%", "intent": "system_volume"}
+{"text": "set volume to 90%", "intent": "system_volume"}
+{"text": "âm lượng 70%", "intent": "system_volume"}
+{"text": "decrease volume to 80%", "intent": "system_volume"}
+{"text": "âm lượng 30%", "intent": "system_volume"}
+{"text": "giảm âm lượng", "intent": "system_volume"}
+{"text": "Power off", "intent": "shutdown"}
+{"text": "Tắt máy", "intent": "shutdown"}
+{"text": "Tắt máy", "intent": "shutdown"}
+{"text": "Tắt máy tính", "intent": "shutdown"}
+{"text": "Shutdown", "intent": "shutdown"}
+{"text": "Tắt máy tính", "intent": "shutdown"}
+{"text": "Turn off the PC", "intent": "shutdown"}
+{"text": "Power off", "intent": "shutdown"}
+{"text": "Tắt máy", "intent": "shutdown"}
+{"text": "Power off", "intent": "shutdown"}
+{"text": "Tắt máy", "intent": "shutdown"}
+{"text": "Shutdown", "intent": "shutdown"}
+{"text": "Tắt máy tính", "intent": "shutdown"}
+{"text": "Tắt máy tính", "intent": "shutdown"}
+{"text": "Shutdown", "intent": "shutdown"}
+{"text": "Shutdown", "intent": "shutdown"}
+{"text": "Turn off the PC", "intent": "shutdown"}
+{"text": "Power off", "intent": "shutdown"}
+{"text": "Turn off the PC", "intent": "shutdown"}
+{"text": "Shut down the computer", "intent": "shutdown"}
+{"text": "Turn off the PC", "intent": "shutdown"}
+{"text": "Tắt máy tính", "intent": "shutdown"}
+{"text": "Turn off the PC", "intent": "shutdown"}
+{"text": "Tắt máy tính", "intent": "shutdown"}
+{"text": "Shut down the computer", "intent": "shutdown"}
+{"text": "Turn off the PC", "intent": "shutdown"}
+{"text": "Power off", "intent": "shutdown"}
+{"text": "Tắt máy tính", "intent": "shutdown"}
+{"text": "Power off", "intent": "shutdown"}
+{"text": "Tắt máy tính", "intent": "shutdown"}
+{"text": "Turn off the PC", "intent": "shutdown"}
+{"text": "Turn off the PC", "intent": "shutdown"}
+{"text": "Tắt máy", "intent": "shutdown"}
+{"text": "Shutdown", "intent": "shutdown"}
+{"text": "Shut down the computer", "intent": "shutdown"}
+{"text": "Tắt máy", "intent": "shutdown"}
+{"text": "Turn off the PC", "intent": "shutdown"}
+{"text": "Shutdown", "intent": "shutdown"}
+{"text": "Tắt máy tính", "intent": "shutdown"}
+{"text": "Tắt máy", "intent": "shutdown"}
+{"text": "Power off", "intent": "shutdown"}
+{"text": "Shutdown", "intent": "shutdown"}
+{"text": "Tắt máy tính", "intent": "shutdown"}
+{"text": "Shut down the computer", "intent": "shutdown"}
+{"text": "Shut down the computer", "intent": "shutdown"}
+{"text": "Power off", "intent": "shutdown"}
+{"text": "Tắt máy tính", "intent": "shutdown"}
+{"text": "Shutdown", "intent": "shutdown"}
+{"text": "Turn off the PC", "intent": "shutdown"}
+{"text": "Turn off the PC", "intent": "shutdown"}
+// Search web =========================================================================================================
+{"text": "Tìm cách làm bánh trên instagram", "intent": "searchweb"}
+{"text": "Tìm cách làm bánh trên tiktok", "intent": "searchweb"}
+{"text": "Search cách làm bánh on amazon", "intent": "searchweb"}
+{"text": "Tìm tài liệu học Python trên x", "intent": "searchweb"}
+{"text": "Tìm âm nhạc thư giãn trên facebook", "intent": "searchweb"}
+{"text": "Tìm review laptop trên reddit", "intent": "searchweb"}
+{"text": "Tìm tài liệu học Python trên gg", "intent": "searchweb"}
+{"text": "Tìm giày thể thao trên insta", "intent": "searchweb"}
+{"text": "Search âm nhạc thư giãn on facebook", "intent": "searchweb"}
+{"text": "Search tài liệu học Python on yt", "intent": "searchweb"}
+{"text": "Tìm review laptop trên netflix", "intent": "searchweb"}
+{"text": "Search cách làm bánh on email", "intent": "searchweb"}
+{"text": "Search cách làm bánh on twitter", "intent": "searchweb"}
+{"text": "Search tài liệu học Python on netflix", "intent": "searchweb"}
+{"text": "Search tài liệu học Python on instagram", "intent": "searchweb"}
+{"text": "Tìm review laptop trên twitter", "intent": "searchweb"}
+{"text": "Search review laptop on gmail", "intent": "searchweb"}
+{"text": "Tìm review laptop trên reddit", "intent": "searchweb"}
+{"text": "Tìm review laptop trên amazon", "intent": "searchweb"}
+{"text": "Search âm nhạc thư giãn on wikipedia", "intent": "searchweb"}
+{"text": "Search cách làm bánh on git", "intent": "searchweb"}
+{"text": "Tìm âm nhạc thư giãn trên google", "intent": "searchweb"}
+{"text": "Search âm nhạc thư giãn on github", "intent": "searchweb"}
+{"text": "Search review laptop on tiktok", "intent": "searchweb"}
+{"text": "Search giày thể thao on linkedin", "intent": "searchweb"}
+{"text": "Search cách làm bánh on wiki", "intent": "searchweb"}
+{"text": "Search review laptop on tok", "intent": "searchweb"}
+{"text": "Tìm cách làm bánh trên tok", "intent": "searchweb"}
+{"text": "Search âm nhạc thư giãn on x", "intent": "searchweb"}
+{"text": "Tìm review laptop trên instagram", "intent": "searchweb"}
+{"text": "Tìm âm nhạc thư giãn trên github", "intent": "searchweb"}
+{"text": "Tìm cách làm bánh trên email", "intent": "searchweb"}
+{"text": "Tìm âm nhạc thư giãn trên wiki", "intent": "searchweb"}
+{"text": "Tìm review laptop trên linkedin", "intent": "searchweb"}
+{"text": "Search cách làm bánh on amazon", "intent": "searchweb"}
+{"text": "Tìm cách làm bánh trên facebook", "intent": "searchweb"}
+{"text": "Tìm tài liệu học Python trên github", "intent": "searchweb"}
+{"text": "Search review laptop on git", "intent": "searchweb"}
+{"text": "Search âm nhạc thư giãn on gg", "intent": "searchweb"}
+{"text": "Tìm giày thể thao trên yt", "intent": "searchweb"}
+{"text": "Search for cách làm bánh at linkedin", "intent": "searchweb"}
+{"text": "Tìm kiếm giày thể thao ở face", "intent": "searchweb"}
+{"text": "Tìm kiếm review laptop ở amazon", "intent": "searchweb"}
+{"text": "Tìm kiếm cách làm bánh ở face", "intent": "searchweb"}
+{"text": "Search for giày thể thao at gmail", "intent": "searchweb"}
+{"text": "Tìm kiếm review laptop ở mail", "intent": "searchweb"}
+{"text": "Tìm kiếm giày thể thao ở amazon", "intent": "searchweb"}
+{"text": "Search for tài liệu học Python at reddit", "intent": "searchweb"}
+{"text": "Tìm kiếm cách làm bánh ở amazon", "intent": "searchweb"}
+{"text": "Search for tài liệu học Python at amazon", "intent": "searchweb"}
+{"text": "Search for cách làm bánh at instagram", "intent": "searchweb"}
+{"text": "Search for cách làm bánh at git", "intent": "searchweb"}
+{"text": "Search for cách làm bánh at git", "intent": "searchweb"}
+{"text": "Search for giày thể thao at gmail", "intent": "searchweb"}
+{"text": "Tìm kiếm review laptop ở insta", "intent": "searchweb"}
+{"text": "Search for cách làm bánh at yt", "intent": "searchweb"}
+{"text": "Tìm kiếm tài liệu học Python ở wiki", "intent": "searchweb"}
+{"text": "Search for giày thể thao at amazon", "intent": "searchweb"}
+{"text": "Tìm kiếm tài liệu học Python ở twitter", "intent": "searchweb"}
+{"text": "Tìm kiếm cách làm bánh ở tok", "intent": "searchweb"}
+{"text": "Tìm kiếm cách làm bánh ở shopee", "intent": "searchweb"}
+{"text": "Search for tài liệu học Python at netflix", "intent": "searchweb"}
+{"text": "Tìm kiếm tài liệu học Python ở facebook", "intent": "searchweb"}
+{"text": "Search for review laptop at amazon", "intent": "searchweb"}
+{"text": "Tìm kiếm review laptop ở tik", "intent": "searchweb"}
+{"text": "Search for âm nhạc thư giãn at insta", "intent": "searchweb"}
+{"text": "Search for review laptop at face", "intent": "searchweb"}
+{"text": "Tìm kiếm giày thể thao ở fb", "intent": "searchweb"}
+{"text": "Search for tài liệu học Python at x", "intent": "searchweb"}
+{"text": "Search for review laptop at linkedin", "intent": "searchweb"}
+{"text": "Search for tài liệu học Python at netflix", "intent": "searchweb"}
+{"text": "Search for tài liệu học Python at face", "intent": "searchweb"}
+{"text": "Search for cách làm bánh at mail", "intent": "searchweb"}
+{"text": "Tìm kiếm review laptop ở netflix", "intent": "searchweb"}
+{"text": "Search for giày thể thao at twitter", "intent": "searchweb"}
+{"text": "Tìm kiếm âm nhạc thư giãn ở wiki", "intent": "searchweb"}
+{"text": "Search for review laptop at facebook", "intent": "searchweb"}
+{"text": "Search for cách làm bánh at twitter", "intent": "searchweb"}
+{"text": "Search for giày thể thao at netflix", "intent": "searchweb"}
+{"text": "Search for cách làm bánh at fb", "intent": "searchweb"}
+{"text": "Open git website", "intent": "openwebsite"}
+{"text": "Mở trang github", "intent": "openwebsite"}
+{"text": "Open netflix website", "intent": "openwebsite"}
+{"text": "Open shop website", "intent": "openwebsite"}
+{"text": "Mở trang facebook", "intent": "openwebsite"}
+{"text": "Mở trang netflix", "intent": "openwebsite"}
+{"text": "Open github website", "intent": "openwebsite"}
+{"text": "Mở trang linkedin", "intent": "openwebsite"}
+{"text": "Open linkedin website", "intent": "openwebsite"}
+{"text": "Mở trang tok", "intent": "openwebsite"}
+{"text": "Mở trang reddit", "intent": "openwebsite"}
+{"text": "Open netflix website", "intent": "openwebsite"}
+{"text": "Open twitter website", "intent": "openwebsite"}
+{"text": "Open fb website", "intent": "openwebsite"}
+{"text": "Open instagram website", "intent": "openwebsite"}
+{"text": "Mở trang gg", "intent": "openwebsite"}
+{"text": "Open netflix website", "intent": "openwebsite"}
+{"text": "Open ig website", "intent": "openwebsite"}
+{"text": "Open shopee website", "intent": "openwebsite"}
+{"text": "Open youtube website", "intent": "openwebsite"}
+{"text": "Open mail website", "intent": "openwebsite"}
+{"text": "Open linkedin website", "intent": "openwebsite"}
+{"text": "Open twitter website", "intent": "openwebsite"}
+{"text": "Mở trang twitter", "intent": "openwebsite"}
+{"text": "Mở trang yt", "intent": "openwebsite"}
+{"text": "Mở trang netflix", "intent": "openwebsite"}
+{"text": "Mở trang wikipedia", "intent": "openwebsite"}
+{"text": "Mở trang face", "intent": "openwebsite"}
+{"text": "Mở trang amazon", "intent": "openwebsite"}
+{"text": "Open github website", "intent": "openwebsite"}
+{"text": "Mở trang shopee", "intent": "openwebsite"}
+{"text": "Open wiki website", "intent": "openwebsite"}
+{"text": "Mở trang shop", "intent": "openwebsite"}
+{"text": "Mở trang netflix", "intent": "openwebsite"}
+{"text": "Mở trang wiki", "intent": "openwebsite"}
+{"text": "Open tok website", "intent": "openwebsite"}
+{"text": "Open netflix website", "intent": "openwebsite"}
+{"text": "Open fb website", "intent": "openwebsite"}
+{"text": "Mở trang github", "intent": "openwebsite"}
+{"text": "Open netflix website", "intent": "openwebsite"}
+{"text": "Mở trang ig", "intent": "openwebsite"}
+{"text": "Open shopee website", "intent": "openwebsite"}
+{"text": "Open wiki website", "intent": "openwebsite"}
+{"text": "Mở trang youtube", "intent": "openwebsite"}
+{"text": "Open shopee website", "intent": "openwebsite"}
+{"text": "Mở trang tok", "intent": "openwebsite"}
+{"text": "Open ig website", "intent": "openwebsite"}
+{"text": "Mở trang reddit", "intent": "openwebsite"}
+{"text": "Open reddit website", "intent": "openwebsite"}
+

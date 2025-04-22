@@ -1,0 +1,25 @@
+{
+  "default_engine": "google",
+  "engines": {
+    "google": {
+      "name": "Google",
+      "search_url": "https://www.google.com/search?q={query}",
+      "keywords": ["google", "gg", "search"]
+    },
+    "youtube": {
+      "name": "YouTube",
+      "search_url": "https://www.youtube.com/results?search_query={query}",
+      "keywords": ["youtube", "yt", "video", "tube"]
+    },
+    "bing": {
+      "name": "Bing",
+      "search_url": "https://www.bing.com/search?q={query}",
+      "keywords": ["bing", "microsoft search"]
+    },
+    "duckduckgo": {
+      "name": "DuckDuckGo",
+      "search_url": "https://duckduckgo.com/?q={query}",
+      "keywords": ["duckduckgo", "ddg", "duck"]
+    }
+  }
+}
