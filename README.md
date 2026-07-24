@@ -1,126 +1,123 @@
-# Trợ lý ảo điều khiển bằng giọng nói (Tiếng Việt)
+# Trợ lý AI điều khiển máy tính bằng tiếng Việt (Agent)
 
-Trợ lý ảo chạy trên máy tính, nghe lệnh tiếng Việt qua micro rồi thực thi:
-mở/đóng ứng dụng, điều chỉnh âm lượng & độ sáng, tìm kiếm web/YouTube, tắt/khởi
-động lại máy, và trò chuyện tự nhiên qua LLM cục bộ (Ollama).
+Trợ lý chạy trên Windows: nghe/gõ yêu cầu tiếng Việt, một **LLM agent tự gọi công
+cụ** (tool-calling) để thực thi — mở/đóng ứng dụng, chỉnh âm lượng & độ sáng, tìm
+kiếm web/YouTube, tắt/khởi động lại máy — rồi trả lời bằng giọng nói.
 
-> ⚠️ **Trạng thái:** dự án đang phát triển/học tập. Một số thành phần (module học
-> tính cách) là thử nghiệm và chưa được nối vào luồng chính. Xem [Hạn chế đã biết](#hạn-chế-đã-biết).
+> 🎯 **Định hướng:** dự án portfolio thể hiện kiến trúc **agent tool-calling** hiện
+> đại (tách lớp sạch, có kiểm thử). Xem [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+> Một số thành phần (module `personality`) là thử nghiệm, chưa nối vào luồng chính —
+> xem [Hạn chế đã biết](#hạn-chế-đã-biết).
 
 ## Tính năng
 
-- 🎙️ **Nhận dạng giọng nói** tiếng Việt (Google Speech Recognition; có hỗ trợ Whisper).
-- 🧠 **Phân loại ý định** (intent) + trích xuất thực thể để hiểu lệnh.
+- 🎙️ **Nhập bằng giọng nói** (STT: Google / Whisper) hoặc **văn bản** (`agent_cli.py`).
+- 🧠 **Agent LLM tool-calling:** LLM tự hiểu câu nói và gọi đúng công cụ với đúng
+  tham số — không còn đếm từ khóa, hiểu được cả câu chưa gặp.
 - 🖥️ **Điều khiển hệ thống:** mở/đóng app, âm lượng, độ sáng, shutdown/restart.
 - 🌐 **Web & YouTube:** tìm kiếm, mở trang, phát video/nhạc.
-- 💬 **Hội thoại** qua LLM cục bộ (Ollama) với fallback pattern-matching khi không có LLM.
 - 🔊 **Phản hồi bằng giọng nói** (gTTS / pyttsx3).
 
 ## Cấu trúc thư mục
 
 ```
 src/
-├── main.py                 # Điểm vào: vòng lặp nghe → hiểu → thực thi → nói
+├── main.py                 # Điểm vào: I/O (micro/loa) quanh Agent
+├── agent_cli.py            # Chạy Agent bằng văn bản (không cần micro)
+├── core/                   # "Bộ não" (tách khỏi I/O & nhà cung cấp LLM)
+│   ├── agent.py            #   vòng lặp tool-calling
+│   ├── tools.py            #   định nghĩa tool + registry (JSON schema)
+│   ├── llm_client.py       #   interface LLM + ClaudeClient
+│   └── actions_facade.py   #   gói các hành động (seam để test)
 ├── audio/                  # Ghi âm (recorder) & tổng hợp giọng nói (TTS)
 ├── recognition/            # Nhận dạng giọng nói (STT)
-├── nlp/                    # Phân loại intent & trích xuất thực thể
-├── llm/                    # Ollama client, conversation engine, pattern matcher
-├── actions/                # Hành động: app, hệ thống, tìm kiếm web/YouTube
+├── actions/                # Hành động thật: app, hệ thống, web/YouTube
 ├── components/             # user profile, feedback, personality (thử nghiệm), scheduler
 ├── utils/                  # config, logger, data loader/saver
-├── models/                 # Cache model tải về (KHÔNG commit — xem .gitignore)
-├── config.py qua utils/    # Cấu hình tập trung
 └── requirements.txt
-docs/                       # Tài liệu chi tiết theo từng phần
+tests/                      # pytest (agent core — không cần micro/API key)
+docs/                       # Tài liệu chi tiết + ARCHITECTURE.md
 ```
 
 ## Yêu cầu
 
-- **Python 3.9+** (đã kiểm thử với 3.9).
-- **Hệ điều hành:** Windows (một số điều khiển hệ thống dùng `pycaw`/`screen-brightness-control` đặc thù Windows).
-- **Micro** hoạt động.
-- **[Ollama](https://ollama.com)** (tùy chọn) để bật trò chuyện bằng LLM. Không có Ollama,
-  trợ lý vẫn chạy và trò chuyện bằng pattern-matching.
+- **Python 3.9+**.
+- **Windows** (điều khiển hệ thống dùng `pycaw`/`screen-brightness-control`).
+- **Micro** (chỉ khi chạy `main.py`; `agent_cli.py` không cần).
+- **API key Anthropic** (`ANTHROPIC_API_KEY`) để chạy agent.
 
 ## Cài đặt
 
 ```bash
-# 1. Tạo môi trường ảo (khuyến nghị)
+# 1. Môi trường ảo (khuyến nghị)
 python -m venv .venv
-# Windows:
-.venv\Scripts\activate
+.venv\Scripts\activate          # Windows
 
-# 2. Cài phụ thuộc
+# 2. Phụ thuộc
 pip install -r src/requirements.txt
 
-# 3. (Tùy chọn) Cài Ollama + tải model dùng cho hội thoại
-#    Xem docs/OLLAMA_SETUP_GUIDE.md
-ollama pull phi3:3.8b
+# 3. Cấu hình API key
+copy src\.env.example src\.env  # rồi điền ANTHROPIC_API_KEY=sk-ant-...
+#   hoặc: set ANTHROPIC_API_KEY=sk-ant-...
 ```
 
 ## Chạy
 
 ```bash
 cd src
-python main.py
+python agent_cli.py   # chế độ văn bản (dễ thử nhất, không cần micro)
+python main.py        # chế độ giọng nói (cần micro)
 ```
 
-Nói lệnh trực tiếp (ví dụ): *"mở chrome"*, *"tăng âm lượng 20%"*, *"tìm mèo con trên youtube"*,
-*"xin chào"*. Nhấn `Ctrl+C` để thoát.
+Ví dụ yêu cầu: *"mở chrome"*, *"tăng âm lượng 20%"*, *"mở chrome rồi giảm độ sáng"*,
+*"tìm mèo con trên youtube"*.
 
 ## Cấu hình
 
-Mọi tham số nằm ở [`src/utils/config.py`](src/utils/config.py) và có thể override bằng
-biến môi trường (hoặc file `.env` nếu cài `python-dotenv`). Sao chép mẫu:
-
-```bash
-cp src/.env.example src/.env
-```
+Mọi tham số ở [`src/utils/config.py`](src/utils/config.py), override được qua biến
+môi trường / file `.env` (cần `python-dotenv`). Mẫu: [`src/.env.example`](src/.env.example).
 
 | Biến | Mặc định | Ý nghĩa |
 |------|----------|---------|
+| `ANTHROPIC_API_KEY` | *(bắt buộc)* | API key để chạy agent |
+| `LLM_MODEL` | `claude-opus-4-8` | Model LLM cho agent |
+| `LLM_MAX_TOKENS` | `1024` | Giới hạn token phản hồi |
 | `SAMPLE_RATE` | `16000` | Tần số lấy mẫu audio |
 | `STT_LANGUAGE` | `vi-VN` | Ngôn ngữ nhận dạng giọng nói |
 | `STT_ENGINE` | `google` | Engine STT |
 | `TTS_ENGINE` | `gtts` | Engine tổng hợp giọng nói |
 | `TTS_LANGUAGE` | `vi` | Ngôn ngữ giọng nói |
-| `OLLAMA_URL` | `http://localhost:11434` | Địa chỉ Ollama |
-| `OLLAMA_MODEL` | `phi3:3.8b` | Model LLM cho hội thoại |
 | `LOG_LEVEL` | `INFO` | Mức log (DEBUG/INFO/WARNING/ERROR) |
-| `LOG_FILE` | *(rỗng)* | Đường dẫn file log; rỗng = chỉ log console |
+| `LOG_FILE` | *(rỗng)* | File log; rỗng = chỉ log console |
 
-## Kiến trúc: tách "bộ não" khỏi I/O
+## Kiến trúc: agent tách khỏi I/O
 
-Logic hiểu lệnh nằm ở [`core/command_router.py`](src/core/command_router.py)
-(`CommandRouter`), **không phụ thuộc micro/loa**. `main.py` chỉ là lớp I/O mỏng.
-Các hành động hệ thống được gói sau [`core/actions_facade.py`](src/core/actions_facade.py)
-để có thể thay bằng bản giả khi test. Nhờ vậy có thể kiểm thử định tuyến lệnh
-mà không cần phần cứng.
+Logic hiểu lệnh nằm ở [`core/agent.py`](src/core/agent.py) — vòng lặp tool-calling,
+**không phụ thuộc micro/loa và không phụ thuộc nhà cung cấp LLM**. `main.py` chỉ là
+lớp I/O mỏng. Các hành động hệ thống gói sau [`core/actions_facade.py`](src/core/actions_facade.py)
+và phơi ra dưới dạng tool trong [`core/tools.py`](src/core/tools.py). Nhờ dependency
+injection, có thể kiểm thử toàn bộ vòng lặp bằng LLM giả. Chi tiết & sơ đồ:
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Testing
 
 ```bash
 pip install -r requirements-dev.txt
-pytest            # chạy toàn bộ test trong tests/
+pytest            # toàn bộ test trong tests/
 ```
 
-Test cho `CommandRouter` mock toàn bộ phụ thuộc — không mở app thật, không cần micro.
+Test cho Agent/tools mock LLM và actions — **không mở app thật, không cần micro
+hay API key**.
 
 ## Tài liệu chi tiết
 
-Xem thư mục [`docs/`](docs/):
-
-- `OLLAMA_SETUP_GUIDE.md` — cài đặt Ollama.
-- `PHASE1_CONVERSATION_UPGRADE_GUIDE.txt` — nâng cấp hội thoại.
-- `JSON_FILES_REQUIREMENTS.txt` — mô tả các file dữ liệu JSON.
-- `AI_WORKFLOW_CHI_TIET.txt`, `PERSONALITY_LEARNER_DETAILED_GUIDE.txt`,
-  `MUSIC_GENRE_PREDICTION_GUIDE.txt` — thiết kế các thành phần AI.
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — tầm nhìn & sơ đồ kiến trúc.
+- [docs/](docs/) — các tài liệu thiết kế cũ (một số phản ánh giai đoạn trước khi
+  chuyển sang agent).
 
 ## Hạn chế đã biết
 
-- **PhoBERT được tải nhưng chưa dùng để phân loại:** `NLPProcessor` hiện phân loại
-  intent bằng so khớp từ khóa; embedding của PhoBERT chưa được khai thác.
-- **Module `personality` là thử nghiệm:** chạy được ở chế độ rule-based nhưng chưa
-  nối vào `main.py`; phần "AI enhancer" đang thiếu source.
-- **`src/test_pure_ai_reasoning.py`** tham chiếu module đã mất → sẽ lỗi khi chạy.
+- **Cần API key + mạng** để chạy agent (chưa có phương án Ollama offline).
+- **Module `personality`** là thử nghiệm, chạy rule-based nhưng chưa nối vào luồng
+  chính; phần "AI enhancer" thiếu source.
 - Điều khiển hệ thống phụ thuộc thư viện đặc thù **Windows**.

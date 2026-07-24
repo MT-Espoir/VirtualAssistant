@@ -16,14 +16,10 @@ pygame>=2.5.0
 SpeechRecognition>=3.10.0
 openai-whisper>=20231117
 faster-whisper>=0.10.0
+torch>=2.0.0              # phụ thuộc của openai-whisper
 
 # --- Agent LLM (tool-calling) ---
 anthropic>=0.40.0
-
-# --- NLP cũ (đang thu hẹp — xem docs/ARCHITECTURE.md) ---
-torch>=2.0.0
-transformers>=4.35.0
-nltk>=3.8.0
 
 # --- Điều khiển web / tìm kiếm ---
 requests>=2.31.0

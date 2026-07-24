@@ -1,9 +1,9 @@
 """
 Facade gom mọi "hành động" (action) của trợ lý sau một interface duy nhất.
 
-Mục đích: CommandRouter chỉ phụ thuộc vào facade này thay vì import trực tiếp
-các hàm điều khiển hệ thống. Nhờ vậy khi test có thể truyền một facade giả
-(fake/mock) — không thực sự mở app, đổi âm lượng hay tắt máy.
+Mục đích: Agent/tools (core/tools.py) chỉ phụ thuộc vào facade này thay vì import
+trực tiếp các hàm điều khiển hệ thống. Nhờ vậy khi test có thể truyền một facade
+giả (fake/mock) — không thực sự mở app, đổi âm lượng hay tắt máy.
 
 Mặc định `AssistantActions()` nối tới các hàm thật trong package `actions`.
 """
