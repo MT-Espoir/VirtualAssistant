@@ -1,0 +1,3 @@
+# Phụ thuộc cho phát triển & chạy test (không cần khi chạy trợ lý)
+-r src/requirements.txt
+pytest>=7.4.0

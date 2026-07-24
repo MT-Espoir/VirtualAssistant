@@ -89,6 +89,23 @@ cp src/.env.example src/.env
 | `LOG_LEVEL` | `INFO` | Mức log (DEBUG/INFO/WARNING/ERROR) |
 | `LOG_FILE` | *(rỗng)* | Đường dẫn file log; rỗng = chỉ log console |
 
+## Kiến trúc: tách "bộ não" khỏi I/O
+
+Logic hiểu lệnh nằm ở [`core/command_router.py`](src/core/command_router.py)
+(`CommandRouter`), **không phụ thuộc micro/loa**. `main.py` chỉ là lớp I/O mỏng.
+Các hành động hệ thống được gói sau [`core/actions_facade.py`](src/core/actions_facade.py)
+để có thể thay bằng bản giả khi test. Nhờ vậy có thể kiểm thử định tuyến lệnh
+mà không cần phần cứng.
+
+## Testing
+
+```bash
+pip install -r requirements-dev.txt
+pytest            # chạy toàn bộ test trong tests/
+```
+
+Test cho `CommandRouter` mock toàn bộ phụ thuộc — không mở app thật, không cần micro.
+
 ## Tài liệu chi tiết
 
 Xem thư mục [`docs/`](docs/):
