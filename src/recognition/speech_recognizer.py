@@ -1,28 +1,34 @@
 import speech_recognition as sr
-import os
+
+from utils.config import config
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 class SpeechRecognizer:
-    def __init__(self, language="vi-VN", engine="google"):
+    def __init__(self, language="vi-VN", engine="google", sample_rate=None):
         self.recognizer = sr.Recognizer()
         self.language = language
         self.engine = engine
+        self.sample_rate = sample_rate or config.SAMPLE_RATE
         self.whisper_model = None
-        
-        # load Whisper 
+
+        # load Whisper
         if self.engine == "whisper":
             try:
                 # First try the faster-whisper implementation
                 from faster_whisper import WhisperModel
-                print("Loading Whisper model (faster-whisper)...")
+                logger.info("Loading Whisper model (faster-whisper)...")
                 self.whisper_model = WhisperModel("base", device="cpu", compute_type="int8")
             except ImportError:
                 try:
                     # Fall back to original whisper
                     import whisper
-                    print("Loading Whisper model (openai-whisper)...")
+                    logger.info("Loading Whisper model (openai-whisper)...")
                     self.whisper_model = whisper.load_model("base")
                 except (ImportError, TypeError):
-                    print("Could not load Whisper. Falling back to Google Speech Recognition.")
+                    logger.warning("Không tải được Whisper. Chuyển sang Google Speech Recognition.")
                     self.engine = "google"
         
     def recognize_speech(self, audio_file_path):
@@ -51,7 +57,7 @@ class SpeechRecognizer:
                     text = " ".join([segment.text for segment in segments])
                     return text
             except Exception as e:
-                print(f"Whisper error: {e}")
+                logger.error("Whisper error: %s", e)
                 # Google speech recognition
                 return self.recognize_speech_with_engine(audio_file_path, "google")
         else:
@@ -67,31 +73,23 @@ class SpeechRecognizer:
         return result
 
     def recognize_speech_from_data(self, audio_data):
+        """Nhận dạng giọng nói từ dữ liệu âm thanh (bytes) của recorder.
+
+        Trả về chuỗi văn bản nếu nhận dạng được, ngược lại None (và log lý do).
+        Phân biệt rõ: không nghe rõ (debug) vs lỗi mạng/dịch vụ (warning).
         """
-        Nhận dạng giọng nói từ dữ liệu âm thanh
-        
-        Args:
-            audio_data: Dữ liệu âm thanh bytes từ recorder
-            
-        Returns:
-            str: Văn bản đã nhận dạng hoặc thông báo lỗi
-        """
+        audio = sr.AudioData(audio_data, sample_rate=self.sample_rate, sample_width=2)
+
         try:
-            # Sử dụng Google Speech Recognition
-            import speech_recognition as sr
-            recognizer = sr.Recognizer()
-            
-            # Chuyển đổi bytes thành AudioData
-            audio = sr.AudioData(audio_data, sample_rate=16000, sample_width=2)
-            
-            # Sử dụng engine phù hợp
-            if self.engine == "google":
-                text = recognizer.recognize_google(audio, language=self.language)
-            elif self.engine == "whisper":
-                text = recognizer.recognize_whisper(audio, language=self.language)
-            else:
-                return "Could not understand audio: unsupported engine"
-                
-            return text
-        except Exception as e:
-            return f"Could not understand audio: {str(e)}"
+            if self.engine == "whisper":
+                return self.recognizer.recognize_whisper(audio, language=self.language)
+            return self.recognizer.recognize_google(audio, language=self.language)
+        except sr.UnknownValueError:
+            logger.debug("Không nghe rõ nội dung")
+            return None
+        except sr.RequestError as e:
+            logger.warning("Lỗi gọi dịch vụ nhận dạng (kiểm tra mạng): %s", e)
+            return None
+        except Exception as e:  # phòng lỗi lạ từ backend whisper
+            logger.error("Lỗi nhận dạng không mong đợi: %s", e)
+            return None

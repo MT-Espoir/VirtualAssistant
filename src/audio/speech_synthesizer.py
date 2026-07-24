@@ -7,6 +7,10 @@ import pygame
 import time
 import queue
 
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
+
 class SpeechSynthesizer:
     """
     Speech synthesizer class for converting text to speech
@@ -83,7 +87,7 @@ class SpeechSynthesizer:
                     # Queue is empty, just continue the loop
                     pass
                 except Exception as e:
-                    print(f"Error in speech synthesis: {e}")
+                    logger.error("Lỗi tổng hợp giọng nói: %s", e)
                     self.is_speaking = False
             else:
                 time.sleep(0.1)  # Sleep to reduce CPU usage when stopped
@@ -114,7 +118,7 @@ class SpeechSynthesizer:
                 pass  # Ignore cleanup errors
                 
         except Exception as e:
-            print(f"Error in gTTS speech synthesis: {e}")
+            logger.error("Lỗi gTTS (kiểm tra mạng): %s", e)
     
     def speak(self, text):
         """

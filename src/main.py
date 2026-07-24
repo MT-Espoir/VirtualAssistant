@@ -1,16 +1,13 @@
 """
 Điểm vào của trợ lý ảo — lớp I/O (micro/loa) quanh Agent tool-calling.
 
-Luồng: ghi âm -> nhận dạng giọng nói (STT) -> Agent (LLM tự gọi tool) -> nói lại.
-Toàn bộ "hiểu lệnh -> hành động" nằm ở core.agent.Agent (LLM + tools), tách khỏi
-phần cứng và tách khỏi nhà cung cấp LLM. Xem docs/ARCHITECTURE.md.
+Luồng: ghi âm (recorder.listen_once) -> nhận dạng giọng nói (STT) -> Agent (LLM tự
+gọi tool) -> nói lại. Toàn bộ "hiểu lệnh -> hành động" nằm ở core.agent.Agent,
+tách khỏi phần cứng và khỏi nhà cung cấp LLM. Xem docs/ARCHITECTURE.md.
 
 Cần: cài 'anthropic' và đặt ANTHROPIC_API_KEY (xem .env.example). Muốn thử nhanh
 bằng bàn phím, không cần micro: chạy `python agent_cli.py`.
 """
-
-import time
-import numpy as np
 
 # I/O
 from audio.recorder import Recorder
@@ -45,19 +42,17 @@ def build_agent():
 
 def handle_recognized_text(agent, text):
     """Xử lý một câu đã nhận dạng: agent -> nói phản hồi."""
-    print("\n🎤 Recognized:", text)
+    print("\n🎤 Đã nghe:", text)
     try:
         response = agent.run(text)
     except Exception as e:  # lỗi mạng/LLM không được làm sập vòng lặp
         logger.error("Lỗi khi chạy agent: %s", e)
         response = "Xin lỗi, có lỗi khi xử lý yêu cầu."
-    print(f"✅ Response: {response}")
+    print(f"✅ Trả lời: {response}")
     speech_synthesizer.speak(response)
 
 
 def main():
-    sample_rate = config.SAMPLE_RATE
-
     print("=== Trợ lý AI điều khiển máy tính (agent) ===")
     print("Nói yêu cầu bằng tiếng Việt. Nhấn Ctrl+C để thoát.")
 
@@ -70,7 +65,7 @@ def main():
     recognizer = SpeechRecognizer(language=config.STT_LANGUAGE, engine=config.STT_ENGINE)
     recorder = Recorder(
         channels=config.CHANNELS,
-        rate=sample_rate,
+        rate=config.SAMPLE_RATE,
         chunk=config.CHUNK_SIZE,
         speech_threshold_ratio=config.SPEECH_THRESHOLD_RATIO,
     )
@@ -81,62 +76,24 @@ def main():
 
     try:
         while True:
-            print("\n--- Listening for command... ---")
-            recorder.start_recording()
+            print("\n--- Đang lắng nghe... ---")
+            audio_data = recorder.listen_once()
 
-            speech_detected = False
-            max_duration = 100
-            silence_counter = 0
-            speech_level_detected = 0
-
-            for i in range(max_duration):
-                if recorder.stream:
-                    try:
-                        data = recorder.stream.read(recorder.chunk)
-                        recorder.frames.append(data)
-
-                        if i % 30 == 0:
-                            audio_data = np.frombuffer(data, dtype=np.int16)
-                            level = np.sqrt(np.mean(np.square(audio_data)))
-                            speech_level_detected = max(speech_level_detected, level)
-
-                        if not recorder.is_silent(data):
-                            if not speech_detected:
-                                print("Speech detected!")
-                            speech_detected = True
-                            silence_counter = 0
-                        elif speech_detected:
-                            silence_counter += 1
-
-                        if speech_detected and silence_counter > 15:
-                            print("End of speech detected")
-                            break
-
-                    except (IOError, OSError) as e:
-                        logger.error("Error reading audio: %s", e)
-                        break
-
-                time.sleep(0.1)
-
-            if speech_detected:
-                print(f"Processing speech... (max level: {speech_level_detected:.0f})")
-                audio_data = recorder.get_audio_data()
-
-                if audio_data:
-                    text = recognizer.recognize_speech_from_data(audio_data)
-                    if text and not text.startswith("Could not understand"):
-                        handle_recognized_text(agent, text)
-                    else:
-                        print("\nCouldn't understand speech")
+            if audio_data is None:
+                print("Không phát hiện giọng nói.")
             else:
-                print(f"No significant speech detected (max level: {speech_level_detected:.0f})")
+                text = recognizer.recognize_speech_from_data(audio_data)
+                if text:
+                    handle_recognized_text(agent, text)
+                else:
+                    print("Không nghe rõ, vui lòng thử lại.")
 
             recorder.reset()
 
     except KeyboardInterrupt:
-        print("\nStopping voice assistant...")
+        print("\nĐang dừng trợ lý...")
         recorder.close()
-        print("Program terminated.")
+        print("Đã thoát.")
 
 
 if __name__ == "__main__":

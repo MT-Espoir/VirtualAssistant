@@ -1,8 +1,11 @@
 import pyaudio
-import os
 import numpy as np
 import time
-from io import BytesIO
+
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 class Recorder:
     def __init__(self, channels=1, rate=44100, chunk=1024, format=pyaudio.paInt16, 
@@ -26,6 +29,7 @@ class Recorder:
         self.format = format
         self.frames = []
         self.stream = None
+        self.is_recording = False
         self.audio = pyaudio.PyAudio()
         
         # Silence detection parameters
@@ -56,8 +60,8 @@ class Recorder:
             return
             
         try:
-            print("Calibrating noise levels... (please be silent)")
-            
+            logger.info("Calibrating noise levels... (please be silent)")
+
             # Start a stream temporarily to measure noise
             temp_stream = self.audio.open(
                 format=self.format,
@@ -105,13 +109,15 @@ class Recorder:
             # Cập nhật thời gian hiệu chỉnh cuối cùng
             self.last_calibration_time = current_time
             
-            print(f"Noise calibration complete. Ambient noise: {self.noise_level:.0f}, Threshold: {self.silence_threshold}")
-            
+            logger.info("Noise calibration complete. Ambient: %.0f, threshold: %d",
+                        self.noise_level, self.silence_threshold)
+
         except Exception as e:
             # Use default values if calibration fails
             self.noise_level = 500
             self.silence_threshold = 1000
-            print(f"Noise calibration failed: {e}. Using default threshold: {self.silence_threshold}")
+            logger.warning("Noise calibration failed: %s. Dùng ngưỡng mặc định %d",
+                           e, self.silence_threshold)
 
     def start_recording(self):
         # Chỉ hiệu chỉnh nếu đã đến thời điểm cần hiệu chỉnh lại
@@ -128,11 +134,47 @@ class Recorder:
                 input=True,
                 frames_per_buffer=self.chunk
             )
-            print("Recording started successfully")
-        except Exception as e:
-            print(f"Error opening audio stream: {e}")
+            self.is_recording = True
+            logger.debug("Recording started")
+        except OSError as e:
+            logger.error("Error opening audio stream: %s", e)
             self.stream = None
-    
+            self.is_recording = False
+
+    def listen_once(self, max_chunks=150, silence_limit=15):
+        """Ghi một lượt nói: chờ có tiếng, dừng khi im lặng đủ lâu.
+
+        Trả về audio bytes nếu phát hiện giọng nói, ngược lại None.
+        (stream.read() đã tự chặn theo nhịp chunk nên không cần sleep.)
+        """
+        self.start_recording()
+        if not self.stream:
+            return None
+
+        speech_detected = False
+        silence_counter = 0
+        for _ in range(max_chunks):
+            try:
+                data = self.stream.read(self.chunk, exception_on_overflow=False)
+            except (IOError, OSError) as e:
+                logger.error("Error reading audio: %s", e)
+                break
+
+            self.frames.append(data)
+
+            if not self.is_silent(data):
+                if not speech_detected:
+                    logger.debug("Speech detected")
+                speech_detected = True
+                silence_counter = 0
+            elif speech_detected:
+                silence_counter += 1
+                if silence_counter > silence_limit:
+                    logger.debug("End of speech")
+                    break
+
+        return self.get_audio_data() if speech_detected else None
+
     def is_silent(self, data):
         """Determine if an audio chunk is silence based on volume level"""
         try:
@@ -161,8 +203,8 @@ class Recorder:
                     self.silence_threshold = new_threshold
                     
             return rms < self.silence_threshold
-        except Exception as e:
-            print(f"Error processing audio in is_silent: {e}")
+        except (ValueError, TypeError) as e:
+            logger.debug("Lỗi xử lý âm thanh trong is_silent: %s", e)
             return True
             
     def get_audio_data(self):
@@ -173,7 +215,7 @@ class Recorder:
             self.stream = None
             
         if not self.frames:
-            print("No audio frames captured")
+            logger.debug("No audio frames captured")
             return None
             
         # Return the combined audio frames data
@@ -203,9 +245,9 @@ class Recorder:
             # Reset các thuộc tính khác
             self.frames = []
             self.is_recording = False
-            
-        except Exception as e:
-            print(f"Error in reset: {e}")
+
+        except (OSError, AttributeError) as e:
+            logger.debug("Lỗi khi reset recorder: %s", e)
             
     def close(self):
         """Close resources"""
