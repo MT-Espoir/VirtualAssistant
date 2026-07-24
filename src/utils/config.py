@@ -57,7 +57,11 @@ class Config:
     TTS_ENGINE = _get("TTS_ENGINE", "gtts")
     TTS_LANGUAGE = _get("TTS_LANGUAGE", "vi")
 
-    # --- LLM (Ollama) ---
+    # --- LLM: agent tool-calling (Claude) ---
+    LLM_MODEL = _get("LLM_MODEL", "claude-opus-4-8")
+    LLM_MAX_TOKENS = _get_int("LLM_MAX_TOKENS", 1024)
+
+    # --- LLM (Ollama - hội thoại cũ / tùy chọn offline) ---
     OLLAMA_URL = _get("OLLAMA_URL", "http://localhost:11434")
     OLLAMA_MODEL = _get("OLLAMA_MODEL", "phi3:3.8b")
 
