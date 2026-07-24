@@ -1,0 +1,21 @@
+tkinter
+numpy
+nltk
+speechrecognition
+pyaudio
+pyttsx3
+gtts
+pygame
+psutil
+pyautogui
+webbrowser
+selenium
+requests
+torch
+transformers
+scikit-learn
+underthesea
+
+# Phase 1 additions for conversation capabilities
+requests>=2.31.0  # For Ollama API communication
+json5>=0.9.14  # For better JSON handling

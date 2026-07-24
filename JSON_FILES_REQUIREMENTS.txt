@@ -1,0 +1,251 @@
+DANH SÁCH FILE JSON CẦN THIẾT CHO HỆ THỐNG HOÀN CHỈNH
+==================================================================
+
+TỔNG QUAN:
+- Tổng cộng: 23 file JSON
+- Phân loại: Configuration, Data, User Profile, Learning, Conversation
+
+==================================================================
+1. CONFIGURATION FILES (7 files)
+==================================================================
+
+1.1. emotion_to_genre_mapping.json
+   Mục đích: Map từ khóa cảm xúc với thể loại nhạc
+   Vị trí: /components/data/
+   Ví dụ:
+   {
+     "nhẹ_nhàng": [("Classical", 0.8), ("Acoustic", 0.7)],
+     "buồn": [("Ballad", 0.9), ("Blues", 0.7)]
+   }
+
+1.2. conversation_patterns.json
+   Mục đích: Pattern matching cho conversation
+   Vị trí: /components/data/
+   Nội dung: Greeting patterns, context patterns, fallback responses
+
+1.3. intent_templates.json
+   Mục đích: Template cho các intent mới (conversation, question_answering, small_talk)
+   Vị trí: /training_data/
+   Nội dung: Mẫu câu cho training intent classifier
+
+1.4. response_templates.json
+   Mục đích: Template phản hồi adaptive theo user profile
+   Vị trí: /components/data/
+   Nội dung: Template theo style, length, formality
+
+1.5. personality_trait_mapping.json
+   Mục đích: Map từ khóa với personality traits
+   Vị trí: /components/data/
+   Nội dung: Keywords → traits mapping
+
+1.6. llm_prompts.json
+   Mục đích: System prompts cho LLM
+   Vị trí: /components/data/
+   Nội dung: Context prompts, conversation prompts
+
+1.7. system_config.json
+   Mục đích: Cấu hình hệ thống (Ollama settings, API keys)
+   Vị trí: /config/
+   Nội dung: LLM settings, API configurations
+
+==================================================================
+2. EXISTING DATA FILES (Đã có - 5 files)
+==================================================================
+
+2.1. applications.json ✓ (Đã có)
+2.2. conversation.json ✓ (Đã có)
+2.3. schedule.json ✓ (Đã có)
+2.4. search_engines.json ✓ (Đã có)
+2.5. websites.json ✓ (Đã có)
+
+==================================================================
+3. USER PROFILE FILES (5 files - Dynamic)
+==================================================================
+
+3.1. {user_id}_profile.json
+   Mục đích: Profile cá nhân user
+   Vị trí: /user_data/
+   Nội dung: Personality traits, preferences, style
+
+3.2. {user_id}_commands.json
+   Mục đích: Lịch sử lệnh của user
+   Vị trí: /user_data/
+   Nội dung: Command history, frequent commands
+
+3.3. {user_id}_personality.json
+   Mục đích: Dữ liệu personality learning
+   Vị trí: /user_data/
+   Nội dung: Learned traits, confidence scores
+
+3.4. {user_id}_conversation_history.json
+   Mục đích: Lịch sử cuộc trò chuyện
+   Vị trí: /user_data/
+   Nội dung: Conversation context, topics
+
+3.5. {user_id}_preferences.json
+   Mục đích: Sở thích cá nhân (music, response style)
+   Vị trí: /user_data/
+   Nội dung: Music preferences, communication style
+
+==================================================================
+4. LEARNING DATA FILES (4 files)
+==================================================================
+
+4.1. training_data_extended.jsonl
+   Mục đích: Training data cho intent mới
+   Vị trí: /training_data/
+   Nội dung: Mở rộng từ training_data.jsonl hiện tại
+
+4.2. conversation_examples.json
+   Mục đích: Ví dụ conversation cho learning
+   Vị trí: /training_data/
+   Nội dung: Good conversation examples
+
+4.3. personality_learning_data.json
+   Mục đích: Data để train personality recognition
+   Vị trí: /training_data/
+   Nội dung: Text samples với personality labels
+
+4.4. style_analysis_data.json
+   Mục đích: Data để train style analyzer
+   Vị trí: /training_data/
+   Nội dung: Text samples với style annotations
+
+==================================================================
+5. LOG FILES (2 files - Dynamic)
+==================================================================
+
+5.1. conversation_logs.jsonl
+   Mục đích: Log tất cả conversations
+   Vị trí: /logs/
+   Nội dung: Timestamped conversation entries
+
+5.2. learning_progress.json
+   Mục đích: Track learning progress
+   Vị trí: /logs/
+   Nội dung: Learning metrics, improvements
+
+==================================================================
+PRIORITY IMPLEMENTATION ORDER
+==================================================================
+
+PHASE 1 - Conversation Upgrade (7 files):
+□ conversation_patterns.json
+□ intent_templates.json
+□ response_templates.json
+□ llm_prompts.json
+□ system_config.json
+□ training_data_extended.jsonl
+□ conversation_examples.json
+
+PHASE 2 - Personality Learning (6 files):
+□ personality_trait_mapping.json
+□ {user_id}_personality.json
+□ {user_id}_preferences.json
+□ personality_learning_data.json
+□ style_analysis_data.json
+□ learning_progress.json
+
+PHASE 3 - Music Genre Prediction (1 file):
+□ emotion_to_genre_mapping.json
+
+ONGOING - User Data (Dynamic files):
+□ {user_id}_profile.json
+□ {user_id}_commands.json
+□ {user_id}_conversation_history.json
+□ conversation_logs.jsonl
+
+==================================================================
+FILE SIZE ESTIMATES
+==================================================================
+
+Small files (< 50KB):
+- Configuration files: 7 files
+- User profiles: 5 files per user
+
+Medium files (50KB - 500KB):
+- Training data files: 4 files
+- Conversation examples: 1 file
+
+Large files (> 500KB):
+- Extended training data: 1 file
+- Conversation logs: 1 file (grows over time)
+
+==================================================================
+STORAGE STRUCTURE
+==================================================================
+
+/components/data/           (8 files)
+├── emotion_to_genre_mapping.json
+├── conversation_patterns.json
+├── response_templates.json
+├── personality_trait_mapping.json
+├── llm_prompts.json
+├── applications.json ✓
+├── conversation.json ✓
+├── websites.json ✓
+└── (existing files...)
+
+/config/                    (1 file)
+└── system_config.json
+
+/training_data/             (4 files)
+├── intent_templates.json
+├── training_data_extended.jsonl
+├── conversation_examples.json
+├── personality_learning_data.json
+└── style_analysis_data.json
+
+/user_data/                 (5 files per user)
+├── {user_id}_profile.json
+├── {user_id}_commands.json
+├── {user_id}_personality.json
+├── {user_id}_conversation_history.json
+└── {user_id}_preferences.json
+
+/logs/                      (2 files)
+├── conversation_logs.jsonl
+└── learning_progress.json
+
+==================================================================
+MEMORY & PERFORMANCE CONSIDERATIONS
+==================================================================
+
+1. LOADING STRATEGY:
+   - Load config files at startup
+   - Load user data on demand
+   - Cache frequently accessed data
+
+2. FILE SIZE MANAGEMENT:
+   - Rotate log files monthly
+   - Archive old conversation data
+   - Compress training data
+
+3. BACKUP STRATEGY:
+   - Daily backup for user data
+   - Version control for config files
+   - Incremental backup for logs
+
+==================================================================
+IMPLEMENTATION NOTES
+==================================================================
+
+1. START MINIMAL:
+   - Implement core files first
+   - Add advanced features gradually
+   - Test each phase thoroughly
+
+2. DATA VALIDATION:
+   - Schema validation for all JSON
+   - Error handling for missing files
+   - Default fallbacks
+
+3. MIGRATION STRATEGY:
+   - Backward compatibility
+   - Data migration scripts
+   - Version control for schema changes
+
+==================================================================
+TOTAL: 23 FILES JSON CẦN TẠO MỚI
+(Không tính files hiện có và files dynamic theo user)
+==================================================================

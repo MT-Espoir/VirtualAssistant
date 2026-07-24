@@ -1,0 +1,111 @@
+{
+    "intent":{
+        "conversation":{
+            "name":"conversation",
+            "description":"Trò chuyện tự nhiên",
+            "keywords":["trò chuyện", "chat", "nói chuyện", "kể", "chia sẻ", "bàn luận"],
+            "patterns": [
+                "bạn.*thế nào",
+                ".*có.*biết.*không",
+                "kể.*cho.*tôi",
+                ".*nghĩ.*sao",
+                ".*ý kiến.*gì"
+            ],
+            "examples": [
+                "bạn thế nào",
+                "hôm nay trời đẹp nhỉ", 
+                "kể cho tôi nghe về",
+                "bạn có biết không",
+                "bạn nghĩ sao về điều này",
+                "chia sẻ với tôi đi",
+                "tôi muốn nói chuyện",
+                "bạn có ý kiến gì không"
+            ],
+            "response_type": "llm",
+            "fallback_responses": [
+                "Điều đó nghe thú vị",
+                "Bạn có thể kể thêm không?",
+                "Tôi hiểu rồi",
+                "Thật sao? Thú vị nhỉ",
+                "Cảm ơn bạn đã chia sẻ"
+            ],
+            "confidence_threshold": 0.7,
+            "use_pattern_matching": true
+        }
+    },
+    "daily_learning": {
+        "enabled": true,
+        "schedule": {
+            "morning": "09:00",
+            "afternoon": "15:00", 
+            "evening": "20:00"
+        },
+        "question_categories": [
+            "personal_preferences",
+            "opinions",
+            "experiences", 
+            "goals",
+            "memories",
+            "feelings"
+        ],
+        "question_pool": {
+            "personal_preferences": [
+                "Bạn thích loại nhạc nào nhất?",
+                "Món ăn yêu thích của bạn là gì?",
+                "Bạn thường làm gì vào cuối tuần?",
+                "Bạn thích đi du lịch hay ở nhà?",
+                "Màu sắc nào làm bạn cảm thấy vui vẻ?"
+            ],
+            "opinions": [
+                "Bạn nghĩ gì về công nghệ AI?",
+                "Theo bạn, điều gì quan trọng nhất trong cuộc sống?",
+                "Bạn có tin vào tương lai tích cực không?",
+                "Bạn nghĩ sao về việc học hỏi mỗi ngày?",
+                "Theo bạn, thế nào là một ngày hoàn hảo?"
+            ],
+            "experiences": [
+                "Kể cho tôi về một kỷ niệm đẹp",
+                "Bạn từng có trải nghiệm thú vị nào?",
+                "Điều gì khiến bạn ấn tượng gần đây?",
+                "Bạn đã học được gì mới trong tuần này?",
+                "Có chuyện gì vui xảy ra hôm nay không?"
+            ],
+            "goals": [
+                "Mục tiêu của bạn trong năm nay là gì?",
+                "Bạn muốn cải thiện điều gì về bản thân?",
+                "Có kỹ năng nào bạn muốn học không?",
+                "Bạn hy vọng gì cho tương lai?",
+                "Dự án nào bạn đang quan tâm?"
+            ],
+            "memories": [
+                "Kỷ niệm tuổi thơ nào bạn nhớ nhất?",
+                "Người nào ảnh hưởng tích cực đến bạn?",
+                "Bạn nhớ lần đầu tiên học lập trình không?",
+                "Thành tựu nào bạn tự hào nhất?",
+                "Bài học quý giá nào bạn đã học?"
+            ],
+            "feelings": [
+                "Hôm nay bạn cảm thấy thế nào?",
+                "Điều gì khiến bạn hạnh phúc?",
+                "Khi nào bạn cảm thấy tự tin nhất?",
+                "Bạn xử lý stress như thế nào?",
+                "Điều gì giúp bạn thư giãn?"
+            ]
+        }
+    },
+    "personality_learning": {
+        "enabled": true,
+        "learned_traits": {},
+        "response_patterns": {},
+        "vocabulary_preferences": {},
+        "conversation_style": {},
+        "auto_update": true,
+        "learning_rate": 0.1
+    },
+    "adaptive_responses": {
+        "user_learned_responses": [],
+        "context_responses": {},
+        "mood_based_responses": {},
+        "time_based_responses": {}
+    }
+}

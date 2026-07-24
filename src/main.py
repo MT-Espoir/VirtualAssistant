@@ -10,7 +10,6 @@ from audio.recorder import Recorder
 from recognition.speech_recognizer import SpeechRecognizer
 
 # Import NLP modules
-from nlp.intent_classifier import classify_intent
 from nlp.entity_extractor import extract_entity
 from nlp.nlp_model import NLPProcessor
 
@@ -20,13 +19,16 @@ from actions.system_control import control_volume, control_brightness, system_sh
 from actions.web_search import search_web, open_website, search_and_play_youtube, search_and_play_youtube_direct, search_on_specific_site
 
 # Thêm import cho hồ sơ người dùng
-from user.user_profile import UserProfile
+from components.user.user_profile import UserProfile
 
 # Thêm import cho hệ thống phản hồi
-from feedback.feedback_collector import FeedbackCollector
+from components.feedback.feedback_collector import FeedbackCollector
 
 # Import speech synthesizer for voice feedback
 from audio.speech_synthesizer import SpeechSynthesizer
+
+# Import conversation engine for Phase 1
+from llm.conversation_engine import ConversationEngine
 
 # Khởi tạo bộ xử lý NLP
 nlp_processor = NLPProcessor()
@@ -40,8 +42,12 @@ feedback_collector = FeedbackCollector()
 # Initialize speech synthesizer for voice feedback
 speech_synthesizer = SpeechSynthesizer(engine="gtts", language="vi")
 
+# Initialize conversation engine for Phase 1
+conversation_engine = ConversationEngine()
+speech_synthesizer = SpeechSynthesizer(engine="gtts", language="vi")
+
 def execute_command(text):
-    """Execute a command based on recognized speech"""
+    """Execute a command based on recognized speech - Updated for Phase 1"""
     # Convert to lowercase for easier processing
     text = text.lower()
     
@@ -49,6 +55,23 @@ def execute_command(text):
     
     # Phân loại ý định sử dụng mô hình NLP
     intent = nlp_processor.classify_intent(text)
+    print(f"Detected intent: {intent}")
+    
+    # UPDATE FOR PHASE 1: Check if this is a conversation intent
+    if conversation_engine.is_conversation_intent(intent):
+        print(f"Handling conversation intent: {intent}")
+        response = conversation_engine.generate_response(text, intent)
+        
+        # Update context for conversation mode
+        if intent in ["greeting", "conversation", "small_talk"]:
+            conversation_engine.set_conversation_mode(True)
+        elif intent == "goodbye":
+            conversation_engine.set_conversation_mode(False)
+        
+        return response
+    
+    # If not conversation intent, handle as command (existing logic)
+    print(f"Handling command intent: {intent}")
     
     # Trích xuất thực thể dựa trên intent
     entities = {}
@@ -66,6 +89,8 @@ def execute_command(text):
         app_name = extract_entity(text, intent_type="app_name")
         if app_name:
             result = open_application(app_name)
+            # Update conversation context with last command
+            conversation_engine.update_context("last_command", f"open_app: {app_name}")
             return f"Opening {app_name}"
     
     elif intent == "close_app":
@@ -206,6 +231,13 @@ def execute_command(text):
     # Ghi nhận kết quả vào hồ sơ người dùng
     success = True  # Giả sử lệnh thành công
     user_profile.add_command(text, intent, entities, success)
+    
+    # PHASE 1 UPDATE: Handle unknown commands with conversation engine
+    if intent == "unknown" or not intent:
+        print("Unknown intent - trying conversation engine")
+        # Try to handle as conversation
+        response = conversation_engine.generate_response(text, "unknown")
+        return response
     
     return "Command not recognized"
 
@@ -456,6 +488,46 @@ def main():
         print("\nStopping voice assistant...")
         recorder.close()
         print("Program terminated.")
+
+# PHASE 1 ADDITIONS: Helper functions for conversation management
+
+def get_conversation_status():
+    """Get current conversation status"""
+    summary = conversation_engine.get_conversation_summary()
+    print(f"Conversation Status:")
+    print(f"- History length: {summary['history_length']}")
+    print(f"- Conversation mode: {summary['current_context']['conversation_mode']}")
+    print(f"- Current topic: {summary['current_context']['topic']}")
+    print(f"- LLM available: {summary['llm_available']}")
+    print(f"- Last activity: {summary['last_activity']}")
+    return summary
+
+def toggle_conversation_mode():
+    """Toggle conversation mode on/off"""
+    current_mode = conversation_engine.current_context.get("conversation_mode", False)
+    conversation_engine.set_conversation_mode(not current_mode)
+    return not current_mode
+
+def clear_conversation_context():
+    """Clear conversation context"""
+    conversation_engine.clear_context()
+    print("Conversation context cleared")
+
+def test_conversation_system():
+    """Test conversation system with sample inputs"""
+    test_inputs = [
+        "xin chào",
+        "bạn có khỏe không",
+        "mở chrome",
+        "cảm ơn",
+        "tạm biệt"
+    ]
+    
+    print("Testing conversation system...")
+    for test_input in test_inputs:
+        print(f"\nInput: {test_input}")
+        response = execute_command(test_input)
+        print(f"Response: {response}")
 
 if __name__ == "__main__":
     main()

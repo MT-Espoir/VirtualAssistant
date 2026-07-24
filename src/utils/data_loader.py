@@ -2,25 +2,18 @@ import json
 import os
 
 class DataLoader:
-    def __init__(self, language="en"):
-        self.language = language
-        self.data_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
+    def __init__(self):
+        self.data_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "components", "data")
         self.websites_data = self._load_data("websites.json")
         self.apps_data = self._load_data("applications.json")
-        
+        self.conversation_data = self._load_data("conversation.json")
+
     def _load_data(self, filename):
         """Load data from JSON file with language fallback"""
-        lang_path = os.path.join(self.data_dir, self.language, filename)
+        lang_path = os.path.join(self.data_dir, filename)
         if os.path.exists(lang_path):
             with open(lang_path, 'r', encoding='utf-8') as file:
                 return json.load(file)
-        
-        # Fall back to default file
-        default_path = os.path.join(self.data_dir, filename)
-        if os.path.exists(default_path):
-            with open(default_path, 'r', encoding='utf-8') as file:
-                return json.load(file)
-        
         return {}
         
     def get_website_keywords(self):

@@ -3,7 +3,6 @@
 {"text": "tắt ứng dụng google", "intent": "close_app"}
 {"text": "đóng google", "intent": "close_app"}
 {"text": "đóng ứng dụng google", "intent": "close_app"}
-
 {"text": "bật cmd lên", "intent": "open_app"}
 {"text": "chạy notepad", "intent": "open_app"}
 {"text": "open explorer", "intent": "open_app"}
@@ -335,4 +334,135 @@
 {"text": "Open ig website", "intent": "openwebsite"}
 {"text": "Mở trang reddit", "intent": "openwebsite"}
 {"text": "Open reddit website", "intent": "openwebsite"}
+
+// CONVERSATION INTENTS - Phase 1 Addition ==================================================================================
+
+// Greeting intent
+{"text": "xin chào", "intent": "greeting"}
+{"text": "chào bạn", "intent": "greeting"}
+{"text": "hello", "intent": "greeting"}
+{"text": "hi", "intent": "greeting"}
+{"text": "hey", "intent": "greeting"}
+{"text": "chào buổi sáng", "intent": "greeting"}
+{"text": "good morning", "intent": "greeting"}
+{"text": "good afternoon", "intent": "greeting"}
+{"text": "good evening", "intent": "greeting"}
+{"text": "chào buổi chiều", "intent": "greeting"}
+{"text": "chào buổi tối", "intent": "greeting"}
+
+// Goodbye intent
+{"text": "tạm biệt", "intent": "goodbye"}
+{"text": "bye", "intent": "goodbye"}
+{"text": "goodbye", "intent": "goodbye"}
+{"text": "see you later", "intent": "goodbye"}
+{"text": "chào nhé", "intent": "goodbye"}
+{"text": "hẹn gặp lại", "intent": "goodbye"}
+{"text": "see you", "intent": "goodbye"}
+{"text": "catch you later", "intent": "goodbye"}
+
+// Thanks intent
+{"text": "cảm ơn", "intent": "thanks"}
+{"text": "cảm ơn bạn", "intent": "thanks"}
+{"text": "thank you", "intent": "thanks"}
+{"text": "thanks", "intent": "thanks"}
+{"text": "cám ơn", "intent": "thanks"}
+{"text": "cám ơn bạn", "intent": "thanks"}
+{"text": "thank you so much", "intent": "thanks"}
+{"text": "thanks a lot", "intent": "thanks"}
+
+// Personal intent
+{"text": "bạn là ai", "intent": "personal"}
+{"text": "who are you", "intent": "personal"}
+{"text": "tên bạn là gì", "intent": "personal"}
+{"text": "what is your name", "intent": "personal"}
+{"text": "bạn từ đâu", "intent": "personal"}
+{"text": "where are you from", "intent": "personal"}
+{"text": "tell me about yourself", "intent": "personal"}
+{"text": "giới thiệu về bạn", "intent": "personal"}
+
+// Help intent
+{"text": "giúp tôi", "intent": "help"}
+{"text": "help me", "intent": "help"}
+{"text": "tôi cần giúp đỡ", "intent": "help"}
+{"text": "bạn có thể làm gì", "intent": "help"}
+{"text": "what can you do", "intent": "help"}
+{"text": "hướng dẫn", "intent": "help"}
+{"text": "instruction", "intent": "help"}
+{"text": "làm thế nào", "intent": "help"}
+{"text": "how to", "intent": "help"}
+{"text": "chỉ tôi cách", "intent": "help"}
+
+// Conversation intent
+{"text": "bạn thế nào", "intent": "conversation"}
+{"text": "how are you", "intent": "conversation"}
+{"text": "hôm nay trời đẹp nhỉ", "intent": "conversation"}
+{"text": "today is a beautiful day", "intent": "conversation"}
+{"text": "kể cho tôi nghe về", "intent": "conversation"}
+{"text": "tell me about", "intent": "conversation"}
+{"text": "bạn nghĩ gì về", "intent": "conversation"}
+{"text": "what do you think about", "intent": "conversation"}
+{"text": "ý kiến của bạn", "intent": "conversation"}
+{"text": "your opinion", "intent": "conversation"}
+{"text": "chúng ta nói chuyện nhé", "intent": "conversation"}
+{"text": "let's talk", "intent": "conversation"}
+{"text": "tôi muốn trò chuyện", "intent": "conversation"}
+{"text": "I want to chat", "intent": "conversation"}
+{"text": "câu chuyện thú vị", "intent": "conversation"}
+{"text": "interesting story", "intent": "conversation"}
+{"text": "bạn có biết", "intent": "conversation"}
+{"text": "do you know", "intent": "conversation"}
+{"text": "tôi đang nghĩ", "intent": "conversation"}
+{"text": "I'm thinking", "intent": "conversation"}
+{"text": "điều gì thú vị", "intent": "conversation"}
+{"text": "what's interesting", "intent": "conversation"}
+
+// Question answering intent
+{"text": "thời tiết hôm nay", "intent": "question_answering"}
+{"text": "what's the weather today", "intent": "question_answering"}
+{"text": "mấy giờ rồi", "intent": "question_answering"}
+{"text": "what time is it", "intent": "question_answering"}
+{"text": "ai là tổng thống", "intent": "question_answering"}
+{"text": "who is the president", "intent": "question_answering"}
+{"text": "gì là trí tuệ nhân tạo", "intent": "question_answering"}
+{"text": "what is artificial intelligence", "intent": "question_answering"}
+{"text": "tại sao trời xanh", "intent": "question_answering"}
+{"text": "why is the sky blue", "intent": "question_answering"}
+{"text": "như thế nào hoạt động", "intent": "question_answering"}
+{"text": "how does it work", "intent": "question_answering"}
+{"text": "khi nào xảy ra", "intent": "question_answering"}
+{"text": "when does it happen", "intent": "question_answering"}
+{"text": "ở đâu tìm thấy", "intent": "question_answering"}
+{"text": "where can I find", "intent": "question_answering"}
+{"text": "có bao nhiêu", "intent": "question_answering"}
+{"text": "how many are there", "intent": "question_answering"}
+{"text": "định nghĩa của", "intent": "question_answering"}
+{"text": "definition of", "intent": "question_answering"}
+
+// Small talk intent
+{"text": "thú vị nhỉ", "intent": "small_talk"}
+{"text": "that's interesting", "intent": "small_talk"}
+{"text": "tôi vui", "intent": "small_talk"}
+{"text": "I'm happy", "intent": "small_talk"}
+{"text": "hôm nay buồn", "intent": "small_talk"}
+{"text": "feeling sad today", "intent": "small_talk"}
+{"text": "tôi mệt", "intent": "small_talk"}
+{"text": "I'm tired", "intent": "small_talk"}
+{"text": "bạn có khỏe", "intent": "small_talk"}
+{"text": "are you healthy", "intent": "small_talk"}
+{"text": "cuối tuần vui", "intent": "small_talk"}
+{"text": "fun weekend", "intent": "small_talk"}
+{"text": "ngày làm việc", "intent": "small_talk"}
+{"text": "working day", "intent": "small_talk"}
+{"text": "nghỉ ngơi", "intent": "small_talk"}
+{"text": "take a rest", "intent": "small_talk"}
+{"text": "bạn thích gì", "intent": "small_talk"}
+{"text": "what do you like", "intent": "small_talk"}
+{"text": "sở thích", "intent": "small_talk"}
+{"text": "hobbies", "intent": "small_talk"}
+{"text": "ăn gì ngon", "intent": "small_talk"}
+{"text": "what's good to eat", "intent": "small_talk"}
+{"text": "phim hay", "intent": "small_talk"}
+{"text": "good movies", "intent": "small_talk"}
+{"text": "nhạc hay", "intent": "small_talk"}
+{"text": "good music", "intent": "small_talk"}
 

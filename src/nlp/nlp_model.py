@@ -73,10 +73,43 @@ class NLPProcessor:
             "youtube_search": ["youtube", "tìm video", "xem video"]
         }
     
+    # Từ khóa cho các ý định hội thoại (gộp từ intent_classifier cũ)
+    CONVERSATION_INTENT_KEYWORDS = {
+        "greeting": ["xin chào", "chào", "hello", "hi", "hey",
+                     "good morning", "good afternoon", "good evening"],
+        "goodbye": ["tạm biệt", "bye", "goodbye", "see you", "chào nhé", "hẹn gặp lại"],
+        "thanks": ["cảm ơn", "cám ơn", "thank you", "thanks"],
+        "personal": ["bạn là ai", "who are you", "tên bạn", "your name",
+                     "bạn từ đâu", "where are you from"],
+        "help": ["giúp", "help", "hướng dẫn", "instruction", "làm thế nào",
+                 "how to", "có thể", "can you", "bạn làm gì", "what can you do"],
+        "question_answering": ["thời tiết", "weather", "mấy giờ", "what time",
+                               "ai là", "who is", "gì là", "what is",
+                               "tại sao", "why", "như thế nào", "how"],
+        "small_talk": ["thú vị", "interesting", "vui", "fun", "buồn", "sad",
+                       "hạnh phúc", "happy", "mệt", "tired", "khỏe", "healthy",
+                       "bạn có", "do you"],
+        "conversation": ["bạn thế nào", "hôm nay", "trời đẹp", "kể cho tôi",
+                         "tell me about", "bạn nghĩ gì", "what do you think",
+                         "ý kiến", "opinion"],
+    }
+
     def classify_intent(self, text):
         """Phân loại ý định từ văn bản đầu vào"""
         text = text.lower()
-        
+
+        # Ưu tiên nhận diện các ý định hội thoại trước (greeting, goodbye, ...)
+        # Từ khóa 1 chữ khớp theo token để tránh khớp nhầm ("hi" trong "chi tiết");
+        # cụm nhiều chữ vẫn khớp theo substring.
+        words = set(re.findall(r"\w+", text, flags=re.UNICODE))
+        for intent, keywords in self.CONVERSATION_INTENT_KEYWORDS.items():
+            for keyword in keywords:
+                if " " in keyword:
+                    if keyword in text:
+                        return intent
+                elif keyword in words:
+                    return intent
+
         # Thêm phân loại ý định tìm kiếm trên trang web cụ thể
         search_patterns = [
             r"tìm\s+(.+)\s+trên\s+(\w+)",
