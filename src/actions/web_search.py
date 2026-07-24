@@ -66,7 +66,7 @@ def search_on_specific_site(query, site):
         try:
             webbrowser.open(generic_url)
             return f"Đang thử tìm kiếm '{query}' trên {site.title()}"
-        except:
+        except webbrowser.Error:
             return f"Không thể tìm kiếm trên {site}. Trang web không được hỗ trợ."
 
 def open_website(site_name):

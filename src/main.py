@@ -30,6 +30,12 @@ from audio.speech_synthesizer import SpeechSynthesizer
 # Import conversation engine for Phase 1
 from llm.conversation_engine import ConversationEngine
 
+# Cấu hình tập trung & logging
+from utils.config import config
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
+
 # Khởi tạo bộ xử lý NLP
 nlp_processor = NLPProcessor()
 
@@ -40,26 +46,25 @@ user_profile = UserProfile()
 feedback_collector = FeedbackCollector()
 
 # Initialize speech synthesizer for voice feedback
-speech_synthesizer = SpeechSynthesizer(engine="gtts", language="vi")
+speech_synthesizer = SpeechSynthesizer(engine=config.TTS_ENGINE, language=config.TTS_LANGUAGE)
 
 # Initialize conversation engine for Phase 1
 conversation_engine = ConversationEngine()
-speech_synthesizer = SpeechSynthesizer(engine="gtts", language="vi")
 
 def execute_command(text):
     """Execute a command based on recognized speech - Updated for Phase 1"""
     # Convert to lowercase for easier processing
     text = text.lower()
     
-    print(f"Processing command: '{text}'")
-    
+    logger.debug("Processing command: '%s'", text)
+
     # Phân loại ý định sử dụng mô hình NLP
     intent = nlp_processor.classify_intent(text)
-    print(f"Detected intent: {intent}")
-    
+    logger.debug("Detected intent: %s", intent)
+
     # UPDATE FOR PHASE 1: Check if this is a conversation intent
     if conversation_engine.is_conversation_intent(intent):
-        print(f"Handling conversation intent: {intent}")
+        logger.debug("Handling conversation intent: %s", intent)
         response = conversation_engine.generate_response(text, intent)
         
         # Update context for conversation mode
@@ -71,7 +76,7 @@ def execute_command(text):
         return response
     
     # If not conversation intent, handle as command (existing logic)
-    print(f"Handling command intent: {intent}")
+    logger.debug("Handling command intent: %s", intent)
     
     # Trích xuất thực thể dựa trên intent
     entities = {}
@@ -192,8 +197,9 @@ def execute_command(text):
             try:
                 # Thử sử dụng phương pháp trực tiếp nếu có pytube
                 return search_and_play_youtube_direct(search_query)
-            except:
+            except Exception as e:
                 # Quay lại phương pháp cũ nếu phương pháp mới không hoạt động
+                logger.warning("YouTube trực tiếp lỗi, dùng phương pháp cũ: %s", e)
                 return search_and_play_youtube(search_query)
         else:
             return "Không hiểu bạn muốn tìm gì trên YouTube"
@@ -234,7 +240,7 @@ def execute_command(text):
     
     # PHASE 1 UPDATE: Handle unknown commands with conversation engine
     if intent == "unknown" or not intent:
-        print("Unknown intent - trying conversation engine")
+        logger.debug("Unknown intent - trying conversation engine")
         # Try to handle as conversation
         response = conversation_engine.generate_response(text, "unknown")
         return response
@@ -357,14 +363,14 @@ def process_command(recognizer, audio_data):
                     predicted_intent=nlp_processor.classify_intent(text),
                     satisfaction_score=satisfaction
                 )
-            except:
-                pass
+            except (ValueError, EOFError):
+                logger.debug("Bỏ qua thu thập phản hồi (input không hợp lệ)")
     else:
         print("\nCouldn't understand command")
 
 def main():
     # Set consistent sample rate for both recording and recognition
-    sample_rate = 16000  # Standard for voice recognition
+    sample_rate = config.SAMPLE_RATE  # Standard for voice recognition (config)
     
     print("=== Voice Control Assistant ===")
     print("This program will control your computer with voice commands")
@@ -382,15 +388,15 @@ def main():
     except ImportError:
         print("NLTK not found. For better multi-command support, install it using: pip install nltk")
     
-    # Set Vietnamese 
-    recognizer = SpeechRecognizer(language="vi-VN", engine="google")
-    
+    # Set Vietnamese
+    recognizer = SpeechRecognizer(language=config.STT_LANGUAGE, engine=config.STT_ENGINE)
+
     # Create recorder with precise settings
     recorder = Recorder(
-        channels=1,             
+        channels=config.CHANNELS,
         rate=sample_rate,
-        chunk=1024,       
-        speech_threshold_ratio=1.2, 
+        chunk=config.CHUNK_SIZE,
+        speech_threshold_ratio=config.SPEECH_THRESHOLD_RATIO,
     )
     
     # Test voice synthesis
@@ -438,8 +444,8 @@ def main():
                             print("End of speech detected")
                             break
                             
-                    except Exception as e:
-                        print(f"Error reading audio: {e}")
+                    except (IOError, OSError) as e:
+                        logger.error("Error reading audio: %s", e)
                         break
                         
                 time.sleep(0.1)
@@ -474,8 +480,8 @@ def main():
                                     predicted_intent=nlp_processor.classify_intent(text),
                                     satisfaction_score=satisfaction
                                 )
-                            except:
-                                pass
+                            except (ValueError, EOFError):
+                                logger.debug("Bỏ qua thu thập phản hồi (input không hợp lệ)")
                     else:
                         print("\nCouldn't understand speech")
             

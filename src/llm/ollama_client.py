@@ -7,21 +7,26 @@ import requests
 import json
 from typing import Dict, Optional
 
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
+
 class OllamaClient:
     """
     Client for communicating with Ollama API
     """
     
-    def __init__(self, base_url="http://localhost:11434", model="phi3:3.8b"):
+    def __init__(self, base_url=None, model=None):
         """
         Initialize Ollama client
-        
+
         Args:
-            base_url: Ollama API base URL
-            model: Model name to use for generation
+            base_url: Ollama API base URL (mặc định lấy từ config)
+            model: Model name to use for generation (mặc định lấy từ config)
         """
-        self.base_url = base_url
-        self.model = model
+        from utils.config import config
+        self.base_url = base_url or config.OLLAMA_URL
+        self.model = model or config.OLLAMA_MODEL
         self.api_url = f"{base_url}/api/generate"
         
         # Default generation parameters
@@ -84,15 +89,15 @@ class OllamaClient:
                 result = response.json()
                 return self._clean_response(result.get("response", ""))
             else:
-                print(f"Ollama API error: {response.status_code}")
+                logger.error("Ollama API error: %s", response.status_code)
                 return self._get_fallback_response(intent)
-                
+
         except requests.exceptions.Timeout:
-            print("Ollama request timeout")
+            logger.warning("Ollama request timeout")
             return "Xin lỗi, tôi đang suy nghĩ hơi lâu. Bạn có thể thử lại không?"
-            
-        except Exception as e:
-            print(f"Ollama generation error: {e}")
+
+        except (requests.RequestException, ValueError, KeyError) as e:
+            logger.error("Ollama generation error: %s", e)
             return self._get_fallback_response(intent)
     
     def _format_prompt(self, user_input: str, context: str, intent: str) -> str:
@@ -202,9 +207,9 @@ class OllamaClient:
             if response.status_code == 200:
                 data = response.json()
                 return [model["name"] for model in data.get("models", [])]
-        except Exception as e:
-            print(f"Error listing models: {e}")
-        
+        except requests.RequestException as e:
+            logger.error("Error listing models: %s", e)
+
         return []
     
     def set_model(self, model_name: str) -> bool:
@@ -220,8 +225,8 @@ class OllamaClient:
         available_models = self.list_available_models()
         if model_name in available_models:
             self.model = model_name
-            print(f"Switched to model: {model_name}")
+            logger.info("Switched to model: %s", model_name)
             return True
         else:
-            print(f"Model '{model_name}' not available")
+            logger.warning("Model '%s' not available", model_name)
             return False

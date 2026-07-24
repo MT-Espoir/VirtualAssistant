@@ -561,5 +561,5 @@ class PersonalityLearner:
         """Destructor to clean up resources"""
         try:
             self.cleanup_ai_resources()
-        except:
+        except Exception:
             pass

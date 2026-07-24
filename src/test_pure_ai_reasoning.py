@@ -245,7 +245,7 @@ def run_reasoning_tests():
     try:
         ai_enhancer.cleanup()
         print("\n🧹 AI resources cleaned up")
-    except:
+    except Exception:
         pass
 
 def analyze_response_quality(response, user_input, expected_reasoning):

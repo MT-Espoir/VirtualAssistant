@@ -85,7 +85,7 @@ class Recorder:
                         audio_data = np.frombuffer(frame, dtype=np.int16)
                         level = np.sqrt(np.mean(np.square(audio_data)))
                         levels.append(level)
-                    except:
+                    except (ValueError, TypeError):
                         pass
                 
                 if levels:

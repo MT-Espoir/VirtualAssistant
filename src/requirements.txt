@@ -1,21 +1,37 @@
-tkinter
-numpy
-nltk
-speechrecognition
-pyaudio
-pyttsx3
-gtts
-pygame
-psutil
-pyautogui
-webbrowser
-selenium
-requests
-torch
-transformers
-scikit-learn
-underthesea
+# Voice Assistant - Python dependencies (target: Python 3.9+)
+#
+# Version floors (>=) are conservative. Sau khi cài & chạy được trên máy bạn,
+# nên chốt version chính xác bằng:  pip freeze > requirements.lock.txt
+#
+# LƯU Ý: tkinter, webbrowser, ctypes là thư viện chuẩn của Python — KHÔNG cài qua pip.
 
-# Phase 1 additions for conversation capabilities
-requests>=2.31.0  # For Ollama API communication
-json5>=0.9.14  # For better JSON handling
+# --- Audio: ghi âm & tổng hợp giọng nói ---
+PyAudio>=0.2.11
+numpy>=1.24.0
+gTTS>=2.3.0
+pyttsx3>=2.90
+pygame>=2.5.0
+
+# --- Nhận dạng giọng nói (STT) ---
+SpeechRecognition>=3.10.0
+openai-whisper>=20231117
+faster-whisper>=0.10.0
+
+# --- NLP ---
+torch>=2.0.0
+transformers>=4.35.0
+nltk>=3.8.0
+
+# --- Điều khiển web / tìm kiếm ---
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+pytube>=15.0.0
+
+# --- Cấu hình (tùy chọn: cho phép nạp file .env) ---
+python-dotenv>=1.0.0
+
+# --- Điều khiển hệ thống (Windows) ---
+psutil>=5.9.0
+pycaw>=20230407           # điều khiển âm lượng (Windows)
+comtypes>=1.2.0           # phụ thuộc của pycaw
+screen-brightness-control>=0.16.0

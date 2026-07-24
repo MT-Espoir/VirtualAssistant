@@ -110,7 +110,7 @@ class SpeechSynthesizer:
             # Clean up the temporary file after playing
             try:
                 os.unlink(temp_filename)
-            except:
+            except OSError:
                 pass  # Ignore cleanup errors
                 
         except Exception as e:
@@ -167,13 +167,13 @@ class SpeechSynthesizer:
         if self.engine_type == "pyttsx3":
             try:
                 self.engine.stop()
-            except:
+            except Exception:
                 pass  # Ignore errors when stopping
         elif self.engine_type == "gtts":
             try:
                 if pygame.mixer.music.get_busy():
                     pygame.mixer.music.stop()
-            except:
+            except pygame.error:
                 pass  # Ignore errors when stopping
         
         self.is_speaking = False
@@ -239,7 +239,7 @@ class SpeechSynthesizer:
         elif self.engine_type == "gtts":
             try:
                 pygame.mixer.music.set_volume(volume)
-            except:
+            except pygame.error:
                 pass
                 
         return True

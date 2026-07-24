@@ -5,6 +5,10 @@ import json
 import numpy as np
 import re
 
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
+
 class NLPProcessor:
     def __init__(self):
         # Thư mục lưu trữ mô hình (tránh tải lại mỗi lần khởi động)
@@ -28,16 +32,17 @@ class NLPProcessor:
             # Sử dụng PhoBERT hoặc XLM-RoBERTa được fine-tune cho tiếng Việt
             model_name = "vinai/phobert-base" 
             
-            print(f"Đang tải mô hình intent classification: {model_name}")
+            logger.info("Đang tải mô hình intent classification: %s", model_name)
             self.tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=self.models_dir)
             self.intent_model = AutoModel.from_pretrained(model_name, cache_dir=self.models_dir)
-            
+
             # Tải ánh xạ intent từ file (để ánh xạ embedding sang intent)
             self.intent_mapping = self.load_intent_mapping()
-            print("Đã tải xong mô hình intent classification")
+            logger.info("Đã tải xong mô hình intent classification")
         except Exception as e:
-            print(f"Lỗi khi tải mô hình intent: {str(e)}")
-            # Fallback to rule-based
+            # Bắt rộng có chủ đích: tải model từ HuggingFace có thể ném nhiều
+            # loại lỗi; nếu thất bại thì fallback sang rule-based thay vì crash.
+            logger.error("Lỗi khi tải mô hình intent: %s", e)
             self.intent_model = None
     
     def load_ner_model(self):
@@ -46,9 +51,10 @@ class NLPProcessor:
             # Sử dụng NER pipeline từ Hugging Face
             self.ner_model = pipeline("ner", model="Jean-Baptiste/roberta-large-ner-english", 
                                      cache_dir=self.models_dir)
-            print("Đã tải xong mô hình NER")
+            logger.info("Đã tải xong mô hình NER")
         except Exception as e:
-            print(f"Lỗi khi tải mô hình NER: {str(e)}")
+            # Bắt rộng có chủ đích (tải model ngoài) — fallback rule-based.
+            logger.error("Lỗi khi tải mô hình NER: %s", e)
             self.ner_model = None
     
     def load_intent_mapping(self):
@@ -227,8 +233,8 @@ class NLPProcessor:
             return rule_based_extract(text, intent_type)
             
         except Exception as e:
-            print(f"Error in NER model: {str(e)}")
-            # Fallback to rule-based
+            # Bắt rộng có chủ đích — luôn fallback rule-based nếu NER lỗi.
+            logger.error("Error in NER model: %s", e)
             from nlp.entity_extractor import extract_entity as rule_based_extract
             return rule_based_extract(text, intent_type)
             

@@ -33,7 +33,7 @@ class UserProfile:
             try:
                 with open(self.profile_path, 'r', encoding='utf-8') as f:
                     return json.load(f)
-            except:
+            except (OSError, json.JSONDecodeError):
                 print("Không thể đọc hồ sơ người dùng, tạo mới...")
         
         # Tạo hồ sơ mới nếu không tồn tại
@@ -57,7 +57,7 @@ class UserProfile:
             try:
                 with open(self.command_history_path, 'r', encoding='utf-8') as f:
                     return json.load(f)
-            except:
+            except (OSError, json.JSONDecodeError):
                 print("Không thể đọc lịch sử lệnh, tạo mới...")
         
         return []
