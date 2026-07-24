@@ -143,6 +143,20 @@ def build_default_registry(actions) -> ToolRegistry:
     ))
 
     reg.register(Tool(
+        name="system_info",
+        description="Xem tình trạng máy tính: RAM, ổ đĩa, CPU, pin.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "what": {"type": "string",
+                         "enum": ["all", "memory", "disk", "cpu", "battery"],
+                         "description": "Mục cần xem (mặc định all)"},
+            },
+        },
+        handler=lambda what="all": actions.system_info(what),
+    ))
+
+    reg.register(Tool(
         name="open_website",
         description="Mở một trang web trong trình duyệt.",
         input_schema={

@@ -22,6 +22,7 @@ from actions.web_search import (
     search_and_play_youtube_direct,
     search_on_specific_site,
 )
+from actions.system_info import get_system_summary
 
 
 class AssistantActions:
@@ -46,6 +47,9 @@ class AssistantActions:
 
     def system_restart(self, close_apps=True):
         return system_restart(close_apps=close_apps)
+
+    def system_info(self, what="all"):
+        return get_system_summary(what)
 
     # --- Web / YouTube ---
     def open_website(self, website_name):
