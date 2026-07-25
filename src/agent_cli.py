@@ -12,6 +12,7 @@ from core.agent import Agent
 from core.llm_client import build_default_llm_client
 from core.tools import build_default_registry
 from services.scheduler import ReminderScheduler
+from utils.config import config
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -31,7 +32,9 @@ def main():
     scheduler.start()
 
     agent = Agent(llm=llm,
-                  registry=build_default_registry(AssistantActions(), scheduler=scheduler))
+                  registry=build_default_registry(AssistantActions(), scheduler=scheduler),
+                  max_history_turns=config.MAX_HISTORY_TURNS,
+                  memory_path=config.MEMORY_PATH or None)
 
     try:
         while True:
@@ -47,7 +50,7 @@ def main():
                 break
 
             try:
-                response = agent.run(user_text)
+                response = agent.run(user_text).text
             except Exception as e:  # lỗi mạng/LLM không được làm sập CLI
                 logger.error("Lỗi khi chạy agent: %s", e)
                 response = "Xin lỗi, có lỗi khi xử lý yêu cầu."

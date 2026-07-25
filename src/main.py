@@ -45,14 +45,16 @@ def build_agent(scheduler):
         logger.error("Không khởi tạo được LLM: %s", e)
         return None
     registry = build_default_registry(AssistantActions(), scheduler=scheduler)
-    return Agent(llm=llm, registry=registry)
+    return Agent(llm=llm, registry=registry,
+                 max_history_turns=config.MAX_HISTORY_TURNS,
+                 memory_path=config.MEMORY_PATH or None)
 
 
 def handle_recognized_text(agent, text):
     """Xử lý một câu đã nhận dạng: agent -> nói phản hồi."""
     print("\n🎤 Đã nghe:", text)
     try:
-        response = agent.run(text)
+        response = agent.run(text).text
     except Exception as e:  # lỗi mạng/LLM không được làm sập vòng lặp
         logger.error("Lỗi khi chạy agent: %s", e)
         response = "Xin lỗi, có lỗi khi xử lý yêu cầu."

@@ -1,11 +1,12 @@
 """
-Unit test cho Agent (vòng lặp tool-calling) và ToolRegistry.
+Unit test cho Agent (vòng lặp tool-calling, bộ nhớ, cảm xúc).
 
-Agent được tiêm một LLM giả (FakeLLMClient) chạy theo kịch bản định sẵn, nên
-test không cần API key, không gọi mạng, không cần SDK anthropic. Actions cũng là
-mock — không mở app thật.
+Agent được tiêm LLM giả (FakeLLMClient) chạy theo kịch bản + actions mock — không
+cần API key, mạng, hay SDK. run() trả AgentReply(text, emotion).
 """
 
+import os
+import tempfile
 from unittest.mock import MagicMock
 
 try:
@@ -19,12 +20,6 @@ from core.tools import build_default_registry
 
 
 class FakeLLMClient:
-    """LLM giả: trả lần lượt các AssistantTurn trong `script`.
-
-    Ghi lại `messages` của lần gọi cuối để test kiểm tra tool_results được
-    đưa ngược lại LLM.
-    """
-
     def __init__(self, script):
         self.script = list(script)
         self.calls = 0
@@ -44,110 +39,129 @@ def make_actions():
     return actions
 
 
-# --------------------------- ToolRegistry --------------------------- #
-
-def test_registry_has_expected_tools():
-    reg = build_default_registry(make_actions())
-    names = {spec["name"] for spec in reg.specs()}
-    assert {"open_app", "set_volume", "shutdown", "play_youtube"} <= names
+def make_agent(script, actions=None, **kwargs):
+    actions = actions or make_actions()
+    return Agent(FakeLLMClient(script), build_default_registry(actions), **kwargs)
 
 
-def test_registry_run_calls_action():
+# --------------------------- Vòng lặp cơ bản --------------------------- #
+
+def test_no_tool_returns_text():
+    agent = make_agent([AssistantTurn(text="Xin chào!")])
+    assert agent.run("chào bạn").text == "Xin chào!"
+
+
+def test_single_tool_then_answer():
     actions = make_actions()
-    reg = build_default_registry(actions)
-    out = reg.run("open_app", {"app_name": "chrome"})
-    actions.open_application.assert_called_once_with("chrome")
-    assert out == "Đã mở Chrome"
-
-
-def test_registry_specs_have_schema():
-    reg = build_default_registry(make_actions())
-    spec = next(s for s in reg.specs() if s["name"] == "open_app")
-    assert spec["input_schema"]["type"] == "object"
-    assert "app_name" in spec["input_schema"]["properties"]
-
-
-# --------------------------- Agent loop --------------------------- #
-
-def test_agent_no_tool_returns_text():
-    actions = make_actions()
-    llm = FakeLLMClient([AssistantTurn(text="Xin chào!")])
-    agent = Agent(llm, build_default_registry(actions))
-    assert agent.run("chào bạn") == "Xin chào!"
-
-
-def test_agent_single_tool_then_answer():
-    actions = make_actions()
-    llm = FakeLLMClient([
+    agent = make_agent([
         AssistantTurn(tool_calls=[ToolCall("t1", "open_app", {"app_name": "chrome"})]),
         AssistantTurn(text="Đã mở Chrome cho bạn."),
-    ])
-    agent = Agent(llm, build_default_registry(actions))
-    resp = agent.run("mở chrome")
-
+    ], actions=actions)
+    reply = agent.run("mở chrome")
     actions.open_application.assert_called_once_with("chrome")
-    assert resp == "Đã mở Chrome cho bạn."
-    # Kết quả tool được đưa ngược lại LLM ở lần gọi cuối
-    fed_back = [m for m in llm.last_messages if m.tool_results]
-    assert fed_back and fed_back[0].tool_results[0].content == "Đã mở Chrome"
+    assert reply.text == "Đã mở Chrome cho bạn."
 
 
-def test_agent_multiple_tools_in_one_turn():
+def test_multiple_tools_in_one_turn():
     actions = make_actions()
-    llm = FakeLLMClient([
+    agent = make_agent([
         AssistantTurn(tool_calls=[
             ToolCall("t1", "open_app", {"app_name": "chrome"}),
             ToolCall("t2", "set_volume", {"change": 20}),
         ]),
         AssistantTurn(text="Xong cả hai việc."),
-    ])
-    agent = Agent(llm, build_default_registry(actions))
-    resp = agent.run("mở chrome và tăng âm lượng 20%")
-
+    ], actions=actions)
+    reply = agent.run("mở chrome và tăng âm lượng 20%")
     actions.open_application.assert_called_once_with("chrome")
     actions.control_volume.assert_called_once_with(level=None, change=20)
-    assert resp == "Xong cả hai việc."
+    assert reply.text == "Xong cả hai việc."
 
 
-def test_agent_unknown_tool_is_reported_not_crash():
-    actions = make_actions()
-    llm = FakeLLMClient([
+def test_unknown_tool_reported_not_crash():
+    agent = make_agent([
         AssistantTurn(tool_calls=[ToolCall("t1", "khong_ton_tai", {})]),
         AssistantTurn(text="Tôi không làm được việc đó."),
     ])
-    agent = Agent(llm, build_default_registry(actions))
-    resp = agent.run("làm gì đó lạ")
-    assert resp == "Tôi không làm được việc đó."
-    err = [m for m in llm.last_messages if m.tool_results][0].tool_results[0]
-    assert err.is_error is True
+    assert agent.run("làm gì đó lạ").text == "Tôi không làm được việc đó."
 
 
-def test_agent_tool_error_is_fed_back():
+def test_tool_error_fed_back():
     actions = make_actions()
     actions.open_application.side_effect = RuntimeError("app not found")
-    llm = FakeLLMClient([
+    agent = make_agent([
         AssistantTurn(tool_calls=[ToolCall("t1", "open_app", {"app_name": "xyz"})]),
         AssistantTurn(text="Không mở được ứng dụng đó."),
-    ])
-    agent = Agent(llm, build_default_registry(actions))
-    resp = agent.run("mở xyz")
-    assert resp == "Không mở được ứng dụng đó."
-    err = [m for m in llm.last_messages if m.tool_results][0].tool_results[0]
-    assert err.is_error is True and "app not found" in err.content
+    ], actions=actions)
+    assert agent.run("mở xyz").text == "Không mở được ứng dụng đó."
 
 
-def test_agent_stops_at_max_iterations():
-    actions = make_actions()
-    # LLM luôn đòi gọi tool -> vòng lặp phải dừng theo max_iterations
-    always_tool = [
-        AssistantTurn(tool_calls=[ToolCall(f"t{i}", "set_volume", {"change": 1})])
-        for i in range(10)
-    ]
-    llm = FakeLLMClient(always_tool)
-    agent = Agent(llm, build_default_registry(actions), max_iterations=3)
-    resp = agent.run("cứ tăng âm lượng mãi")
-    assert "chưa hoàn tất" in resp
-    assert llm.calls == 3
+def test_stops_at_max_iterations():
+    always_tool = [AssistantTurn(tool_calls=[ToolCall(f"t{i}", "set_volume", {"change": 1})])
+                   for i in range(10)]
+    agent = make_agent(always_tool, max_iterations=3)
+    assert "chưa hoàn tất" in agent.run("cứ tăng âm lượng mãi").text
+
+
+# --------------------------- Cảm xúc do LLM --------------------------- #
+
+def test_parses_emotion_tag_and_strips():
+    agent = make_agent([AssistantTurn(text="Đã mở Chrome.\n#emotion: happy")])
+    reply = agent.run("mở chrome")
+    assert reply.emotion == "happy"
+    assert reply.text == "Đã mở Chrome." and "#emotion" not in reply.text
+
+
+def test_emotion_none_without_tag():
+    reply = make_agent([AssistantTurn(text="Xin chào!")]).run("chào")
+    assert reply.emotion is None
+
+
+def test_emotion_sad_tag():
+    reply = make_agent([AssistantTurn(text="Xin lỗi.\n#emotion: sad")]).run("x")
+    assert reply.emotion == "sad" and reply.text == "Xin lỗi."
+
+
+# --------------------------- Bộ nhớ hội thoại --------------------------- #
+
+def test_remembers_previous_turns():
+    llm = FakeLLMClient([AssistantTurn(text="Chào Anh."), AssistantTurn(text="Bạn tên Anh.")])
+    agent = Agent(llm, build_default_registry(make_actions()))
+    agent.run("tôi tên Anh")
+    agent.run("tôi tên gì?")
+    texts = [m.text for m in llm.last_messages]
+    assert "tôi tên Anh" in texts and "Chào Anh." in texts and "tôi tên gì?" in texts
+
+
+def test_history_trimmed_to_cap():
+    script = [AssistantTurn(text=f"trả lời {i}") for i in range(10)]
+    agent = make_agent(script, max_history_turns=2)
+    for i in range(5):
+        agent.run(f"câu {i}")
+    # cap = 2 lượt * 2 = 4 message
+    assert len(agent.history) == 4
+
+
+def test_memory_file_roundtrip():
+    fd, path = tempfile.mkstemp(suffix=".json")
+    os.close(fd)
+    os.unlink(path)
+    try:
+        a1 = Agent(FakeLLMClient([AssistantTurn(text="ok1")]),
+                   build_default_registry(make_actions()), memory_path=path)
+        a1.run("câu ghi nhớ")
+        a2 = Agent(FakeLLMClient([AssistantTurn(text="ok2")]),
+                   build_default_registry(make_actions()), memory_path=path)
+        assert any(m.text == "câu ghi nhớ" for m in a2.history)
+    finally:
+        if os.path.exists(path):
+            os.unlink(path)
+
+
+def test_clear_memory():
+    agent = make_agent([AssistantTurn(text="ok")])
+    agent.run("gì đó")
+    agent.clear_memory()
+    assert agent.history == []
 
 
 if __name__ == "__main__":

@@ -38,12 +38,14 @@ def _assistant_loop(agent, bus, speak=None):
 
         bus.emit(state="thinking", text="")
         try:
-            response = agent.run(text)
+            reply = agent.run(text)
+            response, emotion = reply.text, reply.emotion
         except Exception as e:
             logger.error("Lỗi khi chạy agent: %s", e)
-            response = "Xin lỗi, có lỗi khi xử lý yêu cầu."
+            response, emotion = "Xin lỗi, có lỗi khi xử lý yêu cầu.", "sad"
 
-        bus.emit(state="speaking", emotion=guess_emotion(response), text=response)
+        # Cảm xúc do LLM gắn; nếu không có thì đoán từ nội dung
+        bus.emit(state="speaking", emotion=emotion or guess_emotion(response), text=response)
         if speak:
             speak(response)
         bus.emit(state="idle")
@@ -75,8 +77,11 @@ def main():
         notify=lambda msg: bus.emit(state="speaking", emotion="happy", text=f"🔔 {msg}"))
     scheduler.start()
 
+    from utils.config import config
     agent = Agent(llm=llm,
-                  registry=build_default_registry(AssistantActions(), scheduler=scheduler))
+                  registry=build_default_registry(AssistantActions(), scheduler=scheduler),
+                  max_history_turns=config.MAX_HISTORY_TURNS,
+                  memory_path=config.MEMORY_PATH or None)
 
     speak = _make_speaker()
     worker = threading.Thread(target=_assistant_loop, args=(agent, bus, speak), daemon=True)

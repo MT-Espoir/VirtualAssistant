@@ -63,6 +63,11 @@ class Config:
     LLM_MODEL = _get("LLM_MODEL", "claude-opus-4-8")   # dùng khi provider=claude
     LLM_MAX_TOKENS = _get_int("LLM_MAX_TOKENS", 1024)
 
+    # --- Bộ nhớ hội thoại ---
+    MAX_HISTORY_TURNS = _get_int("MAX_HISTORY_TURNS", 10)
+    # Đường dẫn file lưu bộ nhớ (rỗng = chỉ nhớ trong phiên, không lưu ra file)
+    MEMORY_PATH = _get("MEMORY_PATH", "")
+
     # --- LLM local qua Ollama ---
     OLLAMA_URL = _get("OLLAMA_URL", "http://localhost:11434")
     # Model local cần hỗ trợ tool-calling (qwen2.5, llama3.1, mistral-nemo...)
