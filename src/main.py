@@ -19,6 +19,7 @@ from core.agent import Agent
 from core.actions_facade import AssistantActions
 from core.tools import build_default_registry
 from core.llm_client import build_default_llm_client
+from services.scheduler import ReminderScheduler
 
 # Cấu hình tập trung & logging
 from utils.config import config
@@ -30,14 +31,21 @@ logger = get_logger(__name__)
 speech_synthesizer = SpeechSynthesizer(engine=config.TTS_ENGINE, language=config.TTS_LANGUAGE)
 
 
-def build_agent():
+def _notify_reminder(message):
+    """Callback khi tới giờ nhắc: hiện màn hình + nói."""
+    print(f"\n🔔 Nhắc: {message}")
+    speech_synthesizer.speak(f"Nhắc bạn: {message}")
+
+
+def build_agent(scheduler):
     """Dựng Agent; trả về None nếu chưa cấu hình được LLM (thiếu SDK/API key)."""
     try:
         llm = build_default_llm_client()
     except RuntimeError as e:
         logger.error("Không khởi tạo được LLM: %s", e)
         return None
-    return Agent(llm=llm, registry=build_default_registry(AssistantActions()))
+    registry = build_default_registry(AssistantActions(), scheduler=scheduler)
+    return Agent(llm=llm, registry=registry)
 
 
 def handle_recognized_text(agent, text):
@@ -56,11 +64,15 @@ def main():
     print("=== Trợ lý AI điều khiển máy tính (agent) ===")
     print("Nói yêu cầu bằng tiếng Việt. Nhấn Ctrl+C để thoát.")
 
-    agent = build_agent()
+    scheduler = ReminderScheduler(notify=_notify_reminder)
+    scheduler.start()
+
+    agent = build_agent(scheduler)
     if agent is None:
         print("\n⚠ Chưa cấu hình được LLM. Với Ollama: cài app Ollama + "
-              "`ollama pull llama3.1`. Với Claude: đặt ANTHROPIC_API_KEY. "
+              "`ollama pull qwen2.5:3b-instruct`. Với Claude: đặt ANTHROPIC_API_KEY. "
               "Xem .env.example. Tạm dừng.")
+        scheduler.stop()
         return
 
     recognizer = SpeechRecognizer(language=config.STT_LANGUAGE, engine=config.STT_ENGINE)
@@ -93,6 +105,7 @@ def main():
 
     except KeyboardInterrupt:
         print("\nĐang dừng trợ lý...")
+        scheduler.stop()
         recorder.close()
         print("Đã thoát.")
 

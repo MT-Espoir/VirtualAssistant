@@ -19,3 +19,4 @@ Thumbs.db
 
 # Local data / logs
 *.log
+src/services/reminders.json

@@ -12,11 +12,38 @@ AssistantActions (core/actions_facade.py) — tái dùng đúng phần refactor 
 """
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from typing import Callable, Dict, List
 
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def _parse_fire_time(delay_minutes=None, at=None, now=None):
+    """Tính thời điểm nhắc từ delay_minutes (tương đối) hoặc at (HH:MM / ISO).
+
+    Trả về datetime, hoặc None nếu không xác định được.
+    """
+    now = now or datetime.now()
+    if delay_minutes is not None:
+        try:
+            return now + timedelta(minutes=float(delay_minutes))
+        except (TypeError, ValueError):
+            return None
+    if at:
+        at = str(at).strip()
+        try:                                   # ISO đầy đủ, vd 2026-07-25T15:00
+            return datetime.fromisoformat(at)
+        except ValueError:
+            pass
+        try:                                   # dạng HH:MM -> hôm nay, quá giờ thì mai
+            hh, mm = at.split(":")
+            fire = now.replace(hour=int(hh), minute=int(mm), second=0, microsecond=0)
+            return fire + timedelta(days=1) if fire <= now else fire
+        except (ValueError, TypeError):
+            return None
+    return None
 
 
 @dataclass
@@ -60,8 +87,11 @@ class ToolRegistry:
 # --------------------------------------------------------------------------- #
 # Bộ tool mặc định (điều khiển máy tính) dựng từ AssistantActions
 # --------------------------------------------------------------------------- #
-def build_default_registry(actions) -> ToolRegistry:
-    """Tạo registry điều khiển máy tính từ một facade actions (hoặc mock)."""
+def build_default_registry(actions, scheduler=None) -> ToolRegistry:
+    """Tạo registry điều khiển máy tính từ một facade actions (hoặc mock).
+
+    Nếu truyền `scheduler` (ReminderScheduler) thì đăng ký thêm bộ tool lập lịch.
+    """
     reg = ToolRegistry()
 
     reg.register(Tool(
@@ -211,4 +241,65 @@ def build_default_registry(actions) -> ToolRegistry:
         handler=lambda query, site: actions.search_on_specific_site(query, site),
     ))
 
+    if scheduler is not None:
+        _register_schedule_tools(reg, scheduler)
+
     return reg
+
+
+def _register_schedule_tools(reg: ToolRegistry, scheduler):
+    def schedule_reminder(message, delay_minutes=None, at=None):
+        fire = _parse_fire_time(delay_minutes=delay_minutes, at=at)
+        if fire is None:
+            return "Cần cho biết thời điểm: delay_minutes (số phút nữa) hoặc at (HH:MM)."
+        task = scheduler.add(message, fire)
+        return (f"Đã đặt nhắc lúc {fire.strftime('%H:%M %d/%m')}: "
+                f"\"{message}\" (mã {task['id']}).")
+
+    def list_reminders():
+        tasks = scheduler.list()
+        if not tasks:
+            return "Hiện không có lịch nhắc nào."
+        lines = []
+        for t in tasks:
+            when = datetime.fromisoformat(t["fire_at"]).strftime("%H:%M %d/%m")
+            lines.append(f"- [{t['id']}] {when}: {t['message']}")
+        return "Các lịch nhắc:\n" + "\n".join(lines)
+
+    def cancel_reminder(task_id):
+        return ("Đã hủy lịch nhắc." if scheduler.cancel(task_id)
+                else f"Không tìm thấy lịch nhắc mã '{task_id}'.")
+
+    reg.register(Tool(
+        name="schedule_reminder",
+        description="Đặt một lời nhắc vào thời điểm sau này. Cho 'delay_minutes' "
+                    "(số phút nữa) HOẶC 'at' (giờ dạng HH:MM, hoặc ISO datetime).",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "message": {"type": "string", "description": "Nội dung cần nhắc"},
+                "delay_minutes": {"type": "number", "description": "Nhắc sau bao nhiêu phút"},
+                "at": {"type": "string", "description": "Giờ nhắc, vd '15:00' hoặc ISO datetime"},
+            },
+            "required": ["message"],
+        },
+        handler=schedule_reminder,
+    ))
+
+    reg.register(Tool(
+        name="list_reminders",
+        description="Liệt kê các lịch nhắc đang có.",
+        input_schema={"type": "object", "properties": {}},
+        handler=list_reminders,
+    ))
+
+    reg.register(Tool(
+        name="cancel_reminder",
+        description="Hủy một lịch nhắc theo mã (id).",
+        input_schema={
+            "type": "object",
+            "properties": {"task_id": {"type": "string", "description": "Mã lịch nhắc"}},
+            "required": ["task_id"],
+        },
+        handler=cancel_reminder,
+    ))

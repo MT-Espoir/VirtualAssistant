@@ -11,6 +11,7 @@ from core.actions_facade import AssistantActions
 from core.agent import Agent
 from core.llm_client import build_default_llm_client
 from core.tools import build_default_registry
+from services.scheduler import ReminderScheduler
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -26,26 +27,33 @@ def main():
         print(f"Không khởi tạo được LLM: {e}")
         return
 
-    agent = Agent(llm=llm, registry=build_default_registry(AssistantActions()))
+    scheduler = ReminderScheduler(notify=lambda msg: print(f"\n🔔 Nhắc: {msg}"))
+    scheduler.start()
 
-    while True:
-        try:
-            user_text = input("Bạn: ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print("\nTạm biệt!")
-            break
-        if not user_text:
-            continue
-        if user_text.lower() in ("thoát", "exit", "quit"):
-            print("Tạm biệt!")
-            break
+    agent = Agent(llm=llm,
+                  registry=build_default_registry(AssistantActions(), scheduler=scheduler))
 
-        try:
-            response = agent.run(user_text)
-        except Exception as e:  # lỗi mạng/LLM không được làm sập CLI
-            logger.error("Lỗi khi chạy agent: %s", e)
-            response = "Xin lỗi, có lỗi khi xử lý yêu cầu."
-        print(f"Trợ lý: {response}\n")
+    try:
+        while True:
+            try:
+                user_text = input("Bạn: ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print("\nTạm biệt!")
+                break
+            if not user_text:
+                continue
+            if user_text.lower() in ("thoát", "exit", "quit"):
+                print("Tạm biệt!")
+                break
+
+            try:
+                response = agent.run(user_text)
+            except Exception as e:  # lỗi mạng/LLM không được làm sập CLI
+                logger.error("Lỗi khi chạy agent: %s", e)
+                response = "Xin lỗi, có lỗi khi xử lý yêu cầu."
+            print(f"Trợ lý: {response}\n")
+    finally:
+        scheduler.stop()
 
 
 if __name__ == "__main__":
