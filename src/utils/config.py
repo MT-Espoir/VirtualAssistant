@@ -65,8 +65,8 @@ class Config:
 
     # --- LLM local qua Ollama ---
     OLLAMA_URL = _get("OLLAMA_URL", "http://localhost:11434")
-    # Model local cần hỗ trợ tool-calling (llama3.1, qwen2.5, mistral-nemo...)
-    OLLAMA_MODEL = _get("OLLAMA_MODEL", "llama3.1")
+    # Model local cần hỗ trợ tool-calling (qwen2.5, llama3.1, mistral-nemo...)
+    OLLAMA_MODEL = _get("OLLAMA_MODEL", "qwen2.5:3b-instruct")
 
     # --- Logging ---
     LOG_LEVEL = _get("LOG_LEVEL", "INFO")

@@ -45,7 +45,7 @@ docs/                       # Tài liệu chi tiết + ARCHITECTURE.md
 - **Windows** (điều khiển hệ thống dùng `pycaw`/`screen-brightness-control`).
 - **Micro** (chỉ khi chạy `main.py`; `agent_cli.py` không cần).
 - **LLM cho agent** — chọn một:
-  - **Ollama (local, mặc định):** cài [Ollama](https://ollama.com) + `ollama pull llama3.1`
+  - **Ollama (local, mặc định):** cài [Ollama](https://ollama.com) + `ollama pull qwen2.5:3b-instruct`
     (model phải hỗ trợ tool-calling: `llama3.1`, `qwen2.5`, `mistral-nemo`...).
   - **Claude API:** đặt `ANTHROPIC_API_KEY` và `LLM_PROVIDER=claude`.
 
@@ -60,7 +60,7 @@ python -m venv .venv
 pip install -r src/requirements.txt
 
 # 3. LLM local (mặc định): cài Ollama rồi kéo model
-ollama pull llama3.1
+ollama pull qwen2.5:3b-instruct
 
 #    (Tùy chọn) dùng Claude thay vì local:
 #    copy src\.env.example src\.env  → đặt LLM_PROVIDER=claude, ANTHROPIC_API_KEY=sk-ant-...
@@ -86,7 +86,7 @@ môi trường / file `.env` (cần `python-dotenv`). Mẫu: [`src/.env.example`
 |------|----------|---------|
 | `LLM_PROVIDER` | `ollama` | Nhà cung cấp LLM: `ollama` (local) hoặc `claude` |
 | `OLLAMA_URL` | `http://localhost:11434` | Địa chỉ Ollama (khi provider=ollama) |
-| `OLLAMA_MODEL` | `llama3.1` | Model local (phải hỗ trợ tool-calling) |
+| `OLLAMA_MODEL` | `qwen2.5:3b-instruct` | Model local (phải hỗ trợ tool-calling) |
 | `ANTHROPIC_API_KEY` | *(khi provider=claude)* | API key Claude |
 | `LLM_MODEL` | `claude-opus-4-8` | Model Claude (khi provider=claude) |
 | `SAMPLE_RATE` | `16000` | Tần số lấy mẫu audio |
