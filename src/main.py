@@ -28,7 +28,9 @@ from utils.logger import get_logger
 logger = get_logger(__name__)
 
 # TTS luôn dùng được (không phụ thuộc LLM)
-speech_synthesizer = SpeechSynthesizer(engine=config.TTS_ENGINE, language=config.TTS_LANGUAGE)
+speech_synthesizer = SpeechSynthesizer(
+    engine=config.TTS_ENGINE, language=config.TTS_LANGUAGE,
+    robot=config.TTS_ROBOT, robot_carrier=config.TTS_ROBOT_CARRIER)
 
 
 def _notify_reminder(message):

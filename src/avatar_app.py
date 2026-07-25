@@ -57,7 +57,9 @@ def _make_speaker():
     try:
         from audio.speech_synthesizer import SpeechSynthesizer
         from utils.config import config
-        synth = SpeechSynthesizer(engine=config.TTS_ENGINE, language=config.TTS_LANGUAGE)
+        synth = SpeechSynthesizer(
+            engine=config.TTS_ENGINE, language=config.TTS_LANGUAGE,
+            robot=config.TTS_ROBOT, robot_carrier=config.TTS_ROBOT_CARRIER)
         return synth.speak
     except Exception as e:
         logger.warning("TTS không khả dụng (%s) — chạy không có giọng nói.", e)

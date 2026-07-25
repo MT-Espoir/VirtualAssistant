@@ -17,20 +17,25 @@ class SpeechSynthesizer:
     Supports both offline (pyttsx3) and online (gTTS) synthesis
     """
     
-    def __init__(self, engine="pyttsx3", language="vi", rate=150, volume=1.0):
+    def __init__(self, engine="pyttsx3", language="vi", rate=150, volume=1.0,
+                 robot=False, robot_carrier=80):
         """
         Initialize the speech synthesizer
-        
+
         Args:
             engine (str): The TTS engine to use ("pyttsx3" or "gtts")
             language (str): The language code (e.g., "vi" for Vietnamese, "en" for English)
             rate (int): Speech rate for pyttsx3 (higher = faster)
             volume (float): Speech volume (0.0 to 1.0)
+            robot (bool): Áp hiệu ứng giọng robot (ring modulation) cho gTTS
+            robot_carrier (int): Tần số sóng mang (Hz) cho hiệu ứng robot
         """
         self.engine_type = engine
         self.language = language
         self.rate = rate
         self.volume = volume
+        self.robot = robot
+        self.robot_carrier = robot_carrier
         self.voice_queue = queue.Queue()
         self.is_speaking = False
         self.stop_requested = False
@@ -92,6 +97,30 @@ class SpeechSynthesizer:
             else:
                 time.sleep(0.1)  # Sleep to reduce CPU usage when stopped
                 
+    def _play_robot(self, mp3_path):
+        """Phát file với hiệu ứng robot (ring modulation).
+
+        Trả True nếu phát thành công; False để nơi gọi phát giọng thường (fallback).
+        """
+        try:
+            import numpy as np
+            import pygame.sndarray
+            from audio.robot_effect import ring_modulate
+
+            sound = pygame.mixer.Sound(mp3_path)
+            samples = pygame.sndarray.array(sound)          # int16
+            init = pygame.mixer.get_init()
+            rate = init[0] if init else 22050
+            modded = ring_modulate(samples, rate, self.robot_carrier)
+            robo = pygame.sndarray.make_sound(np.ascontiguousarray(modded))
+            robo.play()
+            while pygame.mixer.get_busy():
+                time.sleep(0.1)
+            return True
+        except Exception as e:
+            logger.warning("Không áp được hiệu ứng robot (%s) — phát giọng thường.", e)
+            return False
+
     def _speak_with_gtts(self, text):
         """Use Google Text-to-Speech to convert text to speech"""
         try:
@@ -102,15 +131,14 @@ class SpeechSynthesizer:
             # Generate the speech with gTTS
             tts = gTTS(text=text, lang=self.language, slow=False)
             tts.save(temp_filename)
-            
-            # Play the audio file
-            pygame.mixer.music.load(temp_filename)
-            pygame.mixer.music.play()
-            
-            # Wait for the audio to finish playing
-            while pygame.mixer.music.get_busy():
-                time.sleep(0.1)
-                
+
+            # Phát: có hiệu ứng robot thì thử xử lý; lỗi thì phát thường
+            if not (self.robot and self._play_robot(temp_filename)):
+                pygame.mixer.music.load(temp_filename)
+                pygame.mixer.music.play()
+                while pygame.mixer.music.get_busy():
+                    time.sleep(0.1)
+
             # Clean up the temporary file after playing
             try:
                 os.unlink(temp_filename)

@@ -39,6 +39,13 @@ def _get_float(name: str, default: float) -> float:
         return default
 
 
+def _get_bool(name: str, default: bool) -> bool:
+    val = os.getenv(name)
+    if val is None:
+        return default
+    return val.strip().lower() in ("1", "true", "yes", "on")
+
+
 class Config:
     """Cấu hình toàn cục (đọc một lần khi khởi động)."""
 
@@ -56,6 +63,9 @@ class Config:
     # --- Tổng hợp giọng nói (TTS) ---
     TTS_ENGINE = _get("TTS_ENGINE", "gtts")
     TTS_LANGUAGE = _get("TTS_LANGUAGE", "vi")
+    # Giọng robot: áp ring modulation lên giọng gTTS (giữ phát âm tiếng Việt)
+    TTS_ROBOT = _get_bool("TTS_ROBOT", False)
+    TTS_ROBOT_CARRIER = _get_int("TTS_ROBOT_CARRIER", 80)   # Hz; thấp = robot hơn
 
     # --- LLM: agent tool-calling ---
     # LLM_PROVIDER: "ollama" (local, mặc định) | "claude" (API)
