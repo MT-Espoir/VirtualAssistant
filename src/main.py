@@ -58,8 +58,9 @@ def main():
 
     agent = build_agent()
     if agent is None:
-        print("\n⚠ Chưa cấu hình được LLM. Hãy `pip install anthropic` và đặt "
-              "ANTHROPIC_API_KEY (xem .env.example). Tạm dừng.")
+        print("\n⚠ Chưa cấu hình được LLM. Với Ollama: cài app Ollama + "
+              "`ollama pull llama3.1`. Với Claude: đặt ANTHROPIC_API_KEY. "
+              "Xem .env.example. Tạm dừng.")
         return
 
     recognizer = SpeechRecognizer(language=config.STT_LANGUAGE, engine=config.STT_ENGINE)

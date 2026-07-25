@@ -61,13 +61,13 @@ class Agent:
     def _run_tool(self, call) -> ToolResult:
         try:
             output = self.registry.run(call.name, call.arguments)
-            return ToolResult(tool_call_id=call.id, content=str(output))
+            return ToolResult(tool_call_id=call.id, name=call.name, content=str(output))
         except KeyError:
             logger.error("LLM gọi tool không tồn tại: %s", call.name)
-            return ToolResult(tool_call_id=call.id,
+            return ToolResult(tool_call_id=call.id, name=call.name,
                               content=f"Không có công cụ tên '{call.name}'.",
                               is_error=True)
         except Exception as e:  # tool lỗi -> báo lại LLM thay vì làm vỡ vòng lặp
             logger.error("Tool %s lỗi: %s", call.name, e)
-            return ToolResult(tool_call_id=call.id, content=f"Lỗi khi chạy: {e}",
-                              is_error=True)
+            return ToolResult(tool_call_id=call.id, name=call.name,
+                              content=f"Lỗi khi chạy: {e}", is_error=True)

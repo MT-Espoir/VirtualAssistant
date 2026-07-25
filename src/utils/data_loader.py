@@ -2,7 +2,10 @@ import json
 import os
 
 class DataLoader:
-    def __init__(self):
+    def __init__(self, language=None):
+        # `language` giữ lại cho tương thích (một số nơi gọi DataLoader(language="vi"));
+        # hiện dữ liệu chưa tách theo ngôn ngữ nên tham số chỉ được lưu, chưa dùng.
+        self.language = language
         self.data_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "components", "data")
         self.websites_data = self._load_data("websites.json")
         self.apps_data = self._load_data("applications.json")

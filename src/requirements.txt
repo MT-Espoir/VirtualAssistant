@@ -19,7 +19,9 @@ faster-whisper>=0.10.0
 torch>=2.0.0              # phụ thuộc của openai-whisper
 
 # --- Agent LLM (tool-calling) ---
-anthropic>=0.40.0
+# Mặc định dùng LLM local qua Ollama (cài app Ollama riêng, không qua pip;
+# gọi bằng requests đã có ở trên). Chỉ cần 'anthropic' nếu LLM_PROVIDER=claude.
+anthropic>=0.40.0        # tùy chọn — chỉ khi dùng Claude API
 
 # --- Điều khiển web / tìm kiếm ---
 requests>=2.31.0

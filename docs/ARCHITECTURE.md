@@ -117,8 +117,9 @@ sequenceDiagram
 
 ## Quyết định công nghệ
 
-- **LLM:** khuyến nghị **Claude API** làm chính (tool-calling chất lượng cao, hợp
-  để showcase), thiết kế client **pluggable** để thêm Ollama (offline) sau.
+- **LLM:** mặc định **Ollama local** (`LLM_PROVIDER=ollama`, model tool-calling như
+  llama3.1) để chạy offline; client **pluggable** — đổi sang **Claude API**
+  (`LLM_PROVIDER=claude`) khi cần chất lượng cao hơn. Cùng một `LLMClient` interface.
 - **Ngôn ngữ:** Python 3.9+ (giữ nguyên).
 - **Nền tảng:** Windows desktop.
 - **Kiểm thử:** pytest, agent core test được nhờ tiêm LLM client giả.
