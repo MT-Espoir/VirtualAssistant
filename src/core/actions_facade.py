@@ -23,6 +23,7 @@ from actions.web_search import (
     search_on_specific_site,
 )
 from actions.system_info import get_system_summary
+from actions.web_content import fetch_url_text, wikipedia_summary
 
 
 class AssistantActions:
@@ -50,6 +51,13 @@ class AssistantActions:
 
     def system_info(self, what="all"):
         return get_system_summary(what)
+
+    # --- Tra cứu / đọc web ---
+    def web_fetch(self, url):
+        return fetch_url_text(url)
+
+    def wikipedia_lookup(self, topic):
+        return wikipedia_summary(topic)
 
     # --- Web / YouTube ---
     def open_website(self, website_name):

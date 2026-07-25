@@ -187,6 +187,34 @@ def build_default_registry(actions, scheduler=None) -> ToolRegistry:
     ))
 
     reg.register(Tool(
+        name="web_fetch",
+        description="Tải nội dung một trang web theo URL để đọc/tóm tắt. "
+                    "Dùng khi người dùng đưa link hoặc muốn tóm tắt một trang cụ thể.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "url": {"type": "string", "description": "URL đầy đủ (http/https)"},
+            },
+            "required": ["url"],
+        },
+        handler=lambda url: actions.web_fetch(url),
+    ))
+
+    reg.register(Tool(
+        name="wikipedia_lookup",
+        description="Tra cứu nhanh một chủ đề trên Wikipedia (trả đoạn tóm tắt). "
+                    "Dùng khi người dùng hỏi 'X là gì', tra cứu khái niệm/nhân vật.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "topic": {"type": "string", "description": "Chủ đề/từ khóa cần tra"},
+            },
+            "required": ["topic"],
+        },
+        handler=lambda topic: actions.wikipedia_lookup(topic),
+    ))
+
+    reg.register(Tool(
         name="open_website",
         description="Mở một trang web trong trình duyệt.",
         input_schema={
