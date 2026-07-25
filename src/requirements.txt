@@ -24,9 +24,8 @@ torch>=2.0.0              # phụ thuộc của openai-whisper
 anthropic>=0.40.0        # tùy chọn — chỉ khi dùng Claude API
 
 # --- Điều khiển web / tìm kiếm ---
-requests>=2.31.0
-beautifulsoup4>=4.12.0
-pytube>=15.0.0
+requests>=2.31.0         # gọi Ollama + tải trang (web_fetch)
+pytube>=15.0.0           # phát video YouTube (tùy chọn)
 
 # --- Cấu hình (tùy chọn: cho phép nạp file .env) ---
 python-dotenv>=1.0.0

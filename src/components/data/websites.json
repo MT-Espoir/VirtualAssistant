@@ -30,8 +30,24 @@
     "wikipedia": "https://en.wikipedia.org/wiki/Special:Search?search={query}",
     "netflix": "https://www.netflix.com/search?q={query}"
   },
+  "homepages": {
+    "youtube": "https://www.youtube.com",
+    "facebook": "https://www.facebook.com",
+    "google": "https://www.google.com",
+    "gmail": "https://mail.google.com",
+    "twitter": "https://twitter.com",
+    "instagram": "https://www.instagram.com",
+    "linkedin": "https://www.linkedin.com",
+    "github": "https://github.com",
+    "netflix": "https://www.netflix.com",
+    "amazon": "https://www.amazon.com",
+    "reddit": "https://www.reddit.com",
+    "wikipedia": "https://www.wikipedia.org",
+    "tiktok": "https://www.tiktok.com",
+    "shopee": "https://shopee.vn"
+  },
   "command_keywords": [
-    "mở trang", "mở website", "truy cập", "vào trang", 
+    "mở trang", "mở website", "truy cập", "vào trang",
     "open website", "go to", "visit", "mở", "open"
   ]
 }

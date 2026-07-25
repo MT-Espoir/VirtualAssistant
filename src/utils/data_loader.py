@@ -26,7 +26,15 @@ class DataLoader:
     def get_app_keywords(self):
         """Get the mapping of apps to their keywords"""
         return self.apps_data.get("common_apps", {})
-        
+
+    def get_app_executables(self):
+        """Ánh xạ tên chuẩn app -> tên file thực thi (vd word -> winword)"""
+        return self.apps_data.get("executables", {})
+
+    def get_website_homepages(self):
+        """Ánh xạ tên chuẩn website -> URL trang chủ"""
+        return self.websites_data.get("homepages", {})
+
     def get_search_url(self, site):
         """Get the search URL for a specific site"""
         site = site.lower()

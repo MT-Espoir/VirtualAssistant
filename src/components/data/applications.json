@@ -11,6 +11,18 @@
     "excel": ["excel", "microsoft excel", "bảng tính"],
     "cmd": ["cmd", "command prompt", "terminal", "dòng lệnh"]
   },
+  "executables": {
+    "notepad": "notepad",
+    "chrome": "chrome",
+    "edge": "msedge",
+    "firefox": "firefox",
+    "calculator": "calc",
+    "explorer": "explorer",
+    "paint": "mspaint",
+    "word": "winword",
+    "excel": "excel",
+    "cmd": "cmd"
+  },
   "command_keywords": {
     "open": ["mở", "chạy", "khởi động", "open", "run", "start", "launch"],
     "close": ["đóng", "tắt", "dừng", "close", "exit", "quit"]
