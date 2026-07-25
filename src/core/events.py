@@ -1,0 +1,36 @@
+"""
+Kênh sự kiện giữa "bộ não" (agent, chạy nền) và giao diện avatar (Tkinter, chạy
+trên main thread). Agent phát trạng thái/cảm xúc; avatar đọc và cập nhật khuôn mặt.
+
+Dùng queue thread-safe: agent gọi bus.emit(...) từ thread nền, avatar poll queue
+qua Tk .after(). Tách UI khỏi core — core không import Tkinter.
+"""
+
+import queue
+from dataclasses import dataclass
+from typing import Optional
+
+
+@dataclass
+class AssistantEvent:
+    state: Optional[str] = None      # idle | listening | thinking | speaking
+    emotion: Optional[str] = None    # neutral | happy | sad
+    text: Optional[str] = None       # câu trả lời / trạng thái để hiện
+
+
+class AssistantBus:
+    def __init__(self):
+        self._q = queue.Queue()
+
+    def emit(self, state=None, emotion=None, text=None):
+        self._q.put(AssistantEvent(state=state, emotion=emotion, text=text))
+
+    def drain(self):
+        """Lấy hết event đang chờ (không chặn)."""
+        events = []
+        while True:
+            try:
+                events.append(self._q.get_nowait())
+            except queue.Empty:
+                break
+        return events
