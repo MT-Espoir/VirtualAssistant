@@ -5,7 +5,7 @@ try:
 except ImportError:
     pytest = None
 
-from core.fast_commands import match_fast_command, match_avatar_command
+from core.fast_commands import match_fast_command, match_avatar_command, match_mode_command
 
 
 def test_scroll_down_variants():
@@ -136,6 +136,30 @@ def test_avatar_clearer():
 def test_avatar_none_for_other():
     for t in ("mở chrome", "cuộn xuống", ""):
         assert match_avatar_command(t) is None
+
+
+# --------------------------- match_mode_command --------------------------- #
+
+def test_mode_work_variants():
+    for t in ("chuyển sang chế độ làm việc", "bật chế độ làm việc",
+              "vào làm việc thôi", "bắt đầu làm việc", "chế độ công việc"):
+        assert match_mode_command(t) == "work"
+
+
+def test_mode_normal_variants():
+    for t in ("về chế độ bình thường", "thoát chế độ làm việc",
+              "tắt chế độ làm việc", "quay lại bình thường", "thôi làm việc"):
+        assert match_mode_command(t) == "normal"
+
+
+def test_mode_normal_beats_work_when_both_present():
+    # "thoát chế độ làm việc" chứa cả "che do lam viec" -> phải ra 'normal', không 'work'
+    assert match_mode_command("thoát chế độ làm việc") == "normal"
+
+
+def test_mode_none_for_other():
+    for t in ("mở chrome", "thời tiết hôm nay", "", None):
+        assert match_mode_command(t) is None
 
 
 if __name__ == "__main__":

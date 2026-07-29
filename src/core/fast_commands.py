@@ -127,3 +127,25 @@ def match_avatar_command(text):
     """Trả dict lệnh giao diện (vd {'scale_delta': -0.15}) nếu khớp; ngược lại None."""
     m = _first_match(text, _UI_RULES)
     return dict(m[1]) if m else None
+
+
+# Chuyển chế độ nghe: "làm việc" (tắt wake word, ra lệnh trực tiếp) vs "bình thường"
+# (bật lại wake word). Cụm "bình thường"/"thoát"/"tắt" phải kiểm TRƯỚC vì chúng chứa
+# luôn cụm "che do lam viec" -> nếu kiểm 'work' trước sẽ khớp nhầm thành bật.
+_MODE_NORMAL_KWS = ["binh thuong", "thoat che do lam viec", "tat che do lam viec",
+                    "tat lam viec", "ket thuc lam viec", "che do thuong",
+                    "quay lai binh thuong", "khong lam viec nua", "thoi lam viec"]
+_MODE_WORK_KWS = ["che do lam viec", "sang lam viec", "bat lam viec", "vao lam viec",
+                  "bat dau lam viec", "che do cong viec", "sang cong viec"]
+
+
+def match_mode_command(text):
+    """Trả 'work' (vào chế độ làm việc) / 'normal' (về bình thường) / None."""
+    t = _norm(text)
+    if not t:
+        return None
+    if any(k in t for k in _MODE_NORMAL_KWS):
+        return "normal"
+    if any(k in t for k in _MODE_WORK_KWS):
+        return "work"
+    return None

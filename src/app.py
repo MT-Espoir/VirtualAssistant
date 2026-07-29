@@ -16,7 +16,7 @@ from core.tools import build_default_registry
 from core.llm_client import build_default_llm_client
 from core.events import AssistantBus
 from core.wake_word import match_wake_word, parse_wake_words, wake_words_not_in
-from core.fast_commands import match_fast_command, match_avatar_command
+from core.fast_commands import match_fast_command, match_avatar_command, match_mode_command
 from services.scheduler import ReminderScheduler
 from ui.avatar import AvatarWindow
 from ui.avatar_face import guess_emotion
@@ -186,10 +186,13 @@ def _assistant_loop(agent, bus, synth, voice_io):
     bargein = bool(voice_io) and synth is not None and gate_wake and bool(wake_words) \
         and config.BARGE_IN
     if gate_wake and wake_words:
-        hint += f' (nói "{wake_words[0]}" trước yêu cầu)'
+        hint += f' (nói "{wake_words[0]}" trước yêu cầu; hoặc "chế độ làm việc" để khỏi cần gọi tên)'
     bus.emit(state="idle", emotion="neutral", text=hint)
 
     pending = None          # câu lệnh có sẵn từ barge-in -> bỏ qua bước NGHE ở đầu vòng
+    # Chế độ làm việc: TẠM tắt wake word (ra lệnh trực tiếp, không cần gọi tên). Chỉ có
+    # nghĩa khi wake word đang được dùng (gate_wake). Đổi bằng giọng nói, không lưu file.
+    work_mode = False
     fails = 0
     while True:
         # 1) Lấy câu lệnh
@@ -216,7 +219,8 @@ def _assistant_loop(agent, bus, synth, voice_io):
             if raw.lower() in ("thoát", "exit", "quit"):
                 break
 
-            if gate_wake:
+            # Chế độ làm việc TẮT wake word tạm thời -> khi bật, bỏ qua bước kiểm từ khoá.
+            if gate_wake and not work_mode:
                 matched, remainder = match_wake_word(raw, wake_words)
                 if not matched:
                     print(f"(bỏ qua — không có từ khoá kích hoạt): {raw}")
@@ -231,6 +235,21 @@ def _assistant_loop(agent, bus, synth, voice_io):
                 text = remainder
             else:
                 text = raw
+
+        # 1b) CHUYỂN CHẾ ĐỘ nghe (chỉ khi wake word đang được dùng): "chế độ làm việc"
+        # tắt wake word để ra lệnh trực tiếp; "chế độ bình thường" bật lại.
+        if gate_wake:
+            mode = match_mode_command(text)
+            if mode is not None:
+                work_mode = (mode == "work")
+                msg = ("Đã bật chế độ làm việc. Bạn ra lệnh trực tiếp, không cần gọi tên tôi nữa."
+                       if work_mode else
+                       "Đã trở lại chế độ bình thường. Hãy gọi tên tôi trước mỗi yêu cầu.")
+                _say(synth, bus, msg, "happy")
+                if voice_io:
+                    _flush_mic_after_speaking(voice_io[0])
+                bus.emit(state="idle")
+                continue
 
         # 2) NGHĨ — hoặc CHẠY NHANH (bỏ qua LLM cho lệnh trực tiếp: giao diện/cuộn/chụp)
         bus.emit(state="thinking", text="")
