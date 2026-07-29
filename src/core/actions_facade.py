@@ -12,8 +12,6 @@ from actions.app_control import open_application, close_application
 from actions.system_control import (
     control_volume,
     control_brightness,
-    system_shutdown,
-    system_restart,
 )
 from actions.web_search import (
     search_web,
@@ -24,6 +22,7 @@ from actions.web_search import (
 )
 from actions.system_info import get_system_summary
 from actions.web_content import fetch_url_text, wikipedia_summary
+from actions.weather import get_weather
 
 
 class AssistantActions:
@@ -43,12 +42,6 @@ class AssistantActions:
     def control_brightness(self, level=None, change=None):
         return control_brightness(level=level, change=change)
 
-    def system_shutdown(self, close_apps=True):
-        return system_shutdown(close_apps=close_apps)
-
-    def system_restart(self, close_apps=True):
-        return system_restart(close_apps=close_apps)
-
     def system_info(self, what="all"):
         return get_system_summary(what)
 
@@ -58,6 +51,9 @@ class AssistantActions:
 
     def wikipedia_lookup(self, topic):
         return wikipedia_summary(topic)
+
+    def get_weather(self, location):
+        return get_weather(location)
 
     # --- Web / YouTube ---
     def open_website(self, website_name):

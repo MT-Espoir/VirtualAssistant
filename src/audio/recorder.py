@@ -120,12 +120,22 @@ class Recorder:
                            e, self.silence_threshold)
 
     def start_recording(self):
-        # Chỉ hiệu chỉnh nếu đã đến thời điểm cần hiệu chỉnh lại
+        """Đảm bảo stream đang mở, sẵn sàng ghi. Stream được GIỮ MỞ LIÊN TỤC giữa
+        các lượt nghe (không đóng/mở lại) — tránh độ trễ khởi động phần cứng mic
+        làm mất vài trăm ms đầu câu nói (bug: mất từ đầu như "mở", wake word...).
+        Chỉ tái hiệu chỉnh khi stream CHƯA mở (mở song song 2 stream không an toàn
+        trên nhiều driver); khi đang nghe liên tục, is_silent() đã tự thích nghi
+        noise_level theo các đoạn im lặng thật.
+        """
+        self.frames = []
+        if self.stream is not None:
+            self.is_recording = True
+            return
+
         current_time = time.time()
         if current_time - self.last_calibration_time >= self.recalibration_interval:
             self.calibrate_noise()
-            
-        self.frames = []
+
         try:
             self.stream = self.audio.open(
                 format=self.format,
@@ -158,6 +168,12 @@ class Recorder:
                 data = self.stream.read(self.chunk, exception_on_overflow=False)
             except (IOError, OSError) as e:
                 logger.error("Error reading audio: %s", e)
+                # Stream có thể đã hỏng — bỏ đi để lần sau start_recording() mở lại.
+                try:
+                    self.stream.close()
+                except (OSError, AttributeError):
+                    pass
+                self.stream = None
                 break
 
             self.frames.append(data)
@@ -208,12 +224,11 @@ class Recorder:
             return True
             
     def get_audio_data(self):
-        """Return the recorded audio as bytes data for recognition"""
-        if self.stream:
-            self.stream.stop_stream()
-            self.stream.close()
-            self.stream = None
-            
+        """Return the recorded audio as bytes data for recognition.
+
+        KHÔNG đóng stream — stream được giữ mở liên tục xuyên suốt các lượt nghe
+        (xem start_recording()), chỉ đóng thật ở close().
+        """
         if not self.frames:
             logger.debug("No audio frames captured")
             return None
@@ -222,37 +237,47 @@ class Recorder:
         return b''.join(self.frames)
             
     def reset(self):
-        """Reset recorder and prepare for a new recording"""
-        try:
-            # Dừng và đóng stream một cách an toàn
-            if hasattr(self, 'stream') and self.stream:
-                try:
-                    # Chỉ kiểm tra is_active() nếu stream còn tồn tại
-                    if self.stream._stream and self.stream.is_active():
-                        self.stream.stop_stream()
-                except (OSError, AttributeError):
-                    # Bỏ qua lỗi nếu stream đã bị đóng
-                    pass
-                
-                # Đóng stream nếu chưa đóng
+        """Xoá buffer frame, chuẩn bị cho lượt nghe kế tiếp.
+
+        KHÔNG đóng stream (xem start_recording()) — chỉ close() lúc tắt app mới
+        đóng thật. Giữ mic mở liên tục để tránh độ trễ mở lại phần cứng.
+        """
+        self.frames = []
+        self.is_recording = False
+
+    def drain(self, duration_s):
+        """Mở stream sớm (nếu chưa mở) rồi đọc-bỏ chunk trong `duration_s` giây.
+
+        Dùng làm "guard" sau khi TTS nói xong: vừa lọc bỏ đuôi vọng âm còn sót lại
+        trong stream, vừa làm nóng phần cứng mic trước khi lượt nghe thật bắt đầu
+        (thay cho time.sleep mù — nguyên nhân từng làm mất từ đầu câu kế tiếp).
+        """
+        self.start_recording()
+        if not self.stream:
+            time.sleep(duration_s)
+            return
+        end_time = time.time() + duration_s
+        while time.time() < end_time:
+            try:
+                self.stream.read(self.chunk, exception_on_overflow=False)
+            except (IOError, OSError):
                 try:
                     self.stream.close()
                 except (OSError, AttributeError):
                     pass
-                    
                 self.stream = None
-                
-            # Reset các thuộc tính khác
-            self.frames = []
-            self.is_recording = False
+                break
+        self.frames = []
 
-        except (OSError, AttributeError) as e:
-            logger.debug("Lỗi khi reset recorder: %s", e)
-            
     def close(self):
         """Close resources"""
         if self.stream:
-            self.stream.close()
+            try:
+                self.stream.stop_stream()
+                self.stream.close()
+            except (OSError, AttributeError):
+                pass
+            self.stream = None
         self.audio.terminate()
             
     def __del__(self):

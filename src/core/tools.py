@@ -11,38 +11,65 @@ build_default_registry(actions) dựng sẵn bộ tool điều khiển máy tín
 AssistantActions (core/actions_facade.py) — tái dùng đúng phần refactor Tầng 2.
 """
 
+import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Callable, Dict, List
 
+from utils.config import config
 from utils.logger import get_logger
+from utils.text_norm import strip_accents
 
 logger = get_logger(__name__)
 
 
-def _parse_fire_time(delay_minutes=None, at=None, now=None):
-    """Tính thời điểm nhắc từ delay_minutes (tương đối) hoặc at (HH:MM / ISO).
+def _first_number(value):
+    """Rút số đầu tiên trong value (số hoặc chuỗi kiểu '5', '5 phút'). None nếu không có."""
+    m = re.search(r"\d+(?:[.,]\d+)?", str(value))
+    return float(m.group().replace(",", ".")) if m else None
 
-    Trả về datetime, hoặc None nếu không xác định được.
+
+def _relative_from_text(text, now):
+    """'5 phút' / 'sau 2 tiếng' / '30 giây' -> datetime. None nếu không có số."""
+    low = strip_accents(str(text).lower())
+    n = _first_number(low)
+    if n is None:
+        return None
+    if "gio" in low or "tieng" in low or "hour" in low:
+        return now + timedelta(hours=n)
+    if "giay" in low or "sec" in low:
+        return now + timedelta(seconds=n)
+    return now + timedelta(minutes=n)          # mặc định coi là phút
+
+
+def _parse_fire_time(delay_minutes=None, at=None, now=None):
+    """Tính thời điểm nhắc — CHỊU LỖI với tham số lộn xộn do model sinh ra.
+
+    delay_minutes: số hoặc chuỗi có số ('5', '5 phút'). at: ISO, 'HH:MM', hoặc cả cụm
+    tương đối lọt vào đây ('sau 5 phút', '2 tiếng'). Trả datetime, hoặc None.
     """
     now = now or datetime.now()
+
     if delay_minutes is not None:
-        try:
-            return now + timedelta(minutes=float(delay_minutes))
-        except (TypeError, ValueError):
-            return None
+        n = _first_number(delay_minutes)
+        if n is not None:
+            return now + timedelta(minutes=n)
+
     if at:
         at = str(at).strip()
-        try:                                   # ISO đầy đủ, vd 2026-07-25T15:00
+        try:                                    # ISO đầy đủ, vd 2026-07-25T15:00
             return datetime.fromisoformat(at)
         except ValueError:
             pass
-        try:                                   # dạng HH:MM -> hôm nay, quá giờ thì mai
-            hh, mm = at.split(":")
-            fire = now.replace(hour=int(hh), minute=int(mm), second=0, microsecond=0)
+        m = re.match(r"^(\d{1,2})\s*[:hg]\s*(\d{1,2})", at)   # HH:MM / HHhMM / HHgMM
+        if m:
+            fire = now.replace(hour=int(m.group(1)) % 24, minute=int(m.group(2)) % 60,
+                               second=0, microsecond=0)
             return fire + timedelta(days=1) if fire <= now else fire
-        except (ValueError, TypeError):
-            return None
+        rel = _relative_from_text(at, now)      # 'sau 5 phút' lọt vào 'at'
+        if rel is not None:
+            return rel
+
     return None
 
 
@@ -74,6 +101,9 @@ class ToolRegistry:
     def get(self, name: str) -> Tool:
         return self._tools[name]
 
+    def has(self, name: str) -> bool:
+        return name in self._tools
+
     def specs(self) -> List[dict]:
         return [t.spec() for t in self._tools.values()]
 
@@ -87,10 +117,12 @@ class ToolRegistry:
 # --------------------------------------------------------------------------- #
 # Bộ tool mặc định (điều khiển máy tính) dựng từ AssistantActions
 # --------------------------------------------------------------------------- #
-def build_default_registry(actions, scheduler=None) -> ToolRegistry:
+def build_default_registry(actions, scheduler=None, browser=None, screen=None) -> ToolRegistry:
     """Tạo registry điều khiển máy tính từ một facade actions (hoặc mock).
 
     Nếu truyền `scheduler` (ReminderScheduler) thì đăng ký thêm bộ tool lập lịch.
+    Nếu truyền `browser` (BrowserBridge) thì đăng ký thêm tool điều khiển Chrome.
+    Nếu truyền `screen` (ScreenController) thì đăng ký thêm tool đọc/điều khiển màn hình.
     """
     reg = ToolRegistry()
 
@@ -148,29 +180,8 @@ def build_default_registry(actions, scheduler=None) -> ToolRegistry:
         handler=lambda level=None, change=None: actions.control_brightness(level=level, change=change),
     ))
 
-    reg.register(Tool(
-        name="shutdown",
-        description="Tắt máy tính. immediate=true để tắt ngay, không đóng ứng dụng trước.",
-        input_schema={
-            "type": "object",
-            "properties": {
-                "immediate": {"type": "boolean", "description": "Tắt ngay lập tức"},
-            },
-        },
-        handler=lambda immediate=False: actions.system_shutdown(close_apps=not immediate),
-    ))
-
-    reg.register(Tool(
-        name="restart",
-        description="Khởi động lại máy tính. immediate=true để khởi động lại ngay.",
-        input_schema={
-            "type": "object",
-            "properties": {
-                "immediate": {"type": "boolean", "description": "Khởi động lại ngay"},
-            },
-        },
-        handler=lambda immediate=False: actions.system_restart(close_apps=not immediate),
-    ))
+    # (Đã gỡ tool 'shutdown'/'restart' — tắt/khởi động lại máy quá rủi ro khi STT
+    #  nghe nhầm; cố ý không cung cấp cho agent.)
 
     reg.register(Tool(
         name="system_info",
@@ -212,6 +223,24 @@ def build_default_registry(actions, scheduler=None) -> ToolRegistry:
             "required": ["topic"],
         },
         handler=lambda topic: actions.wikipedia_lookup(topic),
+    ))
+
+    reg.register(Tool(
+        name="get_weather",
+        description="Xem thời tiết hôm nay ở một địa điểm: mô tả trời, nhiệt độ, khả năng "
+                    "mưa, chỉ số tia UV, kèm khuyến nghị (che nắng, mang áo mưa...). Dùng "
+                    "khi người dùng hỏi 'thời tiết hôm nay', 'trời có mưa không', 'nắng "
+                    "không', 'tia UV mạnh không'. Không nói địa điểm thì để trống.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "location": {"type": "string",
+                             "description": "Tên thành phố/địa điểm; để trống nếu người "
+                                            "dùng không nói (dùng địa điểm mặc định)"},
+            },
+        },
+        handler=lambda location=None: actions.get_weather(
+            location or config.WEATHER_DEFAULT_LOCATION),
     ))
 
     reg.register(Tool(
@@ -272,7 +301,232 @@ def build_default_registry(actions, scheduler=None) -> ToolRegistry:
     if scheduler is not None:
         _register_schedule_tools(reg, scheduler)
 
+    if browser is not None:
+        _register_browser_tools(reg, browser)
+        _register_web_search_tools(reg, browser)
+
+    if screen is not None:
+        _register_screen_tools(reg, screen)
+
     return reg
+
+
+def _register_screen_tools(reg: ToolRegistry, screen):
+    """Tool đọc/điều khiển màn hình (chụp / tìm chữ OCR / cuộn) — chạy local."""
+    reg.register(Tool(
+        name="take_screenshot",
+        description="Chụp lại toàn bộ màn hình và lưu vào máy (local). Dùng khi người "
+                    "dùng yêu cầu 'chụp màn hình', 'chụp lại màn hình'.",
+        input_schema={"type": "object", "properties": {}},
+        handler=lambda: screen.capture(),
+    ))
+
+    reg.register(Tool(
+        name="find_on_screen",
+        description="Tìm một từ/cụm từ đang HIỂN THỊ trên màn hình (đọc chữ bằng OCR, "
+                    "chạy local). Trả về các dòng chứa từ khóa. Dùng khi người dùng hỏi "
+                    "'trên màn hình có ... không', 'tìm ... trên màn hình'.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Từ/cụm từ cần tìm trên màn hình"},
+            },
+            "required": ["query"],
+        },
+        handler=lambda query: screen.find(query),
+    ))
+
+    reg.register(Tool(
+        name="scroll_screen",
+        description="Cuộn màn hình lên hoặc xuống (tại cửa sổ đang trỏ chuột). Dùng khi "
+                    "người dùng nói 'cuộn xuống', 'lướt lên', 'kéo xuống tiếp'.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "direction": {"type": "string", "enum": ["up", "down"],
+                              "description": "Hướng cuộn: up (lên) / down (xuống)"},
+                "amount": {"type": "integer", "description": "Số nấc cuộn (mặc định 3)"},
+            },
+            "required": ["direction"],
+        },
+        handler=lambda direction, amount=3: screen.scroll(direction, amount),
+    ))
+
+
+def _register_browser_tools(reg: ToolRegistry, browser):
+    """Tool điều khiển Chrome (media + quản lý tab) qua BrowserBridge/extension."""
+    from services.browser_protocol import (
+        build_media_command, summarize_media_response,
+        summarize_tab_list, summarize_close,
+        build_open_or_reuse, summarize_open_or_reuse)
+
+    def media_control(action, value=None):
+        try:
+            cmd = build_media_command(action, value)
+        except ValueError as e:
+            return str(e)
+        resp = browser.send_command(**cmd)
+        return summarize_media_response(resp, action, value)
+
+    def list_tabs():
+        return summarize_tab_list(browser.send_command(action="GET_TABS"))
+
+    def close_tab(keyword, confirm=False):
+        if not keyword or not str(keyword).strip():
+            return "Cần cho biết từ khoá của tab cần đóng (tên trang hoặc tiêu đề)."
+        resp = browser.send_command(action="CLOSE_TAB_BY_KEYWORD",
+                                    keyword=keyword, dryRun=not confirm)
+        return summarize_close(resp, keyword, confirm)
+
+    def open_or_reuse(url, match_domain=None):
+        try:
+            cmd = build_open_or_reuse(url, match_domain)
+        except ValueError as e:
+            return str(e)
+        return summarize_open_or_reuse(browser.send_command(**cmd), url)
+
+    reg.register(Tool(
+        name="browser_list_tabs",
+        description="Liệt kê các tab Chrome đang mở (tiêu đề + trang). Dùng khi người "
+                    "dùng hỏi 'đang mở tab gì', hoặc để biết tab nào trước khi đóng.",
+        input_schema={"type": "object", "properties": {}},
+        handler=list_tabs,
+    ))
+
+    reg.register(Tool(
+        name="browser_close_tab",
+        description=(
+            "Đóng (các) tab Chrome có tiêu đề hoặc URL chứa 'keyword'. QUAN TRỌNG — đóng "
+            "tab KHÓ HOÀN TÁC: BẮT BUỘC gọi lần đầu với confirm=false để xem danh sách tab "
+            "sẽ đóng, ĐỌC danh sách đó cho người dùng và CHỜ họ đồng ý; chỉ gọi lại với "
+            "confirm=true SAU KHI người dùng xác nhận. Không tự đặt confirm=true ngay lần đầu."),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "keyword": {"type": "string",
+                            "description": "Từ khoá khớp tiêu đề/URL tab, vd 'facebook'"},
+                "confirm": {"type": "boolean",
+                            "description": "false = chỉ xem trước; true = thật sự đóng "
+                                           "(chỉ dùng sau khi người dùng đã đồng ý)"},
+            },
+            "required": ["keyword"],
+        },
+        handler=close_tab,
+    ))
+
+    reg.register(Tool(
+        name="browser_open_or_reuse",
+        description=(
+            "Mở một URL trong Chrome, TÁI DÙNG tab cùng trang nếu đã mở (chuyển tab đó "
+            "tới URL mới + đưa lên trước) thay vì tạo tab mới. Dùng khi mở/chuyển sang "
+            "một trang có thể đã mở sẵn, vd mở video YouTube khác trong tab YouTube đang có."),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "url": {"type": "string", "description": "URL đầy đủ cần mở"},
+                "match_domain": {"type": "string",
+                                 "description": "Tên miền để tìm tab tái dùng "
+                                                "(mặc định tự suy từ url, vd youtube.com)"},
+            },
+            "required": ["url"],
+        },
+        handler=open_or_reuse,
+    ))
+
+    reg.register(Tool(
+        name="browser_media_control",
+        description=(
+            "Điều khiển trình phát media (video/nhạc) trên tab Chrome đang mở, ví dụ "
+            "YouTube. Dùng khi người dùng nói 'tạm dừng/phát tiếp nhạc', 'tua', 'chỉnh "
+            "âm lượng video', 'bài kế/trước'. 'action': play, pause, toggle (đảo phát/dừng), "
+            "next, prev (trong playlist), set_volume (cần 'value' 0-100), seek (cần 'value' "
+            "= số giây tua tới; số âm để tua lùi)."),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "action": {"type": "string",
+                           "enum": ["play", "pause", "toggle", "next", "prev",
+                                    "set_volume", "seek"],
+                           "description": "Hành động điều khiển media"},
+                "value": {"type": "number",
+                          "description": "Tham số cho set_volume (0-100) hoặc seek (giây)"},
+            },
+            "required": ["action"],
+        },
+        handler=media_control,
+    ))
+
+
+def _register_web_search_tools(reg: ToolRegistry, browser):
+    """Tìm web + ĐỌC danh sách kết quả (extension trích DOM), rồi mở kết quả người dùng
+    chọn theo SỐ THỨ TỰ. Giữ trạng thái danh sách kết quả gần nhất giữa các lượt trong
+    closure `session` — người dùng chỉ cần nói 'số 2', KHÔNG bắt model chép lại URL dài.
+    """
+    from services.browser_protocol import (
+        build_search_read, parse_search_results, summarize_search_results,
+        build_open_or_reuse)
+
+    session = {"results": []}      # kết quả tìm kiếm gần nhất (sống suốt phiên)
+
+    def search_list(query, engine=None):
+        try:
+            cmd = build_search_read(query, engine or config.WEB_SEARCH_ENGINE)
+        except ValueError as e:
+            return str(e)
+        # Đọc DOM cần mở tab + chờ render -> cho timeout rộng hơn lệnh thường.
+        resp = browser.send_command(timeout=25, **cmd)
+        results, err = parse_search_results(resp)
+        if err:
+            return err
+        session["results"] = results
+        return summarize_search_results(results, query)
+
+    def open_result(index=None):
+        results = session["results"]
+        if not results:
+            return "Chưa có kết quả tìm kiếm nào để mở — hãy tìm trước đã."
+        try:
+            i = int(str(index).strip())
+        except (TypeError, ValueError):
+            return "Cần cho biết số thứ tự kết quả cần mở (ví dụ 1, 2, 3)."
+        if i < 1 or i > len(results):
+            return f"Chỉ có {len(results)} kết quả, không có số {i}."
+        chosen = results[i - 1]
+        browser.send_command(**build_open_or_reuse(chosen["url"]))
+        return f"Đang mở kết quả số {i}: {chosen['title']}."
+
+    reg.register(Tool(
+        name="web_search_list",
+        description=("Tìm thông tin trên web rồi ĐỌC danh sách vài kết quả đầu để người "
+                     "dùng chọn (KHÔNG mở thẳng). Dùng khi người dùng muốn 'tìm thông tin "
+                     "về X', 'tra cứu X', 'tìm hiểu về X' — trừ YouTube/Wikipedia. Sau đó "
+                     "người dùng chọn số nào thì dùng open_search_result."),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Nội dung cần tìm"},
+                "engine": {"type": "string", "enum": ["google", "duckduckgo"],
+                           "description": "Công cụ tìm (mặc định theo cấu hình)"},
+            },
+            "required": ["query"],
+        },
+        handler=search_list,
+    ))
+
+    reg.register(Tool(
+        name="open_search_result",
+        description=("Mở một kết quả trong danh sách VỪA tìm bằng web_search_list, theo "
+                     "SỐ THỨ TỰ. Dùng khi người dùng nói 'mở kết quả số 2', 'vào link 1', "
+                     "'cái đầu tiên'..."),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "index": {"type": "integer", "description": "Số thứ tự kết quả (1, 2, 3...)"},
+            },
+            "required": ["index"],
+        },
+        handler=open_result,
+    ))
 
 
 def _register_schedule_tools(reg: ToolRegistry, scheduler):

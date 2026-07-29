@@ -7,7 +7,7 @@ qua Tk .after(). Tách UI khỏi core — core không import Tkinter.
 """
 
 import queue
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 
@@ -16,6 +16,7 @@ class AssistantEvent:
     state: Optional[str] = None      # idle | listening | thinking | speaking
     emotion: Optional[str] = None    # neutral | happy | sad
     text: Optional[str] = None       # câu trả lời / trạng thái để hiện
+    ui: Optional[dict] = None        # lệnh giao diện avatar (scale_delta / opacity_delta...)
 
 
 class AssistantBus:
@@ -24,6 +25,10 @@ class AssistantBus:
 
     def emit(self, state=None, emotion=None, text=None):
         self._q.put(AssistantEvent(state=state, emotion=emotion, text=text))
+
+    def emit_ui(self, **ui):
+        """Gửi lệnh điều chỉnh giao diện avatar (đổi kích thước / độ mờ) tới main thread."""
+        self._q.put(AssistantEvent(ui=ui))
 
     def drain(self):
         """Lấy hết event đang chờ (không chặn)."""

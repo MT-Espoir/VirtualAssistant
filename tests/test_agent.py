@@ -14,9 +14,30 @@ try:
 except ImportError:
     pytest = None
 
-from core.agent import Agent
+from core.agent import Agent, _clean_text
 from core.llm_client import AssistantTurn, Message, ToolCall
 from core.tools import build_default_registry
+
+
+# --------------------------- _clean_text (dọn rác model 3B) --------------------------- #
+
+def test_clean_strips_cjk():
+    assert _clean_text("Đã đặt âm lượng 35%.现在是168") == "Đã đặt âm lượng 35%.168"
+    assert _clean_text("Xin chào 你好 bạn") == "Xin chào  bạn".replace("  ", " ")
+
+
+def test_clean_keeps_vietnamese():
+    s = "Đã mở Chrome cho bạn nhé!"
+    assert _clean_text(s) == s
+
+
+def test_clean_removes_duplicate_lines():
+    dup = "Tôi đã tìm kiếm.\n1. Video A\nTôi đã tìm kiếm.\n1. Video A"
+    assert _clean_text(dup) == "Tôi đã tìm kiếm.\n1. Video A"
+
+
+def test_clean_none_safe():
+    assert _clean_text(None) == "" and _clean_text("") == ""
 
 
 class FakeLLMClient:
@@ -51,30 +72,63 @@ def test_no_tool_returns_text():
     assert agent.run("chào bạn").text == "Xin chào!"
 
 
-def test_single_tool_then_answer():
+def test_action_tool_then_model_composes_reply():
+    # Sau khi chạy tool hành động, model LUÔN có lượt soạn lời (không tự đoán "đã xong"
+    # hộ model) -> câu trả lời do model soạn, tốn 2 lượt LLM.
     actions = make_actions()
-    agent = make_agent([
+    llm = FakeLLMClient([
         AssistantTurn(tool_calls=[ToolCall("t1", "open_app", {"app_name": "chrome"})]),
         AssistantTurn(text="Đã mở Chrome cho bạn."),
-    ], actions=actions)
+    ])
+    agent = Agent(llm, build_default_registry(actions))
     reply = agent.run("mở chrome")
     actions.open_application.assert_called_once_with("chrome")
-    assert reply.text == "Đã mở Chrome cho bạn."
+    assert reply.text == "Đã mở Chrome cho bạn." and llm.calls == 2
 
 
-def test_multiple_tools_in_one_turn():
+def test_multiple_tools_in_one_turn_then_compose():
+    # Model phát nhiều tool trong MỘT lượt: chạy đủ, rồi lượt sau soạn lời kết.
     actions = make_actions()
-    agent = make_agent([
+    llm = FakeLLMClient([
         AssistantTurn(tool_calls=[
             ToolCall("t1", "open_app", {"app_name": "chrome"}),
-            ToolCall("t2", "set_volume", {"change": 20}),
-        ]),
-        AssistantTurn(text="Xong cả hai việc."),
-    ], actions=actions)
+            ToolCall("t2", "set_volume", {"change": 20})]),
+        AssistantTurn(text="Đã mở Chrome và tăng âm lượng."),
+    ])
+    agent = Agent(llm, build_default_registry(actions))
     reply = agent.run("mở chrome và tăng âm lượng 20%")
     actions.open_application.assert_called_once_with("chrome")
     actions.control_volume.assert_called_once_with(level=None, change=20)
-    assert reply.text == "Xong cả hai việc."
+    assert reply.text == "Đã mở Chrome và tăng âm lượng." and llm.calls == 2
+
+
+def test_multi_step_request_chains_tools():
+    # Yêu cầu nhiều bước, model phát MỖI LƯỢT MỘT tool: agent lặp cho model gọi đủ
+    # các bước (không dừng sau bước đầu) rồi soạn lời kết ở lượt cuối.
+    actions = make_actions()
+    llm = FakeLLMClient([
+        AssistantTurn(tool_calls=[ToolCall("t1", "open_app", {"app_name": "chrome"})]),
+        AssistantTurn(tool_calls=[ToolCall("t2", "set_volume", {"change": 20})]),
+        AssistantTurn(text="Đã mở Chrome và tăng âm lượng.\n#emotion: happy"),
+    ])
+    agent = Agent(llm, build_default_registry(actions))
+    reply = agent.run("mở chrome sau đó tăng âm lượng")
+    actions.open_application.assert_called_once_with("chrome")
+    actions.control_volume.assert_called_once_with(level=None, change=20)
+    assert llm.calls == 3 and reply.emotion == "happy"
+
+
+def test_tool_returning_raw_data_gets_summarized():
+    # Tool trả dữ liệu thô (wikipedia) -> model có lượt diễn đạt lại thành câu trả lời.
+    actions = make_actions()
+    actions.wikipedia_lookup.return_value = "Nội dung dài về AI..."
+    llm = FakeLLMClient([
+        AssistantTurn(tool_calls=[ToolCall("t1", "wikipedia_lookup", {"topic": "AI"})]),
+        AssistantTurn(text="Tóm tắt: AI là..."),
+    ])
+    agent = Agent(llm, build_default_registry(actions))
+    reply = agent.run("AI là gì")
+    assert reply.text == "Tóm tắt: AI là..." and llm.calls == 2
 
 
 def test_unknown_tool_reported_not_crash():
@@ -96,10 +150,11 @@ def test_tool_error_fed_back():
 
 
 def test_stops_at_max_iterations():
-    always_tool = [AssistantTurn(tool_calls=[ToolCall(f"t{i}", "set_volume", {"change": 1})])
+    # Model cứ gọi tool mãi (không bao giờ dừng) -> chạm giới hạn vòng lặp.
+    always_tool = [AssistantTurn(tool_calls=[ToolCall(f"t{i}", "wikipedia_lookup", {"topic": "x"})])
                    for i in range(10)]
     agent = make_agent(always_tool, max_iterations=3)
-    assert "chưa hoàn tất" in agent.run("cứ tăng âm lượng mãi").text
+    assert "chưa hoàn tất" in agent.run("cứ tra mãi").text
 
 
 # --------------------------- Cảm xúc do LLM --------------------------- #
@@ -119,6 +174,11 @@ def test_emotion_none_without_tag():
 def test_emotion_sad_tag():
     reply = make_agent([AssistantTurn(text="Xin lỗi.\n#emotion: sad")]).run("x")
     assert reply.emotion == "sad" and reply.text == "Xin lỗi."
+
+
+def test_emotion_cry_tag():
+    reply = make_agent([AssistantTurn(text="Dạ em xin lỗi ạ.\n#emotion: cry")]).run("x")
+    assert reply.emotion == "cry" and reply.text == "Dạ em xin lỗi ạ."
 
 
 # --------------------------- Bộ nhớ hội thoại --------------------------- #

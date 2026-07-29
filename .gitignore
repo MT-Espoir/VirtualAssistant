@@ -20,3 +20,18 @@ Thumbs.db
 # Local data / logs
 *.log
 src/services/reminders.json
+
+# Log runtime khi chạy qua launcher (launch_assistant.vbs)
+assistant.log
+
+# Ảnh chụp màn hình (tính năng đọc màn hình) — local, không commit
+captures/
+
+# Bí mật / khoá / gói build — KHÔNG commit
+.env
+*.pem
+*.crx
+
+# Extension Chrome + tài liệu — giữ cục bộ, không commit
+chrome_extension/
+docs/

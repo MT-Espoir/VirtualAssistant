@@ -1,0 +1,392 @@
+"""
+Điểm vào hợp nhất — khởi chạy toàn bộ hệ thống trong một lần:
+agent (LLM tool-calling) + avatar cảm xúc (Tkinter) + TTS (kèm giọng robot
+tùy chọn) + lịch nhắc (scheduler). Đầu vào dùng micro nếu có, tự động chuyển
+sang gõ phím nếu không có/lỗi (xem INPUT_MODE trong .env.example).
+
+Chạy:  cd src && python app.py
+"""
+
+import threading
+import time
+
+from core.agent import Agent
+from core.actions_facade import AssistantActions
+from core.tools import build_default_registry
+from core.llm_client import build_default_llm_client
+from core.events import AssistantBus
+from core.wake_word import match_wake_word, parse_wake_words, wake_words_not_in
+from core.fast_commands import match_fast_command, match_avatar_command
+from services.scheduler import ReminderScheduler
+from ui.avatar import AvatarWindow
+from ui.avatar_face import guess_emotion
+from utils.config import config
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
+_NO_INPUT = object()
+MAX_INPUT_FAILS = 5
+SPEAK_TAIL_GUARD_S = 0.4
+
+def _make_speaker():
+    """Tạo bộ tổng hợp giọng nói (TTS); lỗi thì trả None (hệ thống vẫn chạy, mất giọng)."""
+    try:
+        from audio.speech_synthesizer import SpeechSynthesizer
+        return SpeechSynthesizer(
+            engine=config.TTS_ENGINE, language=config.TTS_LANGUAGE,
+            robot=config.TTS_ROBOT, robot_carrier=config.TTS_ROBOT_CARRIER,
+            speed=config.TTS_SPEED)
+    except Exception as e:
+        logger.warning("TTS không khả dụng (%s) — chạy không có giọng nói.", e)
+        return None
+
+
+def _make_voice_input():
+    """Dựng recorder + recognizer cho đầu vào micro.
+
+    Trả về None nếu INPUT_MODE=text, hoặc nếu micro/thư viện lỗi và
+    INPUT_MODE=auto (sẽ chuyển sang gõ phím). Với INPUT_MODE=voice, lỗi sẽ ném ra.
+    """
+    if config.INPUT_MODE == "text":
+        return None
+    try:
+        from audio.recorder import Recorder
+        from recognition.speech_recognizer import SpeechRecognizer
+        recorder = Recorder(
+            channels=config.CHANNELS, rate=config.SAMPLE_RATE,
+            chunk=config.CHUNK_SIZE, speech_threshold_ratio=config.SPEECH_THRESHOLD_RATIO)
+        recognizer = SpeechRecognizer(language=config.STT_LANGUAGE, engine=config.STT_ENGINE)
+        return recorder, recognizer
+    except Exception as e:
+        if config.INPUT_MODE == "voice":
+            raise
+        logger.warning("Không dùng được micro (%s) — chuyển sang gõ phím.", e)
+        return None
+
+
+def _say(synth, bus, text, emotion):
+    """Phát trạng thái 'speaking' rồi NÓI ĐỒNG BỘ — chặn tới khi phát xong.
+
+    Đây là chốt chặn half-duplex: vì hàm chạy trong chính thread của vòng nghe và
+    speak_sync() chặn tới khi loa im, mic sẽ KHÔNG mở lại giữa lúc AI đang nói —
+    loại bỏ vòng vọng âm (AI tự nghe lại giọng mình rồi tự trả lời).
+    """
+    bus.emit(state="speaking", emotion=emotion, text=text)
+    if synth:
+        try:
+            synth.speak_sync(text)     # chặn tới khi phát xong
+        except Exception as e:
+            logger.error("Lỗi khi phát giọng nói: %s", e)
+
+
+def _flush_mic_after_speaking(recorder):
+    """Sau khi AI nói xong: đọc-bỏ mic trong lúc đuôi âm loa tắt (vừa lọc vọng âm
+    vừa làm nóng phần cứng mic sớm) rồi làm mới recorder trước khi nghe lại."""
+    recorder.drain(SPEAK_TAIL_GUARD_S)
+    recorder.reset()
+
+
+# Số chunk mỗi lượt nghe khi đang nói (ngắn để re-check TTS thường xuyên, ~1.6s).
+BARGE_IN_LISTEN_CHUNKS = 25
+
+
+def _tts_active(synth):
+    """TTS còn đang phát (đang nói hoặc còn câu trong hàng đợi)."""
+    try:
+        return synth.is_speaking or not synth.voice_queue.empty()
+    except Exception:
+        return False
+
+
+def _speak_and_watch(synth, bus, text, emotion, voice_io, wake_words):
+    """Nói KHÔNG chặn, đồng thời nghe wake word để NGẮT LỜI (barge-in nhẹ, không AEC).
+
+    Trả câu lệnh mới (phần sau wake word) nếu người dùng ngắt lời; None nếu nói xong
+    bình thường. Vì không có AEC, mic vẫn nghe cả giọng TTS — nên loại các wake word
+    có trong chính câu trả lời (tránh AI tự ngắt lời mình khi đọc trúng từ khoá).
+    """
+    recorder, recognizer = voice_io
+    bus.emit(state="speaking", emotion=emotion, text=text)
+
+    bargein_words = wake_words_not_in(text, wake_words)   # bỏ từ khoá trùng câu trả lời
+    synth.speak(text)                                     # phát bất đồng bộ
+
+    try:
+        while _tts_active(synth):
+            audio = recorder.listen_once(max_chunks=BARGE_IN_LISTEN_CHUNKS)
+            recorder.reset()
+            if not _tts_active(synth):
+                break                                    # TTS vừa xong -> thôi nghe
+            if audio is None or not bargein_words:
+                continue
+            heard = recognizer.recognize_speech_from_data(audio)
+            if not heard:
+                continue
+            matched, remainder = match_wake_word(heard, bargein_words)
+            if matched:
+                synth.stop()                             # ngắt lời AI ngay
+                print(f"⏸ Ngắt lời (barge-in): {heard}")
+                return remainder or None
+    except Exception as e:
+        logger.error("Lỗi khi nghe ngắt lời: %s", e)
+    return None
+
+
+def _listen_voice(recorder, recognizer, bus):
+    """Ghi một lượt nói và nhận dạng.
+
+    Trả về câu đã nghe, hoặc _NO_INPUT nếu lượt này không nghe được gì (phải
+    nghe tiếp, KHÔNG phải tín hiệu thoát).
+    """
+    bus.emit(state="listening", text="Đang lắng nghe...")
+    print("\n--- Đang lắng nghe... ---")
+    audio_data = recorder.listen_once()
+    recorder.reset()
+    if audio_data is None:
+        print("Không phát hiện giọng nói.")
+        return _NO_INPUT
+
+    text = recognizer.recognize_speech_from_data(audio_data)
+    if not text:
+        print("Không nghe rõ, vui lòng thử lại.")
+        return _NO_INPUT
+    print(f"🎤 Đã nghe: {text}")
+    return text
+
+
+def _next_input(voice_io, bus):
+    """Lấy câu tiếp theo từ micro (nếu có) hoặc bàn phím.
+
+    Trả về None CHỈ khi người dùng muốn thoát (EOF/Ctrl+C); _NO_INPUT khi lượt
+    này không có gì để xử lý nhưng vẫn tiếp tục.
+    """
+    if voice_io:
+        recorder, recognizer = voice_io
+        return _listen_voice(recorder, recognizer, bus)
+    try:
+        return input("Bạn: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        return None
+
+
+def _assistant_loop(agent, bus, synth, voice_io):
+    """Vòng xử lý (thread nền): nghe/gõ -> agent -> phát trạng thái cho avatar + nói.
+
+    Chu trình half-duplex nghiêm ngặt cho từng lượt: NGHE -> NGHĨ -> NÓI (chặn) ->
+    lặng đệm -> mới NGHE lại. Không bao giờ nghe và nói cùng lúc.
+
+    Khi nhập bằng giọng nói và bật REQUIRE_WAKE_WORD: chỉ hành động với câu có chứa
+    từ khoá kích hoạt — bỏ qua lời nhạc/clip lọt vào mic (không tự trả lời loạn).
+    """
+    hint = "Đang lắng nghe micro..." if voice_io else "Gõ yêu cầu ở cửa sổ terminal."
+    # Wake word chỉ áp dụng cho đầu vào giọng nói (gõ phím là chủ đích rõ ràng rồi).
+    gate_wake = bool(voice_io) and config.REQUIRE_WAKE_WORD
+    wake_words = parse_wake_words(config.WAKE_WORDS)
+    # Barge-in cần: giọng nói + có TTS + có wake word để phân biệt câu ngắt lời.
+    bargein = bool(voice_io) and synth is not None and gate_wake and bool(wake_words) \
+        and config.BARGE_IN
+    if gate_wake and wake_words:
+        hint += f' (nói "{wake_words[0]}" trước yêu cầu)'
+    bus.emit(state="idle", emotion="neutral", text=hint)
+
+    pending = None          # câu lệnh có sẵn từ barge-in -> bỏ qua bước NGHE ở đầu vòng
+    fails = 0
+    while True:
+        # 1) Lấy câu lệnh
+        if pending is not None:
+            text = pending
+            pending = None
+        else:
+            try:
+                raw = _next_input(voice_io, bus)
+                fails = 0
+            except Exception as e:   # lỗi thiết bị/mạng: thử lại, không quay vô hạn
+                fails += 1
+                logger.error("Lỗi khi lấy đầu vào (%d/%d): %s", fails, MAX_INPUT_FAILS, e)
+                if fails >= MAX_INPUT_FAILS:
+                    print("\nĐầu vào lỗi liên tiếp — dừng nhận lệnh.")
+                    break
+                time.sleep(1)
+                continue
+            if raw is None:                     # EOF/Ctrl+C -> thoát
+                break
+            if raw is _NO_INPUT or not raw:     # không nghe/gõ được gì -> nghe tiếp
+                bus.emit(state="idle")
+                continue
+            if raw.lower() in ("thoát", "exit", "quit"):
+                break
+
+            if gate_wake:
+                matched, remainder = match_wake_word(raw, wake_words)
+                if not matched:
+                    print(f"(bỏ qua — không có từ khoá kích hoạt): {raw}")
+                    bus.emit(state="idle")
+                    continue
+                if not remainder:               # chỉ gọi tên, chưa có yêu cầu cụ thể
+                    _say(synth, bus, "Dạ, bạn cần gì?", "happy")
+                    if voice_io:
+                        _flush_mic_after_speaking(voice_io[0])
+                    bus.emit(state="idle")
+                    continue
+                text = remainder
+            else:
+                text = raw
+
+        # 2) NGHĨ — hoặc CHẠY NHANH (bỏ qua LLM cho lệnh trực tiếp: giao diện/cuộn/chụp)
+        bus.emit(state="thinking", text="")
+        ui_cmd = match_avatar_command(text) if config.FAST_COMMANDS else None
+        fast = match_fast_command(text) if (config.FAST_COMMANDS and ui_cmd is None) else None
+        if ui_cmd is not None:
+            bus.emit_ui(**ui_cmd)
+            response, emotion = _ui_ack(ui_cmd), "happy"
+            print(f"⚡ (giao diện, không qua LLM) {ui_cmd}")
+        elif fast is not None and agent.registry.has(fast[0]):
+            response, emotion = _run_fast(agent, fast), "happy"
+        else:
+            try:
+                reply = agent.run(text)
+                response, emotion = reply.text, reply.emotion
+            except Exception as e:
+                logger.error("Lỗi khi chạy agent: %s", e)
+                response, emotion = "Xin lỗi, có lỗi khi xử lý yêu cầu.", "sad"
+
+        # 3) NÓI — có barge-in (vừa nói vừa nghe wake word) hoặc chặn như cũ
+        print(f"Trợ lý: {response}\n")
+        emo = emotion or guess_emotion(response)
+        if bargein:
+            pending = _speak_and_watch(synth, bus, response, emo, voice_io, wake_words)
+        else:
+            _say(synth, bus, response, emo)     # chặn tới khi nói xong
+
+        # Chỉ sau khi nói/ngắt xong mới dọn mic + mở lại vòng nghe (chống vọng âm).
+        if voice_io:
+            _flush_mic_after_speaking(voice_io[0])
+        bus.emit(state="idle")
+
+    if voice_io:
+        voice_io[0].close()
+    bus.emit(state="idle", text="Đã dừng nhận lệnh.")
+    print("\n(Đã dừng nhận lệnh. Đóng cửa sổ avatar để thoát hẳn.)")
+
+
+def _make_browser_bridge():
+    """Dựng + khởi động cầu nối Chrome nếu bật (BROWSER_BRIDGE_ENABLED). Lỗi/thiếu
+    'websockets' -> trả None (agent chạy bình thường, chỉ thiếu điều khiển Chrome)."""
+    if not config.BROWSER_BRIDGE_ENABLED:
+        return None
+    try:
+        from services.browser_bridge import BrowserBridge
+        bridge = BrowserBridge(host=config.BROWSER_BRIDGE_HOST,
+                               port=config.BROWSER_BRIDGE_PORT,
+                               token=config.BROWSER_BRIDGE_TOKEN)
+        if bridge.start():
+            print(f"🌐 Cầu nối Chrome bật ở ws://{config.BROWSER_BRIDGE_HOST}:"
+                  f"{config.BROWSER_BRIDGE_PORT} (chờ extension).")
+            return bridge
+    except Exception as e:
+        logger.warning("Không bật được cầu nối Chrome: %s", e)
+    return None
+
+
+def _ui_ack(ui):
+    """Câu xác nhận ngắn cho lệnh chỉnh giao diện avatar."""
+    if ui.get("scale_delta", 0) < 0:
+        return "Đã thu nhỏ khuôn mặt."
+    if ui.get("scale_delta", 0) > 0:
+        return "Đã phóng to khuôn mặt."
+    if ui.get("opacity_delta", 0) < 0:
+        return "Đã làm mờ hơn."
+    if ui.get("opacity_delta", 0) > 0:
+        return "Đã làm rõ hơn."
+    return "Đã cập nhật giao diện."
+
+
+def _run_fast(agent, fast):
+    """Chạy thẳng một tool (fast-path), không qua LLM. Trả câu kết quả để nói."""
+    tool_name, tool_args = fast
+    try:
+        out = str(agent.registry.run(tool_name, tool_args))
+    except Exception as e:
+        logger.error("Lỗi chạy nhanh %s: %s", tool_name, e)
+        return "Xin lỗi, có lỗi khi thực hiện."
+    print(f"⚡ (chạy nhanh, không qua LLM) {tool_name} → {out}")
+    return out
+
+
+def _make_screen_controller():
+    """Dựng ScreenController nếu bật + LLM local. Trả None nếu tắt hoặc LLM online.
+
+    BẢO MẬT: nội dung màn hình (chữ OCR) sẽ được đưa cho LLM. Chỉ cho phép khi LLM
+    là local (ollama) để nội dung KHÔNG rời máy; dùng LLM online -> từ chối bật.
+    """
+    if not config.SCREEN_CONTROL_ENABLED:
+        return None
+    if (config.LLM_PROVIDER or "").lower() != "ollama":
+        msg = ("⚠ Điều khiển màn hình cần LLM LOCAL (ollama) để nội dung không rời máy "
+               f"— đã BỎ QUA (LLM_PROVIDER={config.LLM_PROVIDER}).")
+        logger.warning(msg)
+        print(msg)
+        return None
+    try:
+        from actions.screen_control import ScreenController
+        sc = ScreenController(save_dir=config.SCREEN_CAPTURE_DIR or None,
+                              tesseract_cmd=config.TESSERACT_CMD or None)
+        print("🖥 Điều khiển màn hình: BẬT (local, offline).")
+        return sc
+    except Exception as e:
+        logger.warning("Không bật được điều khiển màn hình: %s", e)
+        return None
+
+
+def _notify_reminder(bus, synth, message):
+    print(f"\n🔔 Nhắc: {message}")
+    _say(synth, bus, f"🔔 {message}", "happy")
+    bus.emit(state="idle")
+
+
+def main():
+    print("=== Trợ lý AI: agent + avatar + giọng nói (khởi chạy hợp nhất) ===")
+
+    bus = AssistantBus()
+
+    try:
+        llm = build_default_llm_client()
+    except RuntimeError as e:
+        print(f"Không khởi tạo được LLM: {e}")
+        return
+
+    synth = _make_speaker()
+
+    scheduler = ReminderScheduler(notify=lambda msg: _notify_reminder(bus, synth, msg))
+    scheduler.start()
+
+    browser = _make_browser_bridge()
+    screen = _make_screen_controller()
+
+    router = None
+    if config.USE_ROUTER:
+        from core.router import Router
+        router = Router(llm)
+
+    agent = Agent(llm=llm,
+                  registry=build_default_registry(AssistantActions(), scheduler=scheduler,
+                                                   browser=browser, screen=screen),
+                  max_history_turns=config.MAX_HISTORY_TURNS,
+                  memory_path=config.MEMORY_PATH or None, router=router)
+
+    voice_io = _make_voice_input()
+
+    worker = threading.Thread(target=_assistant_loop, args=(agent, bus, synth, voice_io), daemon=True)
+    worker.start()
+
+    win = AvatarWindow(bus=bus, title="Trợ lý AI")
+    try:
+        win.run()          # Tk mainloop (main thread) — chặn tới khi đóng cửa sổ
+    finally:
+        scheduler.stop()
+        if browser is not None:
+            browser.stop()
+
+
+if __name__ == "__main__":
+    main()

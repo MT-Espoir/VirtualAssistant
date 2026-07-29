@@ -1,5 +1,6 @@
 """Mở web / tìm kiếm — dữ liệu trang lấy từ websites.json qua DataLoader."""
 
+import re
 import urllib.parse
 import webbrowser
 
@@ -7,6 +8,20 @@ from utils.data_loader import DataLoader
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def _normalize_url(raw):
+    """Chuẩn hoá một chuỗi thành URL hợp lệ.
+
+    - Sửa scheme thiếu dấu ':' (vd 'https//x' -> 'https://x').
+    - Giữ nguyên nếu ĐÃ có scheme (tránh ghép 'https://' hai lần).
+    - Thêm 'https://' nếu chưa có scheme.
+    """
+    u = (raw or "").strip()
+    u = re.sub(r"^(https?)//", r"\1://", u, flags=re.IGNORECASE)   # 'https//x' -> 'https://x'
+    if re.match(r"^https?://", u, flags=re.IGNORECASE):
+        return u
+    return "https://" + u.lstrip("/")
 
 data_loader = DataLoader(language="vi")
 
@@ -61,37 +76,81 @@ def resolve_website_url(name):
                 return homepages[cano]
     if not key:
         return "https://www.google.com"
-    return f"https://www.{key}.com" if "." not in key else f"https://{key}"
+    # Không khớp danh bạ: coi 'key' như địa chỉ và chuẩn hoá (xử lý cả trường hợp
+    # đã có sẵn scheme, tránh sinh URL kiểu 'https://https//www.youtube.com').
+    if "." in key or "//" in key:
+        return _normalize_url(key)
+    return f"https://www.{key}.com"
 
 
 def open_website(site_name):
     """Mở trực tiếp một trang web theo tên."""
     url = resolve_website_url(site_name)
     webbrowser.open(url)
-    return f"Đang mở {site_name} ({url})."
+    # UX: KHÔNG đọc/hiển thị full URL trong câu trả lời (dài, khó nghe khi TTS đọc);
+    # URL thật vẫn ghi log để debug.
+    logger.info("Mở website %s -> %s", site_name, url)
+    return f"Đang mở {site_name}."
 
 
 def search_and_play_youtube(query):
-    """Mở trang kết quả YouTube cho từ khóa (không phụ thuộc pytube)."""
+    """Mở TRANG KẾT QUẢ YouTube cho từ khóa (không mở thẳng video)."""
     if not query:
         return "Chưa có từ khóa tìm kiếm."
     encoded = urllib.parse.quote(query)
     webbrowser.open(f"https://www.youtube.com/results?search_query={encoded}")
-    return f"Đang tìm '{query}' trên YouTube."
+    return f"Đã mở trang kết quả YouTube cho '{query}' (chưa phát video cụ thể)."
 
 
-def search_and_play_youtube_direct(query):
-    """Tìm và mở video đầu tiên qua pytube; nếu không được thì mở trang kết quả."""
+# ID video YouTube: đúng 11 ký tự [A-Za-z0-9_-]. Hai mẫu để tăng độ bền:
+_VIDEO_ID_RE = re.compile(r'"videoId"\s*:\s*"([A-Za-z0-9_-]{11})"')
+_WATCH_ID_RE = re.compile(r'/watch\?v=([A-Za-z0-9_-]{11})')
+
+# Header giống trình duyệt thật + cookie bỏ qua trang consent EU của YouTube — nếu
+# không, YouTube hay trả trang xin đồng ý cookie (KHÔNG chứa videoId) -> trích trượt.
+_YT_HEADERS = {
+    "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                   "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"),
+    "Accept-Language": "vi-VN,vi;q=0.9,en;q=0.8",
+    "Cookie": "CONSENT=YES+1",
+}
+
+
+def first_youtube_video_id(query, http_get=None, timeout=15):
+    """Lấy videoId của kết quả ĐẦU TIÊN bằng cách đọc HTML trang kết quả.
+
+    Thay cho pytube (hay vỡ khi YouTube đổi giao diện): trang kết quả nhúng sẵn
+    ytInitialData chứa các "videoId":"...". Trả về id đầu tiên, hoặc None nếu
+    không tải/không trích được. `http_get` cho phép tiêm hàm GET giả khi test.
+    """
+    encoded = urllib.parse.quote(query)
+    url = f"https://www.youtube.com/results?search_query={encoded}"
+    try:
+        if http_get is not None:
+            resp = http_get(url)
+        else:
+            import requests
+            resp = requests.get(url, timeout=timeout, headers=_YT_HEADERS)
+        text = resp.text
+        for pattern in (_VIDEO_ID_RE, _WATCH_ID_RE):     # thử JSON trước, rồi link /watch
+            match = pattern.search(text)
+            if match:
+                return match.group(1)
+        logger.warning("Không thấy videoId trong trang kết quả cho '%s' "
+                       "(YouTube có thể trả trang consent).", query)
+        return None
+    except Exception as e:
+        logger.warning("Không trích được videoId cho '%s': %s", query, e)
+        return None
+
+
+def search_and_play_youtube_direct(query, http_get=None):
+    """Mở THẲNG video đầu tiên khớp từ khóa; không được thì lùi về trang kết quả."""
     if not query:
         return "Chưa có từ khóa tìm kiếm."
-    try:
-        from pytube import Search
-        results = Search(query).results
-        if results:
-            video = results[0]
-            webbrowser.open(f"https://www.youtube.com/watch?v={video.video_id}")
-            return f"Đang phát video '{video.title}'."
-        return f"Không tìm thấy video cho '{query}'."
-    except Exception as e:  # pytube hay hỏng khi YouTube đổi giao diện
-        logger.warning("pytube lỗi (%s), mở trang kết quả thay thế.", e)
-        return search_and_play_youtube(query)
+    video_id = first_youtube_video_id(query, http_get=http_get)
+    if video_id:
+        webbrowser.open(f"https://www.youtube.com/watch?v={video_id}")
+        return f"Đang phát video đầu tiên cho '{query}' trên YouTube."
+    # Không trích được video: nói THẬT là chỉ mở trang kết quả (tránh AI báo nhầm đã phát).
+    return search_and_play_youtube(query)

@@ -205,7 +205,8 @@ def build_default_llm_client() -> LLMClient:
     provider = (config.LLM_PROVIDER or "ollama").lower()
 
     if provider == "ollama":
-        return OllamaLLMClient(model=config.OLLAMA_MODEL, base_url=config.OLLAMA_URL)
+        return OllamaLLMClient(model=config.OLLAMA_MODEL, base_url=config.OLLAMA_URL,
+                               timeout=config.LLM_TIMEOUT)
 
     if provider == "claude":
         try:

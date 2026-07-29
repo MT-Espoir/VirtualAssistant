@@ -24,8 +24,10 @@ torch>=2.0.0              # dependency of openai-whisper
 anthropic>=0.40.0        # optional - only when using Claude API
 
 # --- Web Control / Search ---
-requests>=2.31.0         # call Ollama + fetch page (web_fetch)
-pytube>=15.0.0           # play YouTube video (optional)
+requests>=2.31.0         # call Ollama + fetch page (web_fetch) + videoId YouTube + thời tiết Open-Meteo
+
+# --- Điều khiển Chrome (tùy chọn: BROWSER_BRIDGE_ENABLED=true) ---
+websockets>=13.0         # cầu nối WebSocket tới Chrome extension (API asyncio mới)
 
 # --- Configuration (optional: allows loading .env files) ---
 python-dotenv>=1.0.0
