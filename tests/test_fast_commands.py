@@ -5,7 +5,8 @@ try:
 except ImportError:
     pytest = None
 
-from voice.fast_commands import match_fast_command, match_avatar_command, match_mode_command
+from voice.fast_commands import (match_fast_command, match_avatar_command,
+                                 match_mode_command, match_confirmation)
 
 
 def test_scroll_down_variants():
@@ -160,6 +161,34 @@ def test_mode_normal_beats_work_when_both_present():
 def test_mode_none_for_other():
     for t in ("mở chrome", "thời tiết hôm nay", "", None):
         assert match_mode_command(t) is None
+
+
+# --------------------------- xác nhận có/không --------------------------- #
+
+def test_confirmation_yes_variants():
+    for t in ("có", "ừ", "được", "đồng ý", "ok", "vâng", "đúng rồi", "làm đi", "cứ làm"):
+        assert match_confirmation(t) == "yes", t
+
+
+def test_confirmation_no_variants():
+    for t in ("không", "thôi", "hủy", "khỏi", "không cần", "thôi khỏi", "để sau", "bỏ đi"):
+        assert match_confirmation(t) == "no", t
+
+
+def test_confirmation_no_beats_yes_when_mixed():
+    # Vừa có phủ định vừa có khẳng định -> ưu tiên huỷ cho an toàn
+    assert match_confirmation("có nhưng thôi không cần đâu") == "no"
+
+
+def test_confirmation_none_for_new_request():
+    # Câu không phải xác nhận -> None (để coi là yêu cầu mới)
+    for t in ("mở notepad", "phát nhạc trên youtube", "", None):
+        assert match_confirmation(t) is None
+
+
+def test_confirmation_long_co_sentence_not_yes():
+    # "có" mở đầu câu DÀI không được nhận nhầm là đồng ý (an toàn)
+    assert match_confirmation("có xem giúp tôi mấy giờ rồi") is None
 
 
 if __name__ == "__main__":

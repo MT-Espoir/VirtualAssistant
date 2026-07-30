@@ -26,6 +26,9 @@ class RecordingRegistry:
     def has(self, name):
         return self._inner.has(name)
 
+    def get(self, name):
+        return self._inner.get(name)          # để Agent đọc metadata tool (vd cờ destructive)
+
     def run(self, name, arguments):
         self.calls.append((name, dict(arguments or {})))
         # Trả câu NHƯ THỂ thành công để model coi bước đã xong (giảm gọi lặp vô ích —
@@ -90,6 +93,10 @@ def run_case(llm, registry, router, case, max_iterations=4):
         error = f"{type(e).__name__}: {e}"
 
     called = [name for name, _ in rec_reg.calls]
+    # Tool khó hoàn tác bị agent HOÃN để hỏi xác nhận (không chạy) -> vẫn tính là model ĐÃ
+    # CHỌN đúng tool, vì eval đo độ tin cậy CHỌN tool, không đo việc thực thi.
+    if agent.pending is not None:
+        called.append(agent.pending["name"])
     got_case = rec_router.cases[-1] if (rec_router and rec_router.cases) else None
     return score_case(case, called, got_case, error)
 

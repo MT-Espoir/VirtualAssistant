@@ -21,6 +21,9 @@ Thumbs.db
 *.log
 src/services/reminders.json
 
+# Hồ sơ người dùng (dữ liệu cá nhân: tên, địa điểm...) — local, không commit
+src/components/user/user_data/
+
 # Log runtime khi chạy qua launcher (launch_assistant.vbs)
 assistant.log
 

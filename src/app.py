@@ -13,10 +13,12 @@ import time
 from agent.agent import Agent
 from agent.actions_facade import AssistantActions
 from agent.tools import build_default_registry
+from components.user.user_profile import UserProfile
 from llm.client import build_default_llm_client
 from utils.events import AssistantBus
 from voice.wake_word import match_wake_word, parse_wake_words, wake_words_not_in
-from voice.fast_commands import match_fast_command, match_avatar_command, match_mode_command
+from voice.fast_commands import (match_fast_command, match_avatar_command,
+                                 match_mode_command, match_confirmation)
 from services.scheduler import ReminderScheduler
 from ui.avatar import AvatarWindow
 from ui.avatar_face import guess_emotion
@@ -219,8 +221,14 @@ def _assistant_loop(agent, bus, synth, voice_io):
             if raw.lower() in ("thoát", "exit", "quit"):
                 break
 
+            # Đang CHỜ xác nhận một hành động khó hoàn tác + câu là 'có'/'không' -> nhận
+            # trực tiếp, không cần gọi tên (đối thoại tự nhiên). Câu KHÁC vẫn cần wake word
+            # nên không nới lỏng an toàn chung.
+            awaiting_confirm = (agent.pending is not None
+                                and match_confirmation(raw) is not None)
+
             # Chế độ làm việc TẮT wake word tạm thời -> khi bật, bỏ qua bước kiểm từ khoá.
-            if gate_wake and not work_mode:
+            if gate_wake and not work_mode and not awaiting_confirm:
                 matched, remainder = match_wake_word(raw, wake_words)
                 if not matched:
                     print(f"(bỏ qua — không có từ khoá kích hoạt): {raw}")
@@ -387,11 +395,14 @@ def main():
         from agent.router import Router
         router = Router(llm)
 
+    profile = UserProfile(config.USER_PROFILE_PATH or None)
+
     agent = Agent(llm=llm,
                   registry=build_default_registry(AssistantActions(), scheduler=scheduler,
-                                                   browser=browser, screen=screen),
+                                                   browser=browser, screen=screen,
+                                                   profile=profile),
                   max_history_turns=config.MAX_HISTORY_TURNS,
-                  memory_path=config.MEMORY_PATH or None, router=router)
+                  memory_path=config.MEMORY_PATH or None, router=router, profile=profile)
 
     voice_io = _make_voice_input()
 

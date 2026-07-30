@@ -103,6 +103,19 @@ def test_run_case_captures_tool_call_no_side_effect():
     actions.open_application.assert_not_called()       # tool KHÔNG chạy thật
 
 
+def test_run_case_counts_deferred_destructive_as_selected():
+    # Tool khó hoàn tác (close_app) bị agent hoãn để hỏi xác nhận -> eval vẫn tính là
+    # model đã chọn đúng tool (đo chọn tool, không đo thực thi).
+    actions = MagicMock()
+    llm = _FakeLLM([
+        AssistantTurn(tool_calls=[ToolCall("t1", "close_app", {"app_name": "chrome"})]),
+    ])
+    r = run_case(llm, build_default_registry(actions), router=None,
+                 case={"id": "c", "text": "đóng chrome", "expect": ["close_app"]})
+    assert r["tool_ok"] is True and r["called"] == ["close_app"]
+    actions.close_application.assert_not_called()          # KHÔNG chạy (hoãn + không side effect)
+
+
 def test_run_case_records_router_case():
     llm = _FakeLLM([AssistantTurn(text="Xin chào!")])   # general, không gọi tool
 

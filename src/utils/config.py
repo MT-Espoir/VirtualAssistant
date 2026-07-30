@@ -135,6 +135,11 @@ class Config:
     # Đường dẫn file lưu bộ nhớ (rỗng = chỉ nhớ trong phiên, không lưu ra file)
     MEMORY_PATH = _get("MEMORY_PATH", "")
 
+    # --- Hồ sơ NGƯỜI DÙNG bền vững (tên, xưng hô, địa điểm mặc định...) ---
+    # Rỗng = dùng vị trí mặc định components/user/user_data/profile.json. Đây là DỮ LIỆU
+    # CÁ NHÂN -> đã gitignore, không commit.
+    USER_PROFILE_PATH = _get("USER_PROFILE_PATH", "")
+
     # --- Gemini API (LLM_PROVIDER=gemini) — XOAY VÒNG model theo hạn mức free tier ---
     GEMINI_API_KEY = _get("GEMINI_API_KEY", "")
     # Danh sách model theo THỨ TỰ ưu tiên: "tên:RPM:RPD" cách nhau bởi dấu phẩy. Mỗi lượt

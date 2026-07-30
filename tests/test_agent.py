@@ -45,9 +45,11 @@ class FakeLLMClient:
         self.script = list(script)
         self.calls = 0
         self.last_messages = None
+        self.last_system = None
 
     def generate(self, *, system, messages, tools):
         self.last_messages = messages
+        self.last_system = system
         turn = self.script[self.calls]
         self.calls += 1
         return turn
@@ -157,6 +159,65 @@ def test_stops_at_max_iterations():
     assert "chưa hoàn tất" in agent.run("cứ tra mãi").text
 
 
+# --------------------------- Xác nhận hành động khó hoàn tác --------------------------- #
+
+def test_destructive_tool_asks_before_running():
+    actions = make_actions()
+    actions.close_application.return_value = "Đã đóng Chrome."
+    llm = FakeLLMClient([
+        AssistantTurn(tool_calls=[ToolCall("t1", "close_app", {"app_name": "chrome"})]),
+    ])
+    agent = Agent(llm, build_default_registry(actions))
+    reply = agent.run("đóng chrome")
+    actions.close_application.assert_not_called()          # CHƯA đóng
+    assert agent.pending is not None
+    assert "chắc" in reply.text.lower() and "chrome" in reply.text.lower()
+    assert llm.calls == 1
+
+
+def test_confirmation_yes_executes_without_llm():
+    actions = make_actions()
+    actions.close_application.return_value = "Đã đóng Chrome."
+    llm = FakeLLMClient([
+        AssistantTurn(tool_calls=[ToolCall("t1", "close_app", {"app_name": "chrome"})]),
+    ])
+    agent = Agent(llm, build_default_registry(actions))
+    agent.run("đóng chrome")
+    reply = agent.run("có")
+    actions.close_application.assert_called_once_with("chrome")
+    assert reply.text == "Đã đóng Chrome." and agent.pending is None
+    assert llm.calls == 1                                   # lượt xác nhận không gọi LLM
+
+
+def test_confirmation_no_cancels():
+    actions = make_actions()
+    llm = FakeLLMClient([
+        AssistantTurn(tool_calls=[ToolCall("t1", "close_app", {"app_name": "chrome"})]),
+    ])
+    agent = Agent(llm, build_default_registry(actions))
+    agent.run("đóng chrome")
+    reply = agent.run("thôi không cần")
+    actions.close_application.assert_not_called()
+    assert agent.pending is None and "không làm" in reply.text.lower()
+
+
+def test_unrelated_reply_drops_pending_and_handles_new_request():
+    # An toàn: câu KHÔNG phải xác nhận không được kích hoạt hành động đã hoãn
+    actions = make_actions()
+    actions.open_application.return_value = "Đã mở Notepad."
+    llm = FakeLLMClient([
+        AssistantTurn(tool_calls=[ToolCall("t1", "close_app", {"app_name": "chrome"})]),
+        AssistantTurn(tool_calls=[ToolCall("t2", "open_app", {"app_name": "notepad"})]),
+        AssistantTurn(text="Đã mở Notepad."),
+    ])
+    agent = Agent(llm, build_default_registry(actions))
+    agent.run("đóng chrome")
+    reply = agent.run("mở notepad")
+    actions.close_application.assert_not_called()           # KHÔNG đóng nhầm
+    actions.open_application.assert_called_once_with("notepad")
+    assert agent.pending is None and reply.text == "Đã mở Notepad."
+
+
 # --------------------------- Cảm xúc do LLM --------------------------- #
 
 def test_parses_emotion_tag_and_strips():
@@ -179,6 +240,31 @@ def test_emotion_sad_tag():
 def test_emotion_cry_tag():
     reply = make_agent([AssistantTurn(text="Dạ em xin lỗi ạ.\n#emotion: cry")]).run("x")
     assert reply.emotion == "cry" and reply.text == "Dạ em xin lỗi ạ."
+
+
+# --------------------------- Hồ sơ người dùng bơm vào prompt --------------------------- #
+
+class _FakeProfile:
+    def __init__(self, summary):
+        self._summary = summary
+    def summary(self):
+        return self._summary
+
+
+def test_profile_summary_injected_into_system():
+    llm = FakeLLMClient([AssistantTurn(text="Chào Nam!")])
+    agent = Agent(llm, build_default_registry(make_actions()),
+                  profile=_FakeProfile("Tên người dùng: Nam."))
+    agent.run("chào")
+    assert "Tên người dùng: Nam." in llm.last_system
+
+
+def test_empty_profile_not_injected():
+    llm = FakeLLMClient([AssistantTurn(text="Chào!")])
+    agent = Agent(llm, build_default_registry(make_actions()), profile=_FakeProfile(""))
+    agent.run("chào")
+    # Không có tóm tắt -> system không bị thêm tiền tố trống/xuống dòng
+    assert llm.last_system and not llm.last_system.startswith("\n")
 
 
 # --------------------------- Bộ nhớ hội thoại --------------------------- #

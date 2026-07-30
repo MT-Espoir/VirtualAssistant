@@ -132,3 +132,40 @@ def match_mode_command(text):
     if any(k in t for k in _MODE_WORK_KWS):
         return "work"
     return None
+
+
+# Xác nhận có/không cho hành động khó hoàn tác (vd đóng app). Dùng để CHỐT TRONG CODE
+# việc thực thi — chỉ một câu "có" rõ ràng mới cho chạy. Cố ý BỎ QUA cụm mơ hồ (trả
+# None -> coi như yêu cầu mới, huỷ chờ), thà bắt lặp lại còn hơn lỡ tay làm nhầm.
+# Không nhận token "dung" (đúng/đừng/dừng bị bỏ dấu trùng nhau -> nhập nhằng).
+_CONFIRM_YES_TOKENS = {"co", "u", "um", "uh", "ok", "oke", "okay", "duoc", "phai", "vang", "yes"}
+_CONFIRM_YES_PHRASES = ("dong y", "dong di", "dong luon", "lam di", "lam luon", "cu lam",
+                        "chinh xac", "xac nhan", "phai roi", "dung roi", "duoc roi",
+                        "co chu", "tien hanh", "chac chan")
+# LƯU Ý va chạm dấu: "thời" (thời tiết/thời gian) bỏ dấu = "thoi" trùng "thôi" -> câu
+# hỏi thời tiết lúc đang chờ xác nhận sẽ bị coi là 'no'. Chấp nhận: huỷ là chiều AN TOÀN
+# (chỉ mất công hỏi lại), còn nhận nhầm 'yes' mới nguy hiểm nên siết chặt phía 'yes'.
+_CONFIRM_NO_TOKENS = {"khong", "thoi", "huy", "khoi"}
+_CONFIRM_NO_PHRASES = ("khong can", "khong lam", "khong dong", "khong muon", "thoi khoi",
+                       "bo di", "de sau", "dung lai", "khoan da")
+
+
+def match_confirmation(text):
+    """Phân loại câu trả lời xác nhận: 'yes' | 'no' | None (không rõ).
+
+    An toàn là ưu tiên: 'no' kiểm TRƯỚC và THAM (huỷ hành động nguy hiểm); còn 'yes' bằng
+    token trần ("có", "ừ", "ok") CHỈ tính khi câu NGẮN (<=3 từ) để câu dài mở đầu bằng
+    "có..." (vd 'có xem giúp tôi...') không bị nhận nhầm là đồng ý. Cụm rõ nghĩa (đồng ý,
+    làm đi, đúng rồi...) thì luôn tính. Không rõ -> None (coi như yêu cầu mới).
+    """
+    t = _norm(text)
+    if not t:
+        return None
+    tokens = set(t.split())
+    if tokens & _CONFIRM_NO_TOKENS or any(p in t for p in _CONFIRM_NO_PHRASES):
+        return "no"
+    if any(p in t for p in _CONFIRM_YES_PHRASES):
+        return "yes"
+    if len(tokens) <= 3 and tokens & _CONFIRM_YES_TOKENS:
+        return "yes"
+    return None

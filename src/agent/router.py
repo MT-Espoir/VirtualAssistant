@@ -31,6 +31,7 @@ CASE_TOOLS = {
     "browser": ["browser_media_control", "browser_list_tabs", "browser_close_tab",
                 "browser_open_or_reuse"],
     "schedule": ["schedule_reminder", "list_reminders", "cancel_reminder"],
+    "profile": ["remember_about_user"],
     "general": None,
 }
 

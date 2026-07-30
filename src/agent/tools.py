@@ -79,6 +79,8 @@ class Tool:
     description: str
     input_schema: dict          # JSON Schema cho tham số
     handler: Callable[..., str]  # nhận **kwargs theo schema, trả về chuỗi
+    destructive: bool = False    # True = khó hoàn tác -> Agent hỏi xác nhận trước khi chạy
+    confirm_message: Callable[..., str] = None  # (**args) -> cụm mô tả việc sẽ làm, để hỏi
 
     def spec(self) -> dict:
         """Định nghĩa tool gửi cho LLM (định dạng Anthropic tool-use)."""
@@ -117,12 +119,15 @@ class ToolRegistry:
 # --------------------------------------------------------------------------- #
 # Bộ tool mặc định (điều khiển máy tính) dựng từ AssistantActions
 # --------------------------------------------------------------------------- #
-def build_default_registry(actions, scheduler=None, browser=None, screen=None) -> ToolRegistry:
+def build_default_registry(actions, scheduler=None, browser=None, screen=None,
+                           profile=None) -> ToolRegistry:
     """Tạo registry điều khiển máy tính từ một facade actions (hoặc mock).
 
     Nếu truyền `scheduler` (ReminderScheduler) thì đăng ký thêm bộ tool lập lịch.
     Nếu truyền `browser` (BrowserBridge) thì đăng ký thêm tool điều khiển Chrome.
     Nếu truyền `screen` (ScreenController) thì đăng ký thêm tool đọc/điều khiển màn hình.
+    Nếu truyền `profile` (UserProfile) thì đăng ký tool ghi nhớ thông tin người dùng, và
+    tool thời tiết dùng địa điểm mặc định trong hồ sơ (thay cho cấu hình cứng).
     """
     reg = ToolRegistry()
 
@@ -141,7 +146,7 @@ def build_default_registry(actions, scheduler=None, browser=None, screen=None) -
 
     reg.register(Tool(
         name="close_app",
-        description="Đóng một ứng dụng đang chạy.",
+        description="Đóng một ứng dụng đang chạy. Trợ lý sẽ tự hỏi xác nhận trước khi đóng.",
         input_schema={
             "type": "object",
             "properties": {
@@ -150,6 +155,8 @@ def build_default_registry(actions, scheduler=None, browser=None, screen=None) -
             "required": ["app_name"],
         },
         handler=lambda app_name: actions.close_application(app_name),
+        destructive=True,      # đóng app có thể mất dữ liệu chưa lưu -> chốt xác nhận trong code
+        confirm_message=lambda app_name=None: f"đóng ứng dụng {app_name}",
     ))
 
     reg.register(Tool(
@@ -265,7 +272,8 @@ def build_default_registry(actions, scheduler=None, browser=None, screen=None) -
             },
         },
         handler=lambda location=None: actions.get_weather(
-            location or config.WEATHER_DEFAULT_LOCATION),
+            location or (profile.get_default_location() if profile else None)
+            or config.WEATHER_DEFAULT_LOCATION),
     ))
 
     reg.register(Tool(
@@ -333,7 +341,35 @@ def build_default_registry(actions, scheduler=None, browser=None, screen=None) -
     if screen is not None:
         _register_screen_tools(reg, screen)
 
+    if profile is not None:
+        _register_profile_tools(reg, profile)
+
     return reg
+
+
+def _register_profile_tools(reg: ToolRegistry, profile):
+    """Tool ghi nhớ thông tin cá nhân LÂU DÀI về người dùng (tên, xưng hô, địa điểm...)."""
+    reg.register(Tool(
+        name="remember_about_user",
+        description=("Ghi nhớ thông tin cá nhân LÂU DÀI về người dùng khi họ cho biết, để "
+                     "cá nhân hoá về sau. Dùng khi người dùng nói 'tôi tên là...', 'gọi tôi "
+                     "là...', 'tôi ở/sống ở...', 'nhớ giúp tôi rằng...'. CHỈ truyền trường "
+                     "người dùng thực sự nói (bỏ trống các trường khác)."),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Tên người dùng"},
+                "address_form": {"type": "string",
+                                 "description": "Cách xưng hô muốn được gọi, vd 'sếp', 'anh Nam'"},
+                "location": {"type": "string",
+                             "description": "Địa điểm mặc định (để hỏi thời tiết), vd 'Đà Nẵng'"},
+                "note": {"type": "string", "description": "Một điều khác cần nhớ lâu dài"},
+            },
+        },
+        handler=lambda name=None, address_form=None, location=None, note=None:
+            profile.remember(name=name, address_form=address_form,
+                             location=location, note=note),
+    ))
 
 
 def _register_screen_tools(reg: ToolRegistry, screen):
