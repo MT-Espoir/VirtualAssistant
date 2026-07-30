@@ -9,6 +9,7 @@ Mặc định `AssistantActions()` nối tới các hàm thật trong package `a
 """
 
 from actions.system.app_control import open_application, close_application
+from actions.system.window_control import list_windows, switch_to_window
 from actions.system.system_control import (
     control_volume,
     control_brightness,
@@ -34,6 +35,12 @@ class AssistantActions:
 
     def close_application(self, app_name):
         return close_application(app_name)
+
+    def list_windows(self):
+        return list_windows()
+
+    def switch_window(self, name):
+        return switch_to_window(name)
 
     # --- Hệ thống ---
     def control_volume(self, level=None, change=None):

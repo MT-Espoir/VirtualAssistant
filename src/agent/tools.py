@@ -153,6 +153,31 @@ def build_default_registry(actions, scheduler=None, browser=None, screen=None) -
     ))
 
     reg.register(Tool(
+        name="list_windows",
+        description="Liệt kê các cửa sổ/ứng dụng ĐANG MỞ trên máy (theo tiêu đề). Dùng khi "
+                    "người dùng hỏi 'đang mở những gì', 'có cửa sổ/ứng dụng nào đang chạy', "
+                    "hoặc để biết tên cửa sổ trước khi chuyển sang nó.",
+        input_schema={"type": "object", "properties": {}},
+        handler=lambda: actions.list_windows(),
+    ))
+
+    reg.register(Tool(
+        name="switch_window",
+        description="Chuyển sang (đưa RA TRƯỚC) một cửa sổ/ứng dụng ĐANG CHẠY SẴN theo tên, "
+                    "vd 'chuyển sang Chrome', 'qua cửa sổ Word', 'mở lại Claude đang mở'. "
+                    "KHÁC open_app (mở ứng dụng MỚI) — tool này chỉ focus cửa sổ đã chạy.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "name": {"type": "string",
+                         "description": "Tên/một phần tiêu đề cửa sổ cần chuyển sang"},
+            },
+            "required": ["name"],
+        },
+        handler=lambda name: actions.switch_window(name),
+    ))
+
+    reg.register(Tool(
         name="set_volume",
         description=("Điều chỉnh âm lượng hệ thống. Dùng 'level' để đặt mức tuyệt "
                      "đối (0-100), hoặc 'change' để tăng/giảm tương đối (số âm để giảm)."),
