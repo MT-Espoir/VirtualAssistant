@@ -131,17 +131,13 @@ class SpeechSynthesizer:
             return False
 
     def _speak_with_gtts(self, text):
-        """Use Google Text-to-Speech to convert text to speech"""
         try:
-            # Create a temporary file for the audio
             with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as temp_file:
                 temp_filename = temp_file.name
 
-            # Generate the speech with gTTS
             tts = gTTS(text=text, lang=self.language, slow=False)
             tts.save(temp_filename)
 
-            # Cần xử lý mẫu (robot hoặc đổi tốc độ)? Thử; lỗi thì phát thường.
             needs_processing = self.robot or self.speed != 1.0
             if not (needs_processing and self._play_processed(temp_filename)):
                 pygame.mixer.music.load(temp_filename)
@@ -149,19 +145,16 @@ class SpeechSynthesizer:
                 while pygame.mixer.music.get_busy():
                     time.sleep(0.1)
 
-            # Clean up the temporary file after playing
             try:
                 os.unlink(temp_filename)
             except OSError:
-                pass  # Ignore cleanup errors
+                pass
                 
         except Exception as e:
             logger.error("Lỗi gTTS (kiểm tra mạng): %s", e)
     
     def speak(self, text):
         """
-        Speak the given text using the selected TTS engine
-        
         Args:
             text (str): Text to be spoken
         """

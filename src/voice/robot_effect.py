@@ -1,11 +1,5 @@
 """
 Hiệu ứng "giọng robot" bằng ring modulation.
-
-Nhân tín hiệu âm thanh với một sóng mang hình sin tần số thấp (~50-100Hz) tạo chất
-giọng kim loại/robot kinh điển mà VẪN giữ phát âm gốc (tiếng Việt của gTTS).
-
-ring_modulate() là hàm thuần trên mảng numpy — không phụ thuộc pygame/thiết bị âm
-thanh, nên test được.
 """
 
 import numpy as np

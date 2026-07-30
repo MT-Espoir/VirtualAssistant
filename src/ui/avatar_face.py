@@ -1,14 +1,3 @@
-"""
-Logic THUẦN cho khuôn mặt avatar (màn hình đen trong khung bezel trắng, kiểu
-thiết bị robot) — không import Tkinter, để test được.
-
-Khuôn mặt chọn theo POSE, suy ra từ (state, emotion):
-  - state == "thinking"  -> luôn là pose "confused" (bối rối), bất kể emotion
-  - ngược lại            -> pose = emotion (neutral/happy/sad/cry)
-Màn hình luôn nền đen cố định (không đổi màu theo state); state chỉ còn ảnh
-hưởng tới việc chọn pose "confused" và nhãn text hiển thị dưới khung bezel.
-Cách vẽ từng pose (đường cong/nét cho mắt-miệng) nằm ở ui/avatar.py.
-"""
 
 STATES = ("idle", "listening", "thinking", "speaking")
 EMOTIONS = ("neutral", "happy", "sad", "cry")

@@ -1,11 +1,5 @@
 """
 Fast-path lệnh trực tiếp — logic THUẦN, để test được.
-
-Vài câu lệnh cố định, không mơ hồ (cuộn lên/xuống, chụp màn hình) được ánh xạ THẲNG
-sang (tên tool, tham số) và chạy ngay, KHÔNG qua LLM — tránh độ trễ "suy nghĩ" của
-model local với những lệnh vốn không cần suy luận. Câu khác trả None -> để agent/LLM xử lý.
-
-match_fast_command(text) -> (tool_name, args) | None
 """
 
 import re
@@ -58,14 +52,8 @@ def _match_volume(text):
     return None
 
 
-# Ngữ cảnh media: chỉ coi là lệnh điều khiển trình phát khi câu có nhắc tới video/nhạc
-# — tránh cướp nhầm các câu "dừng"/"ngừng" nói về việc khác.
 _MEDIA_CONTEXT = ("video", "youtube", "nhac", "clip", "phim", "bai hat", "bai nhac")
 
-# Mỗi mục: (cụm khoá đã chuẩn hoá, action, cần_ngữ_cảnh_media?). Đặt cụm ĐẶC THÙ trước:
-# 'tiep theo' (next) phải kiểm trước 'tiep tuc'/'phat tiep' (play) để không lẫn.
-# next/prev tự hàm ý media ("bài trước", "chuyển bài") -> không cần context; còn
-# pause/play dùng từ chung chung ("ngừng", "tiếp tục") -> cần context để khỏi cướp nhầm.
 _MEDIA_RULES = [
     (["bai tiep theo", "video tiep theo", "bai ke tiep", "bai ke", "chuyen bai",
       "qua bai", "bai sau", "video sau", "clip sau"], "next", False),
@@ -77,12 +65,7 @@ _MEDIA_RULES = [
 
 
 def _match_media(text):
-    """Lệnh điều khiển trình phát media (video/nhạc) -> (tool, args). None nếu không khớp.
-
-    Chạy thẳng tool (không qua LLM) vì model hay chỉ nói 'đã dừng' mà KHÔNG gọi tool —
-    dừng/phát tiếp/bài kế là lệnh tất định, đảm bảo luôn chạy. Với pause/play (từ chung
-    chung) chỉ nhận khi câu có ngữ cảnh media để không cướp nhầm 'dừng lại' nói việc khác.
-    """
+    """Lệnh điều khiển trình phát media (video/nhạc) -> (tool, args). None nếu không khớp."""
     t = _norm(text)
     if not t:
         return None

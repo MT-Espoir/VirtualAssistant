@@ -1,7 +1,7 @@
 """
 Tra cứu thời tiết qua Open-Meteo (miễn phí, KHÔNG cần API key).
 
-GHI NGUỒN (bắt buộc): Dữ liệu thời tiết bởi Open-Meteo.com — giấy phép CC BY 4.0
+Dữ liệu thời tiết bởi Open-Meteo.com — giấy phép CC BY 4.0
   https://open-meteo.com/  |  https://creativecommons.org/licenses/by/4.0/
 Khi dùng lại dữ liệu phải ghi nguồn; các câu trả lời sinh ra kèm "(Nguồn: Open-Meteo)".
 

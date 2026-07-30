@@ -1,13 +1,5 @@
 """
-Từ khoá kích hoạt (wake word) — logic THUẦN, không I/O, để test được.
-
-Trợ lý nghe mic liên tục nhưng chỉ HÀNH ĐỘNG với câu có chứa từ khoá kích hoạt
-(vd "trợ lý", "jarvis"). Nhờ vậy khi có nhạc/clip phát ra loa, lời trong đó (gần
-như không bao giờ chứa từ khoá) sẽ bị bỏ qua thay vì khiến agent tự trả lời loạn.
-
-So khớp không phân biệt hoa/thường và KHÔNG phân biệt dấu tiếng Việt (STT có thể
-trả 'tro ly' thay vì 'trợ lý'). Trả lại phần câu còn lại (giữ nguyên dấu) để gửi
-cho agent.
+Từ khoá kích hoạt (wake word) — logic THUẦN, không I/O.
 """
 
 from utils.text_norm import norm as _norm
@@ -35,7 +27,6 @@ def match_wake_word(text, wake_words):
         for i in range(len(norm_tokens) - n + 1):
             if norm_tokens[i:i + n] == w_tokens:
                 remainder = " ".join(orig_tokens[:i] + orig_tokens[i + n:]).strip()
-                # dọn dấu câu thừa ở đầu phần còn lại (vd "trợ lý, mở nhạc" -> "mở nhạc")
                 remainder = remainder.lstrip(",.!?:;- ").strip()
                 return True, remainder
 
@@ -47,8 +38,5 @@ def match_wake_word(text, wake_words):
 
 def wake_words_not_in(text, wake_words):
     """Các wake word KHÔNG xuất hiện trong `text`.
-
-    Dùng cho barge-in không AEC: loại các từ khoá mà chính câu trả lời của AI có
-    chứa, để mic nghe lại giọng TTS ('...trợ lý...') không khiến AI tự ngắt lời mình.
     """
     return [w for w in wake_words if not match_wake_word(text, [w])[0]]

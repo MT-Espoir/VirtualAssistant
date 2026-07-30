@@ -1,13 +1,5 @@
 """
-Cửa sổ avatar (Tkinter) — khuôn mặt robot kiểu màn hình thiết bị: khung bezel
-trắng bo tròn, màn hình đen cố định bên trong, mắt/miệng vẽ nét xanh dương
-(neutral/happy/sad/cry/confused). Không dùng file ảnh — vẽ thuần bằng Canvas.
-
-Cửa sổ KHÔNG viền + nền TRONG SUỐT: chỉ khuôn mặt nổi trên desktop (kéo chuột trái
-để di chuyển; Esc hoặc chuột phải để đóng). Cảm xúc tự trở về neutral sau vài giây.
-
-Chạy trên MAIN thread (Tk yêu cầu). Nhận cập nhật từ AssistantBus qua .after() poll.
-Chạy thử độc lập:  python ui/avatar.py   (chế độ demo, không cần Ollama)
+Cửa sổ avatar (Tkinter)
 """
 
 import random

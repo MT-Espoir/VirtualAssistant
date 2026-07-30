@@ -4,12 +4,9 @@ Trợ lý AI kèm avatar cảm xúc (Tkinter).
 - Cửa sổ avatar chạy trên main thread; agent chạy ở thread nền, gõ lệnh ở terminal.
 - Agent phát trạng thái (thinking/speaking/idle) + cảm xúc cho avatar qua AssistantBus.
 
-Chạy:  cd src && python avatar_app.py   (cần Ollama đang chạy để agent hoạt động)
-Chỉ xem avatar (không cần Ollama):  python ui/avatar.py
 """
 
 import os as _os, sys as _sys
-# 'src' lên sys.path để chạy được `python legacy/avatar_app.py` (entry cũ, đã dời vào legacy/).
 _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 
 import threading

@@ -4,13 +4,9 @@
 Luồng: ghi âm (recorder.listen_once) -> nhận dạng giọng nói (STT) -> Agent (LLM tự
 gọi tool) -> nói lại. Toàn bộ "hiểu lệnh -> hành động" nằm ở agent.agent.Agent,
 tách khỏi phần cứng và khỏi nhà cung cấp LLM. Xem docs/ARCHITECTURE.md.
-
-Cần: cài 'anthropic' và đặt ANTHROPIC_API_KEY (xem .env.example). Muốn thử nhanh
-bằng bàn phím, không cần micro: chạy `python agent_cli.py`.
 """
 
 import os as _os, sys as _sys
-# 'src' lên sys.path để chạy được `python legacy/main.py` (entry cũ, đã dời vào legacy/).
 _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 
 # I/O

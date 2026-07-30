@@ -1,14 +1,5 @@
 """
-Sửa lỗi nhận dạng giọng nói phổ biến — logic THUẦN, để test được.
-
-Google STT ở chế độ tiếng Việt ép mọi âm thanh vào âm tiếng Việt, nên từ tiếng
-Anh hay bị "Việt hoá" (vd 'github' -> 'hip hop', 'youtube' -> 'diu túp'). Lớp này
-áp SAU khi nhận dạng, TRƯỚC khi đưa vào wake word/agent, thay cụm nghe nhầm bằng
-từ đúng.
-
-So khớp theo cụm token, không phân biệt hoa/thường và dấu tiếng Việt. Bảng sửa mặc
-định gộp với file components/data/stt_corrections.json (nếu có) để bạn tự mở rộng
-mà không phải sửa code.
+Sửa lỗi nhận dạng giọng nói phổ biến — logic THUẦN.
 """
 
 import json

@@ -1,10 +1,5 @@
 """
-Interface LLM trung lập (provider-agnostic) + hiện thực cho Claude.
-
-Agent chỉ phụ thuộc vào `LLMClient` với các kiểu dữ liệu trung lập bên dưới,
-KHÔNG phụ thuộc trực tiếp vào SDK của một nhà cung cấp. Nhờ vậy:
-  - Test tiêm một client giả (FakeLLMClient) — không cần mạng hay API key.
-  - Có thể thêm Ollama/nhà cung cấp khác bằng một lớp dịch tương tự ClaudeClient.
+Interface LLM trung lập (provider-agnostic) + hiện thực cho LLM
 
 Kiểu trung lập:
   ToolCall      : một lời gọi tool do LLM sinh ra (id, tên, tham số)

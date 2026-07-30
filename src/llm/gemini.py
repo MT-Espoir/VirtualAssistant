@@ -1,16 +1,5 @@
 """
 LLM provider Gemini + XOAY VÒNG MODEL cho free tier.
-
-Free tier Gemini giới hạn RPM (lượt/phút) và RPD (lượt/ngày) mỗi model. Lớp
-`RotatingGeminiClient` giữ danh sách model theo THỨ TỰ ưu tiên; mỗi lượt gọi dùng
-model KHẢ DỤNG đầu tiên. Khi một model hết lượt:
-  - RPM (tạm thời): chặn ~60s rồi tự dùng lại -> trong lúc đó rơi xuống model kế.
-  - RPD (hết ngày): chặn tới hết ngày -> chuyển hẳn sang model kế cho tới khi reset.
-Vừa ĐẾM CHỦ ĐỘNG (né gọi khi biết đã quá hạn) vừa PHẢN ỨNG theo lỗi 429 thật của API
-(nguồn sự thật cuối cùng, phòng khi đếm lệch).
-
-Dùng HTTP trực tiếp (requests) để không thêm SDK mới; `http_post` tiêm được khi test.
-Tái dùng kiểu dữ liệu trung lập (Message/ToolCall/AssistantTurn) của llm.client.
 """
 
 import json
@@ -36,7 +25,6 @@ class GeminiRateLimit(Exception):
         self.scope = scope
 
 
-# --------------------------- theo dõi hạn mức (thuần, test được) --------------------------- #
 class RateTracker:
     """Đếm lượt gọi để biết model còn khả dụng không. rpm/rpd <= 0 = không giới hạn."""
 
@@ -83,7 +71,6 @@ class RateTracker:
         self._rpd_blocked_date = self._today(now)
 
 
-# --------------------------- dịch định dạng (thuần, test được) --------------------------- #
 def _convert_schema(node):
     """Chuyển JSON Schema -> Schema Gemini (đệ quy, viết HOA 'type')."""
     if not isinstance(node, dict):
@@ -141,7 +128,6 @@ def to_gemini_contents(messages):
     return contents
 
 
-# --------------------------- gọi 1 model --------------------------- #
 class GeminiModelClient:
     """Gọi generateContent cho MỘT model Gemini. Ném GeminiRateLimit khi 429."""
 
@@ -202,7 +188,6 @@ class GeminiModelClient:
         return AssistantTurn(text="".join(text_parts), tool_calls=tool_calls)
 
 
-# --------------------------- xoay vòng nhiều model --------------------------- #
 class RotatingGeminiClient:
     """Hiện thực LLMClient: chọn model khả dụng đầu tiên; xoay khi hết lượt/lỗi."""
 

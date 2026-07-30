@@ -1,10 +1,5 @@
 """
 Chạy agent bằng văn bản (text-first) — không cần micro.
-
-Dùng để phát triển & demo vòng lặp tool-calling: gõ câu lệnh tiếng Việt, agent
-gọi tool điều khiển máy tính rồi trả lời. Cần cài 'anthropic' và có ANTHROPIC_API_KEY.
-
-    cd src && python agent_cli.py
 """
 
 import os as _os, sys as _sys

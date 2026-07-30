@@ -1,13 +1,5 @@
 """
 Nhận dạng giọng nói (STT) — hỗ trợ Google (online) và Whisper (offline).
-
-Whisper xử lý câu tiếng Việt xen tiếng Anh (mã ngôn ngữ chuyển đổi) tốt hơn Google
-`vi-VN` rất nhiều, nên với các từ kỹ thuật tiếng Anh (github, spotify, chrome...)
-độ chính xác cao hơn. Đường dùng chính là recognize_speech_from_data(bytes) mà
-app.py/main.py gọi. Kết quả luôn được đưa qua lớp sửa lỗi (voice.corrections).
-
-Ưu tiên faster-whisper (nhanh hơn nhiều trên CPU); không có thì lùi về openai-whisper
-qua thư viện speech_recognition; không có nữa thì Google.
 """
 
 import speech_recognition as sr
@@ -38,9 +30,8 @@ class SpeechRecognizer:
         if self.engine == "whisper":
             self._load_whisper()
 
-    # ------------------------- nạp Whisper ------------------------- #
     def _load_whisper(self):
-        """Nạp faster-whisper nếu có (nhanh nhất). Lỗi thì để None -> tự lùi engine khác."""
+        """Nạp faster-whisper nếu có. Lỗi thì để None -> tự lùi engine khác."""
         try:
             from faster_whisper import WhisperModel
             logger.info("Đang tải model Whisper (faster-whisper, cỡ '%s')...",
@@ -52,10 +43,8 @@ class SpeechRecognizer:
         except Exception as e:
             logger.warning("Không tải được faster-whisper (%s); sẽ thử openai-whisper.", e)
 
-    # ------------------------- nhận dạng ------------------------- #
     def recognize_speech_from_data(self, audio_data):
         """Nhận dạng từ bytes âm thanh của recorder.
-
         Trả về văn bản (đã qua lớp sửa lỗi) nếu nhận dạng được, ngược lại None.
         Phân biệt: không nghe rõ (debug) vs lỗi mạng/dịch vụ (warning).
         """
