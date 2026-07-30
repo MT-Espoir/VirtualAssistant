@@ -11,7 +11,7 @@ try:
 except ImportError:
     pytest = None
 
-from core.llm_client import Message, ToolCall, ToolResult, OllamaLLMClient
+from llm.client import Message, ToolCall, ToolResult, OllamaLLMClient
 
 
 class FakeResp:

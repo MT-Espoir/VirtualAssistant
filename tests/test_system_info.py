@@ -1,5 +1,5 @@
 """
-Test actions.system_info — không cần cài psutil thật: tiêm một psutil giả vào
+Test actions.system.system_info — không cần cài psutil thật: tiêm một psutil giả vào
 sys.modules trước khi import, và giả shutil.disk_usage. Nhờ vậy chạy được ở mọi
 máy và kiểm tra logic định dạng chuỗi + định tuyến theo `what`.
 """
@@ -28,7 +28,7 @@ def _install_fake_psutil():
 
 
 _install_fake_psutil()
-from actions import system_info  # noqa: E402  (import sau khi tiêm psutil giả)
+from actions.system import system_info  # noqa: E402  (import sau khi tiêm psutil giả)
 
 # Giả disk_usage để không phụ thuộc ổ đĩa thật
 system_info.shutil = MagicMock()

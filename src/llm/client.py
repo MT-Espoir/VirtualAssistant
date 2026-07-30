@@ -28,6 +28,9 @@ class ToolCall:
     id: str
     name: str
     arguments: dict
+    # Gemini 3.x gắn 'thoughtSignature' vào functionCall và BẮT BUỘC echo lại ở lượt sau;
+    # provider khác (Claude/Ollama) bỏ qua trường này. Mặc định None -> không ảnh hưởng.
+    thought_signature: str = None
 
 
 @dataclass
@@ -214,4 +217,9 @@ def build_default_llm_client() -> LLMClient:
         except ImportError as e:
             raise RuntimeError("Chưa cài SDK 'anthropic'. Chạy: pip install anthropic") from e
 
-    raise RuntimeError(f"LLM_PROVIDER không hỗ trợ: {provider} (dùng 'ollama' hoặc 'claude')")
+    if provider == "gemini":
+        from llm.gemini import build_rotating_gemini
+        return build_rotating_gemini(config)
+
+    raise RuntimeError(f"LLM_PROVIDER không hỗ trợ: {provider} "
+                       "(dùng 'ollama', 'claude' hoặc 'gemini')")

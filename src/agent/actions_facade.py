@@ -8,20 +8,20 @@ giả (fake/mock) — không thực sự mở app, đổi âm lượng hay tắt
 Mặc định `AssistantActions()` nối tới các hàm thật trong package `actions`.
 """
 
-from actions.app_control import open_application, close_application
-from actions.system_control import (
+from actions.system.app_control import open_application, close_application
+from actions.system.system_control import (
     control_volume,
     control_brightness,
 )
-from actions.web_search import (
+from actions.web.web_search import (
     search_web,
     open_website,
     search_and_play_youtube,
     search_and_play_youtube_direct,
     search_on_specific_site,
 )
-from actions.system_info import get_system_summary
-from actions.web_content import fetch_url_text, wikipedia_summary
+from actions.system.system_info import get_system_summary
+from actions.web.web_content import fetch_url_text, wikipedia_summary
 from actions.weather import get_weather
 
 

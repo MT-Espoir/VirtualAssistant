@@ -1,5 +1,5 @@
 """
-Test actions.web_content — trích văn bản HTML (html.parser stdlib) và tra cứu.
+Test actions.web.web_content — trích văn bản HTML (html.parser stdlib) và tra cứu.
 
 Dùng http_get giả (trả object có .text / .json()) nên không cần requests/mạng.
 """
@@ -9,7 +9,7 @@ try:
 except ImportError:
     pytest = None
 
-from actions.web_content import html_to_text, fetch_url_text, wikipedia_summary
+from actions.web.web_content import html_to_text, fetch_url_text, wikipedia_summary
 
 
 class FakeResp:

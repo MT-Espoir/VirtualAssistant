@@ -18,7 +18,7 @@ class SpeechSynthesizer:
     """
     
     def __init__(self, engine="pyttsx3", language="vi", rate=150, volume=1.0,
-                 robot=False, robot_carrier=80):
+                 robot=False, robot_carrier=80, speed=1.0):
         """
         Initialize the speech synthesizer
 
@@ -29,6 +29,8 @@ class SpeechSynthesizer:
             volume (float): Speech volume (0.0 to 1.0)
             robot (bool): Áp hiệu ứng giọng robot (ring modulation) cho gTTS
             robot_carrier (int): Tần số sóng mang (Hz) cho hiệu ứng robot
+            speed (float): Hệ số tốc độ nói (>1 nhanh hơn). Với pyttsx3 chỉnh 'rate'
+                (giữ cao độ); với gTTS nội suy lại mẫu (nhanh hơn = cao giọng hơn).
         """
         self.engine_type = engine
         self.language = language
@@ -36,14 +38,16 @@ class SpeechSynthesizer:
         self.volume = volume
         self.robot = robot
         self.robot_carrier = robot_carrier
+        self.speed = speed if speed and speed > 0 else 1.0
         self.voice_queue = queue.Queue()
         self.is_speaking = False
         self.stop_requested = False
-        
+
         # Initialize the appropriate TTS engine
         if self.engine_type == "pyttsx3":
             self.engine = pyttsx3.init()
-            self.engine.setProperty('rate', self.rate)
+            # pyttsx3 chỉnh tốc độ đúng nghĩa (không đổi cao độ) qua 'rate'.
+            self.engine.setProperty('rate', int(self.rate * self.speed))
             self.engine.setProperty('volume', self.volume)
             
             # Try to set a voice based on the language
@@ -97,28 +101,33 @@ class SpeechSynthesizer:
             else:
                 time.sleep(0.1)  # Sleep to reduce CPU usage when stopped
                 
-    def _play_robot(self, mp3_path):
-        """Phát file với hiệu ứng robot (ring modulation).
+    def _play_processed(self, mp3_path):
+        """Phát file có xử lý mẫu: đổi tốc độ (speed) và/hoặc giọng robot.
 
         Trả True nếu phát thành công; False để nơi gọi phát giọng thường (fallback).
         """
         try:
             import numpy as np
             import pygame.sndarray
-            from audio.robot_effect import ring_modulate
+            from voice.robot_effect import ring_modulate, resample_speed
 
             sound = pygame.mixer.Sound(mp3_path)
             samples = pygame.sndarray.array(sound)          # int16
             init = pygame.mixer.get_init()
             rate = init[0] if init else 22050
-            modded = ring_modulate(samples, rate, self.robot_carrier)
-            robo = pygame.sndarray.make_sound(np.ascontiguousarray(modded))
-            robo.play()
+
+            if self.speed != 1.0:
+                samples = resample_speed(samples, self.speed)
+            if self.robot:
+                samples = ring_modulate(samples, rate, self.robot_carrier)
+
+            out = pygame.sndarray.make_sound(np.ascontiguousarray(samples))
+            out.play()
             while pygame.mixer.get_busy():
                 time.sleep(0.1)
             return True
         except Exception as e:
-            logger.warning("Không áp được hiệu ứng robot (%s) — phát giọng thường.", e)
+            logger.warning("Không xử lý được âm thanh (%s) — phát giọng thường.", e)
             return False
 
     def _speak_with_gtts(self, text):
@@ -127,13 +136,14 @@ class SpeechSynthesizer:
             # Create a temporary file for the audio
             with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as temp_file:
                 temp_filename = temp_file.name
-            
+
             # Generate the speech with gTTS
             tts = gTTS(text=text, lang=self.language, slow=False)
             tts.save(temp_filename)
 
-            # Phát: có hiệu ứng robot thì thử xử lý; lỗi thì phát thường
-            if not (self.robot and self._play_robot(temp_filename)):
+            # Cần xử lý mẫu (robot hoặc đổi tốc độ)? Thử; lỗi thì phát thường.
+            needs_processing = self.robot or self.speed != 1.0
+            if not (needs_processing and self._play_processed(temp_filename)):
                 pygame.mixer.music.load(temp_filename)
                 pygame.mixer.music.play()
                 while pygame.mixer.music.get_busy():

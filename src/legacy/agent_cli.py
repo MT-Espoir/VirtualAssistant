@@ -7,10 +7,14 @@ gọi tool điều khiển máy tính rồi trả lời. Cần cài 'anthropic' 
     cd src && python agent_cli.py
 """
 
-from core.actions_facade import AssistantActions
-from core.agent import Agent
-from core.llm_client import build_default_llm_client
-from core.tools import build_default_registry
+import os as _os, sys as _sys
+# 'src' lên sys.path để chạy được `python legacy/agent_cli.py` (entry cũ, đã dời vào legacy/).
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+
+from agent.actions_facade import AssistantActions
+from agent.agent import Agent
+from llm.client import build_default_llm_client
+from agent.tools import build_default_registry
 from services.scheduler import ReminderScheduler
 from utils.config import config
 from utils.logger import get_logger

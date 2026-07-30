@@ -10,8 +10,8 @@ KHÔNG bị "hijack" như fast-path. Không rõ case / lỗi -> dùng full tool 
 gọi được tool nữa, nên GIỮ NGUYÊN lượt LLM phân loại.)
 """
 
-from core import prompts
-from core.llm_client import Message
+from llm import prompts
+from llm.client import Message
 from utils.logger import get_logger
 from utils.text_norm import norm
 
@@ -59,7 +59,11 @@ class Router:
 
     def select(self, text, registry):
         """Trả (system_prompt, tool_specs) cho lượt này theo case đã phân loại."""
-        case = self.classify(text)
+        return self.select_for_case(self.classify(text), registry)
+
+    def select_for_case(self, case, registry):
+        """Trả (system_prompt, tool_specs) cho một case ĐÃ biết (tách khỏi classify để
+        đo lường/tái dùng được — vd bộ eval cần biết case mà không phải classify 2 lần)."""
         base = self.data.get("base", "")
         frag = self.data.get("cases", {}).get(case, "")
         system = (base + "\n" + frag).strip() if frag else base

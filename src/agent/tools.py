@@ -194,7 +194,7 @@ def build_default_registry(actions, scheduler=None, browser=None, screen=None) -
                          "description": "Mục cần xem (mặc định all)"},
             },
         },
-        handler=lambda what="all": actions.system_info(what),
+        handler=lambda what="all": actions.system.system_info(what),
     ))
 
     reg.register(Tool(

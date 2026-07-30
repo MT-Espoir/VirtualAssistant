@@ -16,7 +16,7 @@ except ImportError:
     pytest = None
 
 from services.scheduler import ReminderScheduler
-from core.tools import build_default_registry, _parse_fire_time
+from agent.tools import build_default_registry, _parse_fire_time
 
 
 def _temp_store():
@@ -89,6 +89,26 @@ def test_parse_at_hhmm_past_rolls_to_tomorrow():
 
 def test_parse_none_when_no_input():
     assert _parse_fire_time() is None
+
+
+# --- Chịu lỗi với tham số lộn xộn do model 3B sinh (nguyên nhân bug lịch nhắc) ---
+
+def test_parse_delay_minutes_as_string_with_unit():
+    now = datetime(2030, 1, 1, 10, 0)
+    for v in ("5", "5 phút", "sau 5 phut", 5):
+        assert _parse_fire_time(delay_minutes=v, now=now) == now + timedelta(minutes=5)
+
+
+def test_parse_relative_leaked_into_at():
+    now = datetime(2030, 1, 1, 10, 0)
+    assert _parse_fire_time(at="5 phút", now=now) == now + timedelta(minutes=5)
+    assert _parse_fire_time(at="2 tiếng", now=now) == now + timedelta(hours=2)
+    assert _parse_fire_time(at="30 giây", now=now) == now + timedelta(seconds=30)
+
+
+def test_parse_at_with_h_separator():
+    now = datetime(2030, 1, 1, 10, 0)
+    assert _parse_fire_time(at="15h30", now=now) == datetime(2030, 1, 1, 15, 30)
 
 
 # --------------------------- Tool lập lịch --------------------------- #

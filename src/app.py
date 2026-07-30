@@ -10,13 +10,13 @@ Chạy:  cd src && python app.py
 import threading
 import time
 
-from core.agent import Agent
-from core.actions_facade import AssistantActions
-from core.tools import build_default_registry
-from core.llm_client import build_default_llm_client
-from core.events import AssistantBus
-from core.wake_word import match_wake_word, parse_wake_words, wake_words_not_in
-from core.fast_commands import match_fast_command, match_avatar_command, match_mode_command
+from agent.agent import Agent
+from agent.actions_facade import AssistantActions
+from agent.tools import build_default_registry
+from llm.client import build_default_llm_client
+from utils.events import AssistantBus
+from voice.wake_word import match_wake_word, parse_wake_words, wake_words_not_in
+from voice.fast_commands import match_fast_command, match_avatar_command, match_mode_command
 from services.scheduler import ReminderScheduler
 from ui.avatar import AvatarWindow
 from ui.avatar_face import guess_emotion
@@ -31,7 +31,7 @@ SPEAK_TAIL_GUARD_S = 0.4
 def _make_speaker():
     """Tạo bộ tổng hợp giọng nói (TTS); lỗi thì trả None (hệ thống vẫn chạy, mất giọng)."""
     try:
-        from audio.speech_synthesizer import SpeechSynthesizer
+        from voice.speech_synthesizer import SpeechSynthesizer
         return SpeechSynthesizer(
             engine=config.TTS_ENGINE, language=config.TTS_LANGUAGE,
             robot=config.TTS_ROBOT, robot_carrier=config.TTS_ROBOT_CARRIER,
@@ -50,8 +50,8 @@ def _make_voice_input():
     if config.INPUT_MODE == "text":
         return None
     try:
-        from audio.recorder import Recorder
-        from recognition.speech_recognizer import SpeechRecognizer
+        from voice.recorder import Recorder
+        from voice.speech_recognizer import SpeechRecognizer
         recorder = Recorder(
             channels=config.CHANNELS, rate=config.SAMPLE_RATE,
             chunk=config.CHUNK_SIZE, speech_threshold_ratio=config.SPEECH_THRESHOLD_RATIO)
@@ -384,7 +384,7 @@ def main():
 
     router = None
     if config.USE_ROUTER:
-        from core.router import Router
+        from agent.router import Router
         router = Router(llm)
 
     agent = Agent(llm=llm,

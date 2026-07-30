@@ -15,13 +15,13 @@ import os
 import re
 from dataclasses import dataclass
 
-from core.llm_client import LLMClient, Message, ToolResult
-from core.tools import ToolRegistry
+from llm.client import LLMClient, Message, ToolResult
+from agent.tools import ToolRegistry
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-from core import prompts
+from llm import prompts
 
 # Prompt mặc định (khi KHÔNG dùng router) — nạp base từ components/data/system_prompt.json.
 DEFAULT_SYSTEM = prompts.base()

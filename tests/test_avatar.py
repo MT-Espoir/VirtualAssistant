@@ -1,5 +1,5 @@
 """
-Test logic avatar (ui.avatar_face) + kênh sự kiện (core.events).
+Test logic avatar (ui.avatar_face) + kênh sự kiện (utils.events).
 
 Không import Tkinter / không cần màn hình — chỉ kiểm tra phần thuần.
 """
@@ -10,43 +10,53 @@ except ImportError:
     pytest = None
 
 from ui.avatar_face import face_spec, guess_emotion
-from core.events import AssistantBus
+from utils.events import AssistantBus
 
 
 # --------------------------- face_spec --------------------------- #
 
 def test_idle_neutral():
     spec = face_spec("idle", "neutral")
-    assert spec["label"] == "Sẵn sàng" and spec["mouth"] == "neutral"
-    assert spec["bg"].startswith("#")
+    assert spec == {"pose": "neutral", "label": "Sẵn sàng"}
 
 
-def test_happy_smiles():
-    spec = face_spec("idle", "happy")
-    assert spec["mouth"] == "smile" and spec["eyes"] == "happy"
+def test_happy_pose():
+    assert face_spec("idle", "happy")["pose"] == "happy"
 
 
-def test_sad_frowns():
-    assert face_spec("idle", "sad")["mouth"] == "frown"
+def test_sad_pose():
+    assert face_spec("idle", "sad")["pose"] == "sad"
 
 
-def test_speaking_opens_mouth_over_emotion():
-    # đang nói -> miệng mở dù cảm xúc gì
-    assert face_spec("speaking", "happy")["mouth"] == "open"
-    assert face_spec("speaking", "sad")["mouth"] == "open"
+def test_cry_pose():
+    assert face_spec("idle", "cry")["pose"] == "cry"
 
 
-def test_thinking_eyes():
-    assert face_spec("thinking", "neutral")["eyes"] == "think"
+def test_thinking_forces_confused_regardless_of_emotion():
+    # state == thinking -> luôn "confused", bất kể emotion đang là gì
+    assert face_spec("thinking", "neutral")["pose"] == "confused"
+    assert face_spec("thinking", "happy")["pose"] == "confused"
+    assert face_spec("thinking", "sad")["pose"] == "confused"
+    assert face_spec("thinking", "cry")["pose"] == "confused"
+
+
+def test_non_thinking_states_use_emotion_as_pose():
+    for state in ("idle", "listening", "speaking"):
+        assert face_spec(state, "happy")["pose"] == "happy"
+        assert face_spec(state, "sad")["pose"] == "sad"
 
 
 def test_listening_label():
     assert face_spec("listening")["label"] == "Đang nghe..."
 
 
-def test_unknown_defaults_to_idle_neutral():
-    spec = face_spec("khong_biet", "la_lam")
-    assert spec["label"] == "Sẵn sàng" and spec["mouth"] == "neutral"
+def test_unknown_state_defaults_to_idle():
+    assert face_spec("khong_biet", "happy") == {"pose": "happy", "label": "Sẵn sàng"}
+
+
+def test_unknown_emotion_defaults_to_neutral():
+    spec = face_spec("idle", "la_lam")
+    assert spec["pose"] == "neutral"
 
 
 # --------------------------- guess_emotion --------------------------- #

@@ -1,11 +1,11 @@
-"""Test fast-path lệnh trực tiếp (core.fast_commands) — thuần, không I/O."""
+"""Test fast-path lệnh trực tiếp (voice.fast_commands) — thuần, không I/O."""
 
 try:
     import pytest
 except ImportError:
     pytest = None
 
-from core.fast_commands import match_fast_command, match_avatar_command, match_mode_command
+from voice.fast_commands import match_fast_command, match_avatar_command, match_mode_command
 
 
 def test_scroll_down_variants():

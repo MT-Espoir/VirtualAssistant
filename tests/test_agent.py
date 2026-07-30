@@ -14,9 +14,9 @@ try:
 except ImportError:
     pytest = None
 
-from core.agent import Agent, _clean_text
-from core.llm_client import AssistantTurn, Message, ToolCall
-from core.tools import build_default_registry
+from agent.agent import Agent, _clean_text
+from llm.client import AssistantTurn, Message, ToolCall
+from agent.tools import build_default_registry
 
 
 # --------------------------- _clean_text (dọn rác model 3B) --------------------------- #

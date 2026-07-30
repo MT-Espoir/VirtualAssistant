@@ -2,23 +2,27 @@
 Điểm vào của trợ lý ảo — lớp I/O (micro/loa) quanh Agent tool-calling.
 
 Luồng: ghi âm (recorder.listen_once) -> nhận dạng giọng nói (STT) -> Agent (LLM tự
-gọi tool) -> nói lại. Toàn bộ "hiểu lệnh -> hành động" nằm ở core.agent.Agent,
+gọi tool) -> nói lại. Toàn bộ "hiểu lệnh -> hành động" nằm ở agent.agent.Agent,
 tách khỏi phần cứng và khỏi nhà cung cấp LLM. Xem docs/ARCHITECTURE.md.
 
 Cần: cài 'anthropic' và đặt ANTHROPIC_API_KEY (xem .env.example). Muốn thử nhanh
 bằng bàn phím, không cần micro: chạy `python agent_cli.py`.
 """
 
+import os as _os, sys as _sys
+# 'src' lên sys.path để chạy được `python legacy/main.py` (entry cũ, đã dời vào legacy/).
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+
 # I/O
-from audio.recorder import Recorder
-from audio.speech_synthesizer import SpeechSynthesizer
-from recognition.speech_recognizer import SpeechRecognizer
+from voice.recorder import Recorder
+from voice.speech_synthesizer import SpeechSynthesizer
+from voice.speech_recognizer import SpeechRecognizer
 
 # Agent core (LLM tool-calling)
-from core.agent import Agent
-from core.actions_facade import AssistantActions
-from core.tools import build_default_registry
-from core.llm_client import build_default_llm_client
+from agent.agent import Agent
+from agent.actions_facade import AssistantActions
+from agent.tools import build_default_registry
+from llm.client import build_default_llm_client
 from services.scheduler import ReminderScheduler
 
 # Cấu hình tập trung & logging
@@ -30,7 +34,8 @@ logger = get_logger(__name__)
 # TTS luôn dùng được (không phụ thuộc LLM)
 speech_synthesizer = SpeechSynthesizer(
     engine=config.TTS_ENGINE, language=config.TTS_LANGUAGE,
-    robot=config.TTS_ROBOT, robot_carrier=config.TTS_ROBOT_CARRIER)
+    robot=config.TTS_ROBOT, robot_carrier=config.TTS_ROBOT_CARRIER,
+    speed=config.TTS_SPEED)
 
 
 def _notify_reminder(message):

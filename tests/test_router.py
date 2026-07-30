@@ -5,10 +5,10 @@ try:
 except ImportError:
     pytest = None
 
-from core import prompts
-from core.router import Router, CASE_TOOLS
-from core.llm_client import AssistantTurn
-from core.tools import build_default_registry
+from llm import prompts
+from agent.router import Router, CASE_TOOLS
+from llm.client import AssistantTurn
+from agent.tools import build_default_registry
 
 
 class _FakeLLM:

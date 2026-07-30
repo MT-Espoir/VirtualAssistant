@@ -125,7 +125,7 @@ class Config:
     TTS_SPEED = _get_float("TTS_SPEED", 1.0)
 
     # --- LLM: agent tool-calling ---
-    # LLM_PROVIDER: "ollama" (local, mặc định) | "claude" (API)
+    # LLM_PROVIDER: "ollama" (local, mặc định) | "claude" (API) | "gemini" (API, xoay model)
     LLM_PROVIDER = _get("LLM_PROVIDER", "ollama")
     LLM_MODEL = _get("LLM_MODEL", "claude-opus-4-8")   # dùng khi provider=claude
     LLM_MAX_TOKENS = _get_int("LLM_MAX_TOKENS", 1024)
@@ -134,6 +134,16 @@ class Config:
     MAX_HISTORY_TURNS = _get_int("MAX_HISTORY_TURNS", 10)
     # Đường dẫn file lưu bộ nhớ (rỗng = chỉ nhớ trong phiên, không lưu ra file)
     MEMORY_PATH = _get("MEMORY_PATH", "")
+
+    # --- Gemini API (LLM_PROVIDER=gemini) — XOAY VÒNG model theo hạn mức free tier ---
+    GEMINI_API_KEY = _get("GEMINI_API_KEY", "")
+    # Danh sách model theo THỨ TỰ ưu tiên: "tên:RPM:RPD" cách nhau bởi dấu phẩy. Mỗi lượt
+    # dùng model khả dụng đầu tiên; hết RPM chặn ~60s (rơi xuống model kế rồi tự quay lại),
+    # hết RPD chặn tới hết ngày. RPM/RPD = 0 nghĩa là không giới hạn. ĐỔI tên model cho
+    # khớp ID thật trong Google AI Studio nếu cần.
+    GEMINI_MODELS = _get(
+        "GEMINI_MODELS",
+        "gemini-2.5-flash:5:20,gemini-2.5-flash-lite:10:20,gemini-3.1-flash-lite:15:500")
 
     # --- LLM local qua Ollama ---
     OLLAMA_URL = _get("OLLAMA_URL", "http://localhost:11434")

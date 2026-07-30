@@ -8,13 +8,17 @@ Chạy:  cd src && python avatar_app.py   (cần Ollama đang chạy để agent
 Chỉ xem avatar (không cần Ollama):  python ui/avatar.py
 """
 
+import os as _os, sys as _sys
+# 'src' lên sys.path để chạy được `python legacy/avatar_app.py` (entry cũ, đã dời vào legacy/).
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+
 import threading
 
-from core.agent import Agent
-from core.actions_facade import AssistantActions
-from core.tools import build_default_registry
-from core.llm_client import build_default_llm_client
-from core.events import AssistantBus
+from agent.agent import Agent
+from agent.actions_facade import AssistantActions
+from agent.tools import build_default_registry
+from llm.client import build_default_llm_client
+from utils.events import AssistantBus
 from services.scheduler import ReminderScheduler
 from ui.avatar import AvatarWindow
 from ui.avatar_face import guess_emotion
@@ -55,11 +59,12 @@ def _assistant_loop(agent, bus, speak=None):
 def _make_speaker():
     """Tạo hàm nói (TTS) nếu có; lỗi thì bỏ qua (avatar vẫn chạy)."""
     try:
-        from audio.speech_synthesizer import SpeechSynthesizer
+        from voice.speech_synthesizer import SpeechSynthesizer
         from utils.config import config
         synth = SpeechSynthesizer(
             engine=config.TTS_ENGINE, language=config.TTS_LANGUAGE,
-            robot=config.TTS_ROBOT, robot_carrier=config.TTS_ROBOT_CARRIER)
+            robot=config.TTS_ROBOT, robot_carrier=config.TTS_ROBOT_CARRIER,
+            speed=config.TTS_SPEED)
         return synth.speak
     except Exception as e:
         logger.warning("TTS không khả dụng (%s) — chạy không có giọng nói.", e)

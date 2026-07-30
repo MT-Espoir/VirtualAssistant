@@ -10,8 +10,8 @@ try:
 except ImportError:
     pytest = None
 
-from actions.app_control import resolve_app_command
-from actions import web_search
+from actions.system.app_control import resolve_app_command
+from actions.web import web_search
 
 
 # --------------------------- resolve_app_command --------------------------- #
