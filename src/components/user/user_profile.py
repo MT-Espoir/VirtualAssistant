@@ -20,9 +20,14 @@ logger = get_logger(__name__)
 _DEFAULT_PATH = os.path.join(os.path.dirname(__file__), "user_data", "profile.json")
 
 
+# auto_facts: sự thật TỰ TRÍCH từ hội thoại (độ tin thấp hơn notes tường minh) -> giữ
+# riêng để phân biệt nguồn và giới hạn số lượng.
+_MAX_AUTO_FACTS = 20
+
+
 def _empty():
     return {"name": None, "address_form": None,
-            "preferences": {"default_location": None}, "notes": []}
+            "preferences": {"default_location": None}, "notes": [], "auto_facts": []}
 
 
 def apply_update(data, name=None, address_form=None, location=None, note=None):
@@ -33,6 +38,7 @@ def apply_update(data, name=None, address_form=None, location=None, note=None):
     data = json.loads(json.dumps(data)) if data else _empty()
     data.setdefault("preferences", {})
     data.setdefault("notes", [])
+    data.setdefault("auto_facts", [])
     changes = []
     if name and name.strip():
         data["name"] = name.strip()
@@ -66,6 +72,9 @@ def summarize(data):
     notes = data.get("notes") or []
     if notes:
         parts.append("Cần nhớ: " + "; ".join(notes) + ".")
+    auto = data.get("auto_facts") or []
+    if auto:
+        parts.append("Quan sát từ hội thoại: " + "; ".join(auto) + ".")
     if not parts:
         return ""
     return "Thông tin người dùng (dùng để cá nhân hoá và xưng hô đúng): " + " ".join(parts)
@@ -108,6 +117,18 @@ class UserProfile:
                     "địa điểm hoặc điều cần ghi nhớ.")
         self._save()
         return "Đã nhớ: " + ", ".join(changes) + "."
+
+    def add_auto_fact(self, fact):
+        """Thêm một sự thật TỰ TRÍCH (từ củng cố STM->LTM). Bỏ trùng, giới hạn số lượng."""
+        if not fact or not fact.strip():
+            return
+        self.data.setdefault("auto_facts", [])
+        fact = fact.strip()
+        if fact in self.data["auto_facts"] or fact in (self.data.get("notes") or []):
+            return                                   # đã biết (tường minh hoặc tự trích)
+        self.data["auto_facts"].append(fact)
+        self.data["auto_facts"] = self.data["auto_facts"][-_MAX_AUTO_FACTS:]
+        self._save()
 
     def summary(self):
         return summarize(self.data)

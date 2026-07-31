@@ -49,6 +49,11 @@ def test_summarize_includes_known_fields():
     assert "Nam" in s and "sếp" in s and "Huế" in s
 
 
+def test_summarize_includes_auto_facts():
+    data = {"auto_facts": ["Thích cà phê"], "notes": [], "preferences": {}}
+    assert "Thích cà phê" in summarize(data) and "Quan sát" in summarize(data)
+
+
 # --------------------------- UserProfile (I/O) --------------------------- #
 
 def test_profile_roundtrip_persists():
@@ -61,6 +66,24 @@ def test_profile_roundtrip_persists():
         p2 = UserProfile(path)                    # đọc lại từ file
         assert p2.data["name"] == "Lan"
         assert p2.get_default_location() == "Cần Thơ"
+    finally:
+        if os.path.exists(path):
+            os.unlink(path)
+
+
+def test_add_auto_fact_dedupes_and_skips_explicit_notes():
+    fd, path = tempfile.mkstemp(suffix=".json")
+    os.close(fd); os.unlink(path)
+    try:
+        p = UserProfile(path)
+        p.remember(note="đã biết tường minh")
+        p.add_auto_fact("thích trà")
+        p.add_auto_fact("thích trà")             # trùng -> không thêm lại
+        p.add_auto_fact("đã biết tường minh")    # trùng note tường minh -> bỏ
+        p.add_auto_fact("   ")                    # rỗng -> bỏ
+        assert p.data["auto_facts"] == ["thích trà"]
+        p2 = UserProfile(path)                    # bền vững qua đọc lại
+        assert p2.data["auto_facts"] == ["thích trà"]
     finally:
         if os.path.exists(path):
             os.unlink(path)

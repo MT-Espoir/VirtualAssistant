@@ -402,7 +402,9 @@ def main():
                                                    browser=browser, screen=screen,
                                                    profile=profile),
                   max_history_turns=config.MAX_HISTORY_TURNS,
-                  memory_path=config.MEMORY_PATH or None, router=router, profile=profile)
+                  memory_path=config.MEMORY_PATH or None, router=router, profile=profile,
+                  auto_extract=config.LTM_AUTO_EXTRACT,
+                  consolidate_every=config.LTM_CONSOLIDATE_EVERY)
 
     voice_io = _make_voice_input()
 

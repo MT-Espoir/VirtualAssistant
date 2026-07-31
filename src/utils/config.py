@@ -132,8 +132,16 @@ class Config:
 
     # --- Bộ nhớ hội thoại ---
     MAX_HISTORY_TURNS = _get_int("MAX_HISTORY_TURNS", 10)
-    # Đường dẫn file lưu bộ nhớ (rỗng = chỉ nhớ trong phiên, không lưu ra file)
+    # Trí nhớ NGẮN HẠN: đường dẫn file lưu các lượt gần đây (rỗng = chỉ nhớ trong phiên,
+    # quên khi tắt app — đúng nghĩa ngắn hạn; đặt đường dẫn nếu muốn nối tiếp qua restart)
     MEMORY_PATH = _get("MEMORY_PATH", "")
+
+    # Củng cố STM -> LTM: tự động trích sự thật bền vững từ hội thoại (khi lượt cũ bị đẩy
+    # khỏi trí nhớ ngắn hạn) vào hồ sơ dài hạn. TỐN thêm 1 lượt LLM mỗi lần củng cố -> nên
+    # bật khi dùng provider NHANH (Gemini/Claude); model local chậm nên để TẮT (mặc định).
+    LTM_AUTO_EXTRACT = _get_bool("LTM_AUTO_EXTRACT", False)
+    # Gom bao nhiêu lượt bị đẩy ra rồi mới củng cố một lần (đỡ tốn lượt LLM).
+    LTM_CONSOLIDATE_EVERY = _get_int("LTM_CONSOLIDATE_EVERY", 6)
 
     # --- Hồ sơ NGƯỜI DÙNG bền vững (tên, xưng hô, địa điểm mặc định...) ---
     # Rỗng = dùng vị trí mặc định components/user/user_data/profile.json. Đây là DỮ LIỆU

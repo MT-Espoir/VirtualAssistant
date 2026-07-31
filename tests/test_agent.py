@@ -267,6 +267,52 @@ def test_empty_profile_not_injected():
     assert llm.last_system and not llm.last_system.startswith("\n")
 
 
+# --------------------------- Củng cố STM -> LTM (auto-extract) --------------------------- #
+
+class _CapturingProfile:
+    def __init__(self):
+        self.facts = []
+    def summary(self):
+        return ""
+    def add_auto_fact(self, fact):
+        self.facts.append(fact)
+
+
+def test_consolidation_extracts_facts_into_ltm():
+    profile = _CapturingProfile()
+    # Bộ trích giả: trả 1 sự thật, không cần LLM.
+    agent = Agent(FakeLLMClient([AssistantTurn(text=f"trả lời {i}") for i in range(10)]),
+                  build_default_registry(make_actions()),
+                  profile=profile, auto_extract=True, consolidate_every=1,
+                  max_history_turns=1, extractor=lambda transcript: "Thích uống trà")
+    agent.run("tôi hay uống trà buổi sáng")     # lượt 1: chưa đẩy ra
+    agent.run("câu khác")                        # lượt 2: đẩy lượt 1 -> đủ ngưỡng -> củng cố
+    assert "Thích uống trà" in profile.facts
+
+
+def test_no_consolidation_when_auto_extract_off():
+    profile = _CapturingProfile()
+    agent = Agent(FakeLLMClient([AssistantTurn(text=f"r{i}") for i in range(10)]),
+                  build_default_registry(make_actions()),
+                  profile=profile, auto_extract=False, consolidate_every=1,
+                  max_history_turns=1, extractor=lambda t: "Không nên lưu")
+    agent.run("a"); agent.run("b"); agent.run("c")
+    assert profile.facts == []                   # tắt -> không trích gì
+
+
+def test_consolidation_survives_extractor_error():
+    profile = _CapturingProfile()
+
+    def _boom(transcript):
+        raise RuntimeError("model lỗi")
+    agent = Agent(FakeLLMClient([AssistantTurn(text=f"r{i}") for i in range(10)]),
+                  build_default_registry(make_actions()),
+                  profile=profile, auto_extract=True, consolidate_every=1,
+                  max_history_turns=1, extractor=_boom)
+    agent.run("a"); reply = agent.run("b")       # trích lỗi KHÔNG được làm vỡ luồng
+    assert reply.text == "r1" and profile.facts == []
+
+
 # --------------------------- Bộ nhớ hội thoại --------------------------- #
 
 def test_remembers_previous_turns():

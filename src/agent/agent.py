@@ -1,22 +1,23 @@
 """
 Agent — vòng lặp tool-calling, tách khỏi I/O và khỏi nhà cung cấp LLM.
 
-Có thêm:
-  - Bộ nhớ hội thoại: nhớ các lượt text (user/assistant) qua nhiều lần run() để LLM
-    hiểu ngữ cảnh; giới hạn số lượt; tùy chọn lưu file để sống qua restart.
-  - Cảm xúc do LLM quyết: LLM kết thúc câu trả lời bằng thẻ '#emotion: happy|neutral|
-    sad'; Agent tách thẻ, trả AgentReply(text sạch, emotion).
+Bộ nhớ HAI TẦNG (agent/memory.py):
+  - NGẮN HẠN (ShortTermMemory): vài lượt hội thoại gần đây trong phiên -> ghép vào prompt.
+  - DÀI HẠN (UserProfile, tiêm qua `profile`): sự thật bền vững -> bơm tóm tắt vào prompt.
+  - Cầu nối: khi STM đẩy lượt cũ ra, tuỳ chọn "củng cố" — gọi LLM trích sự thật đáng nhớ
+    lưu sang tầng dài hạn (bật bằng `auto_extract`, mặc định tắt).
+Cảm xúc do LLM quyết: LLM kết thúc câu trả lời bằng thẻ '#emotion: happy|neutral|sad';
+Agent tách thẻ, trả AgentReply(text sạch, emotion).
 
 Phụ thuộc tiêm vào (llm, registry) nên test được với LLM giả.
 """
 
-import json
-import os
 import re
 from dataclasses import dataclass
 
 from llm.client import LLMClient, Message, ToolResult
 from agent.tools import ToolRegistry
+from agent.memory import ShortTermMemory, parse_extracted_facts, EXTRACT_SYSTEM
 from voice.fast_commands import match_confirmation
 from utils.logger import get_logger
 
@@ -69,18 +70,27 @@ class Agent:
     def __init__(self, llm: LLMClient, registry: ToolRegistry,
                  system: str = DEFAULT_SYSTEM, max_iterations: int = 6,
                  max_history_turns: int = 10, memory_path: str = None, router=None,
-                 profile=None):
+                 profile=None, auto_extract: bool = False, consolidate_every: int = 6,
+                 extractor=None):
         self.llm = llm
         self.registry = registry
         self.system = system
         self.max_iterations = max_iterations
-        self.max_history_turns = max_history_turns
-        self.memory_path = memory_path
         self.router = router         # tùy chọn: phân loại case -> thu hẹp prompt+tool
-        self.profile = profile       # tùy chọn: hồ sơ người dùng -> bơm tóm tắt vào prompt
-        self.history = []            # chỉ lượt text: Message(user)/Message(assistant)
+        self.profile = profile       # trí nhớ DÀI HẠN: hồ sơ người dùng -> bơm vào prompt
         self.pending = None          # hành động khó hoàn tác đang CHỜ người dùng xác nhận
-        self._load_memory()
+        # Trí nhớ NGẮN HẠN: vài lượt gần đây (session-only nếu memory_path rỗng).
+        self.stm = ShortTermMemory(max_turns=max_history_turns, path=memory_path or None)
+        # Củng cố STM -> LTM: gom lượt bị đẩy ra, thỉnh thoảng trích sự thật bền vững.
+        self.auto_extract = auto_extract
+        self.consolidate_every = consolidate_every
+        self.extractor = extractor   # callable(transcript)->text; None = dùng self.llm
+        self._evicted = []           # đệm các lượt bị đẩy khỏi STM, chờ củng cố
+
+    @property
+    def history(self):
+        """Tương thích ngược: các lượt trong bộ nhớ ngắn hạn (list Message sống)."""
+        return self.stm.turns
 
     def run(self, user_text: str) -> AgentReply:
         """Chạy một lượt qua vòng lặp tool-calling, có nhớ ngữ cảnh trước đó."""
@@ -105,7 +115,7 @@ class Agent:
             if summary:
                 system = summary + "\n\n" + system
 
-        messages = list(self.history) + [Message(role="user", text=user_text)]
+        messages = list(self.stm.messages()) + [Message(role="user", text=user_text)]
 
         final_text = ""
         for _ in range(self.max_iterations):
@@ -142,43 +152,45 @@ class Agent:
         self._remember(user_text, text)
         return AgentReply(text=text, emotion=emotion)
 
-    # ------------------------- bộ nhớ ------------------------- #
+    # ------------------------- bộ nhớ hai tầng ------------------------- #
     def _remember(self, user_text, assistant_text):
-        self.history.append(Message(role="user", text=user_text))
-        self.history.append(Message(role="assistant", text=assistant_text))
-        cap = self.max_history_turns * 2
-        if len(self.history) > cap:
-            self.history = self.history[-cap:]
-        self._save_memory()
+        """Ghi lượt vào STM; các lượt bị đẩy ra được gom lại để (tuỳ chọn) củng cố vào LTM."""
+        evicted = self.stm.add(user_text, assistant_text)
+        if self.auto_extract and self.profile is not None and evicted:
+            self._evicted.extend(evicted)
+            if len(self._evicted) >= self.consolidate_every * 2:
+                self._consolidate()
 
     def clear_memory(self):
-        self.history = []
-        self._save_memory()
+        self.stm.clear()
+        self._evicted = []
 
-    def _load_memory(self):
-        if not self.memory_path or not os.path.exists(self.memory_path):
+    def _consolidate(self):
+        """Trích sự thật bền vững từ các lượt sắp quên -> lưu vào trí nhớ dài hạn (LTM)."""
+        turns, self._evicted = self._evicted, []
+        transcript = "\n".join(
+            f"{'Người dùng' if m.role == 'user' else 'Trợ lý'}: {m.text}"
+            for m in turns if m.text)
+        if not transcript.strip():
             return
         try:
-            with open(self.memory_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            self.history = [Message(role=m["role"], text=m.get("text", "")) for m in data]
-        except (OSError, ValueError, KeyError) as e:
-            logger.warning("Không đọc được bộ nhớ hội thoại: %s", e)
-
-    def _save_memory(self):
-        if not self.memory_path:
+            raw = self._extract(transcript)
+        except Exception as e:                 # trích xuất lỗi KHÔNG được làm vỡ luồng chính
+            logger.warning("Củng cố trí nhớ dài hạn lỗi: %s", e)
             return
-        try:
-            # MEMORY_PATH có thể là tên file trơn (không thư mục) -> dirname rỗng;
-            # chỉ tạo thư mục khi thực sự có đường dẫn thư mục.
-            directory = os.path.dirname(self.memory_path)
-            if directory:
-                os.makedirs(directory, exist_ok=True)
-            with open(self.memory_path, "w", encoding="utf-8") as f:
-                json.dump([{"role": m.role, "text": m.text} for m in self.history],
-                          f, ensure_ascii=False, indent=2)
-        except OSError as e:
-            logger.error("Không lưu được bộ nhớ hội thoại: %s", e)
+        facts = parse_extracted_facts(raw)
+        for fact in facts:
+            self.profile.add_auto_fact(fact)
+        if facts:
+            logger.info("🧠 củng cố %d sự thật vào trí nhớ dài hạn", len(facts))
+
+    def _extract(self, transcript):
+        """Gọi bộ trích (tiêm vào để test) hoặc LLM để rút sự thật từ đoạn hội thoại."""
+        if self.extractor is not None:
+            return self.extractor(transcript)
+        turn = self.llm.generate(system=EXTRACT_SYSTEM,
+                                 messages=[Message(role="user", text=transcript)], tools=[])
+        return turn.text
 
     # ------------------------- xác nhận hành động khó hoàn tác ------------------------- #
     def _find_destructive(self, tool_calls):
