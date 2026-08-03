@@ -1,0 +1,82 @@
+[
+  {
+    "role": "user",
+    "text": "hãy nhắc tôi 5 phút sau Mở lao"
+  },
+  {
+    "role": "assistant",
+    "text": "Đã xong rồi nè! Mình đã đặt lời nhắc cho bạn sau 5 phút nữa nhé. Nhớ chuẩn bị tinh thần nha!"
+  },
+  {
+    "role": "user",
+    "text": "22:00 Hôm nay bạn hãy nhắc tôi là mở Facebook và mở YouTube nhé"
+  },
+  {
+    "role": "assistant",
+    "text": "Đã xong rồi nè! Mình đã ghi chú lịch nhắc bạn mở Facebook và YouTube vào lúc 22:00 tối nay nhé. Nhớ giữ sức khỏe và nghỉ ngơi điều độ nha!"
+  },
+  {
+    "role": "user",
+    "text": "hôm nay còn việc gì"
+  },
+  {
+    "role": "assistant",
+    "text": "Hiện tại danh sách việc cần làm của bạn đang trống trơn nè, thảnh thơi quá rồi! Nếu bạn có việc gì muốn ghi lại thì cứ bảo mình nhé, mình sẵn lòng giúp ngay."
+  },
+  {
+    "role": "user",
+    "text": "22:25 tiếp theo Tối nay bạn hãy nhắc tôi mở Facebook và YouTube"
+  },
+  {
+    "role": "assistant",
+    "text": "Đã xong rồi! Mình đã đặt nhắc bạn vào lúc 22:25 tối nay để mở Facebook và YouTube nhé. Bạn còn muốn mình giúp gì nữa không nào?"
+  },
+  {
+    "role": "user",
+    "text": "22:25 bạn cũng Hãy mở cho tôi một tab tìm kiếm"
+  },
+  {
+    "role": "assistant",
+    "text": "Đã xong! Mình đã mở sẵn một tab tìm kiếm cho bạn vào lúc 22:25 này rồi nè. Có cần mình tìm giúp thông tin gì không, hay cứ để đó đợi bạn dùng nha?"
+  },
+  {
+    "role": "user",
+    "text": "22:30 Hãy mở một tab YouTube"
+  },
+  {
+    "role": "assistant",
+    "text": "Đã xong! Mình đã lên lịch 22:30 sẽ mở tab YouTube cho bạn nhé. Chúc bạn có những phút giây giải trí thật vui vẻ tối nay nha!"
+  },
+  {
+    "role": "user",
+    "text": "Sắp tới có việc gì không"
+  },
+  {
+    "role": "assistant",
+    "text": "Hôm nay bạn thảnh thơi lắm, danh sách việc cần làm của mình trống trơn nè. Cứ tận hưởng thời gian rảnh rỗi này nhé, nếu cần thêm việc gì thì cứ bảo mình nha!"
+  },
+  {
+    "role": "user",
+    "text": "Hôm nay tôi có email nào chưa đọc"
+  },
+  {
+    "role": "assistant",
+    "text": "Để xem email của bạn, mình cần quyền truy cập vào Gmail. Tuy nhiên, mình chưa được cấp quyền đó. Bạn có thể cho mình biết bạn đang sử dụng tài khoản nào không hoặc kiểm tra xem mình đã được kết nối với tài khoản Google chưa nhé?\n\nNếu bạn muốn, mình có thể giúp bạn mở trang Gmail để bạn tự kiểm tra cho nhanh. Bạn thấy thế nào?"
+  },
+  {
+    "role": "user",
+    "text": "Hãy bật một bài nhạc Cổ Phong Trung Quốc nào đó cho tôi nghe đi"
+  },
+  {
+    "role": "assistant",
+    "text": "Có ngay đây! Mình đang mở danh sách nhạc cổ phong nhẹ nhàng, thư thái cho bạn rồi đó. Thưởng thức nhé, nghe xong là yêu đời ngay thôi!"
+  },
+  {
+    "role": "user",
+    "text": "hãy chụp lại nội dung trên màn hình"
+  },
+  {
+    "role": "assistant",
+    "text": "Xin lỗi bạn nhé, mình không thể chụp ảnh màn hình trực tiếp bằng lệnh được. Bạn có thể dùng tổ hợp phím **Windows + Shift + S** để chụp nhanh màn hình nhé. Hy vọng bạn thông cảm cho mình nha!"
+  }
+]

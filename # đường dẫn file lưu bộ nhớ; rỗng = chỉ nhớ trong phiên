@@ -1,0 +1,18 @@
+[
+  {
+    "role": "user",
+    "text": "Hôm nay có email nào chưa đọc"
+  },
+  {
+    "role": "assistant",
+    "text": "Có 5 email mới đang chờ bạn nè:\n\n1. LinkedIn Job Alerts: Senior AI Engineer tại VinSmart Future.\n2. VietnamWorks: [QC] Kỹ Sư Thiết Kế Điện và gợi ý việc làm.\n3. Anh Duy Do: Đã chấp nhận lời mời kết nối.\n4. Huy Nguyen Duc: Đã chấp nhận lời mời kết nối.\n5. Lưu Ly: Đã chấp nhận lời mời kết nối.\n\nNhìn bạn có vẻ đang mở rộng network tốt quá nha! Cần mình mở giúp email nào không?"
+  },
+  {
+    "role": "user",
+    "text": "Hãy mở giúp tôi email 1"
+  },
+  {
+    "role": "assistant",
+    "text": "Ôi, hình như email đó có vấn đề một chút nên mình không mở được rồi. Tiếc quá đi! Hay là bạn thử xem email khác hoặc mình kiểm tra lại danh sách nhé? Đừng buồn nha!"
+  }
+]

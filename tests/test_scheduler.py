@@ -63,11 +63,19 @@ def test_persistence_reload():
 
 def test_fire_due_calls_notify_and_removes():
     notified = []
-    sched = ReminderScheduler(notify=notified.append, store_path=_temp_store())
+    sched = ReminderScheduler(notify=lambda m, k: notified.append((m, k)), store_path=_temp_store())
     sched.add("việc quá hạn", datetime.now() - timedelta(seconds=1))
     sched._fire_due()
-    assert notified == ["việc quá hạn"]
+    assert notified == [("việc quá hạn", "remind")]   # kind mặc định remind
     assert sched.list() == []   # đã nhắc thì xóa
+
+
+def test_fire_due_passes_kind_do():
+    notified = []
+    sched = ReminderScheduler(notify=lambda m, k: notified.append((m, k)), store_path=_temp_store())
+    sched.add("mở youtube", datetime.now() - timedelta(seconds=1), kind="do")
+    sched._fire_due()
+    assert notified == [("mở youtube", "do")]          # hành động theo lịch -> kind 'do'
 
 
 # --------------------------- _parse_fire_time --------------------------- #
@@ -128,6 +136,15 @@ def test_schedule_reminder_tool_adds_task():
     out = reg.run("schedule_reminder", {"message": "gọi mẹ", "delay_minutes": 30})
     assert "Đã đặt nhắc" in out
     assert len(sched.list()) == 1 and sched.list()[0]["message"] == "gọi mẹ"
+
+
+def test_schedule_action_tool_adds_do_task():
+    sched = ReminderScheduler(store_path=_temp_store())
+    reg = build_default_registry(MagicMock(), scheduler=sched)
+    out = reg.run("schedule_action", {"command": "mở youtube", "at": "22:30"})
+    assert "tự làm" in out.lower()
+    t = sched.list()[0]
+    assert t["message"] == "mở youtube" and t["kind"] == "do"
 
 
 def test_cancel_reminder_tool():

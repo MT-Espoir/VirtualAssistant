@@ -187,6 +187,24 @@ def match_persona_command(text):
     return dict(m[1]) if m else None
 
 
+# Chạy routine bằng lời: "chạy routine X" -> trả tên X (đã chuẩn hoá). YÊU CẦU có từ
+# "routine"/"quy trình" để KHÔNG cướp nhầm "chạy chrome". Tên khớp bỏ dấu ở RoutineStore.
+_ROUTINE_RUN_KWS = ("chay routine", "khoi dong routine", "thuc hien routine",
+                    "chay quy trinh", "khoi dong quy trinh", "thuc hien quy trinh")
+
+
+def match_routine_command(text):
+    """'chạy routine X' -> 'X' (chuẩn hoá bỏ dấu); None nếu không phải lệnh chạy routine."""
+    t = _norm(text)
+    if not t:
+        return None
+    for kw in _ROUTINE_RUN_KWS:
+        if kw in t:
+            name = t[t.find(kw) + len(kw):].strip()
+            return name or None
+    return None
+
+
 def match_confirmation(text):
     """Phân loại câu trả lời xác nhận: 'yes' | 'no' | None (không rõ).
 

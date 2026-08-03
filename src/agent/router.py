@@ -30,17 +30,23 @@ CASE_TOOLS = {
     "screen": ["take_screenshot", "find_on_screen", "scroll_screen"],
     "browser": ["browser_media_control", "browser_list_tabs", "browser_close_tab",
                 "browser_open_or_reuse"],
-    "schedule": ["schedule_reminder", "list_reminders", "cancel_reminder"],
+    "schedule": ["schedule_reminder", "schedule_action", "list_reminders", "cancel_reminder"],
+    "task": ["add_task", "list_tasks", "complete_task", "remove_task",
+             "create_routine", "list_routines", "delete_routine"],
     "profile": ["remember_about_user"],
+    # pim (lịch/email qua MCP): thu hẹp theo TIỀN TỐ tên tool (tool MCP động, không liệt kê
+    # cứng được) -> xem Router.mcp_prefix. Rỗng = dùng toàn bộ tool.
+    "pim": [],
     "general": None,
 }
 
 
 class Router:
-    def __init__(self, llm, data=None, case_tools=None):
+    def __init__(self, llm, data=None, case_tools=None, mcp_prefix=None):
         self.llm = llm
         self.data = data or prompts.load()
         self.case_tools = case_tools or CASE_TOOLS
+        self.mcp_prefix = mcp_prefix or ""      # tiền tố tên tool MCP để thu hẹp case 'pim'
 
     def classify(self, text):
         """Một lượt LLM -> tên case. Lỗi/không nhận ra -> 'general'."""
@@ -72,9 +78,13 @@ class Router:
 
         specs = registry.specs()
         names = self.case_tools.get(case)
-        if names:
+        if case == "pim":                          # thu hẹp theo TIỀN TỐ tool MCP
+            narrowed = [s for s in specs if self.mcp_prefix and s["name"].startswith(self.mcp_prefix)]
+        elif names:
             narrowed = [s for s in specs if s["name"] in names]
-            if narrowed:                       # có tool trong nhóm -> thu hẹp
-                specs = narrowed
+        else:
+            narrowed = []
+        if narrowed:                               # có tool khớp -> thu hẹp; không -> giữ full
+            specs = narrowed
         logger.info("🧭 router: case=%s (%d tool)", case, len(specs))
         return system, specs

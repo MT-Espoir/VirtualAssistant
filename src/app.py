@@ -14,11 +14,17 @@ from agent.agent import Agent
 from agent.actions_facade import AssistantActions
 from agent.tools import build_default_registry
 from components.user.user_profile import UserProfile
+from agent.persona import PersonaState, MoodState
+from services.tasks import TaskStore
+from services.routines import RoutineStore
+from services.proactive import ProactiveMonitor
+from services.mcp_bridge import MCPClient
 from llm.client import build_default_llm_client
 from utils.events import AssistantBus
 from voice.wake_word import match_wake_word, parse_wake_words, wake_words_not_in
 from voice.fast_commands import (match_fast_command, match_avatar_command,
-                                 match_mode_command, match_confirmation)
+                                 match_mode_command, match_confirmation,
+                                 match_persona_command, match_routine_command)
 from services.scheduler import ReminderScheduler
 from ui.avatar import AvatarWindow
 from ui.avatar_face import guess_emotion
@@ -171,7 +177,62 @@ def _next_input(voice_io, bus):
         return None
 
 
-def _assistant_loop(agent, bus, synth, voice_io):
+# Tuần tự hoá agent.run: vòng lặp chính VÀ lịch (thread nền) đều dùng chung -> không bao
+# giờ 2 agent.run chạy song song (tránh hỏng bộ nhớ ngắn hạn / tâm trạng).
+_AGENT_LOCK = threading.Lock()
+
+
+def _dispatch(agent, text, bus):
+    """Xử lý MỘT câu lệnh -> (response, emotion). KHÔNG tự nói (người gọi lo phần NÓI).
+
+    Cùng đường với lượt thường: fast-path giao diện/cuộn/chụp, hoặc agent. Tách ra để
+    routine + lịch 'do' tái dùng ĐÚNG pipeline này.
+    """
+    bus.emit(state="thinking", text="")
+    ui_cmd = match_avatar_command(text) if config.FAST_COMMANDS else None
+    fast = match_fast_command(text) if (config.FAST_COMMANDS and ui_cmd is None) else None
+    if ui_cmd is not None:
+        bus.emit_ui(**ui_cmd)
+        print(f"⚡ (giao diện, không qua LLM) {ui_cmd}")
+        return _ui_ack(ui_cmd), "happy"
+    if fast is not None and agent.registry.has(fast[0]):
+        return _run_fast(agent, fast), "happy"
+    try:
+        with _AGENT_LOCK:                       # chống 2 agent.run song song
+            reply = agent.run(text)
+        return reply.text, reply.emotion
+    except Exception as e:
+        logger.error("Lỗi khi chạy agent: %s", e)
+        return "Xin lỗi, có lỗi khi xử lý yêu cầu.", "sad"
+
+
+def _run_routine(agent, routines, name, bus, synth, voice_io):
+    """Chạy một routine: lặp từng bước qua _dispatch, ĐỌC kết quả mỗi bước. Bước lỗi -> tiếp
+    tục (đếm lỗi). Bỏ qua bước 'chạy routine ...' để chống đệ quy (v1)."""
+    r = routines.get(name)
+    if r is None:
+        _say(synth, bus, f"Chưa có routine tên {name}.", "sad")
+        return
+    errors = 0
+    for step in r["steps"]:
+        if match_routine_command(step):        # chống đệ quy: không cho routine gọi routine
+            continue
+        try:
+            response, emotion = _dispatch(agent, step, bus)
+        except Exception as e:                 # phòng fast-path ném lỗi -> không vỡ cả routine
+            logger.error("Bước routine lỗi (%s): %s", step, e)
+            errors += 1
+            continue
+        _say(synth, bus, response, emotion or guess_emotion(response))
+        if voice_io:
+            _flush_mic_after_speaking(voice_io[0])
+    tail = f"Đã chạy xong routine {r['name']}."
+    if errors:
+        tail += f" Có {errors} bước gặp lỗi."
+    _say(synth, bus, tail, "happy")
+
+
+def _assistant_loop(agent, bus, synth, voice_io, routines=None):
     """Vòng xử lý (thread nền): nghe/gõ -> agent -> phát trạng thái cho avatar + nói.
 
     Chu trình half-duplex nghiêm ngặt cho từng lượt: NGHE -> NGHĨ -> NÓI (chặn) ->
@@ -259,23 +320,34 @@ def _assistant_loop(agent, bus, synth, voice_io):
                 bus.emit(state="idle")
                 continue
 
-        # 2) NGHĨ — hoặc CHẠY NHANH (bỏ qua LLM cho lệnh trực tiếp: giao diện/cuộn/chụp)
-        bus.emit(state="thinking", text="")
-        ui_cmd = match_avatar_command(text) if config.FAST_COMMANDS else None
-        fast = match_fast_command(text) if (config.FAST_COMMANDS and ui_cmd is None) else None
-        if ui_cmd is not None:
-            bus.emit_ui(**ui_cmd)
-            response, emotion = _ui_ack(ui_cmd), "happy"
-            print(f"⚡ (giao diện, không qua LLM) {ui_cmd}")
-        elif fast is not None and agent.registry.has(fast[0]):
-            response, emotion = _run_fast(agent, fast), "happy"
-        else:
-            try:
-                reply = agent.run(text)
-                response, emotion = reply.text, reply.emotion
-            except Exception as e:
-                logger.error("Lỗi khi chạy agent: %s", e)
-                response, emotion = "Xin lỗi, có lỗi khi xử lý yêu cầu.", "sad"
+        # 1c) CHỈNH TÍNH CÁCH bằng lời (học tường minh): "vui tính hơn", "nghiêm túc hơn",
+        # "reset tính cách". Áp thẳng lên núm (có biên) + cập nhật baseline tâm trạng.
+        if agent.persona is not None:
+            pcmd = match_persona_command(text)
+            if pcmd is not None:
+                if pcmd.get("reset"):
+                    agent.persona.reset_traits()
+                else:
+                    agent.persona.adjust(pcmd["trait"], pcmd["delta"])
+                if agent.mood is not None:
+                    agent.mood.set_baseline(agent.persona.baseline_valence(),
+                                            agent.persona.baseline_arousal())
+                _say(synth, bus, pcmd["say"], "happy")
+                if voice_io:
+                    _flush_mic_after_speaking(voice_io[0])
+                bus.emit(state="idle")
+                continue
+
+        # 1d) CHẠY ROUTINE bằng lời: "chạy routine X" -> lặp từng bước qua _dispatch.
+        if routines is not None:
+            rname = match_routine_command(text)
+            if rname is not None:
+                _run_routine(agent, routines, rname, bus, synth, voice_io)
+                bus.emit(state="idle")
+                continue
+
+        # 2) NGHĨ — qua _dispatch (fast-path giao diện/cuộn/chụp, hoặc agent)
+        response, emotion = _dispatch(agent, text, bus)
 
         # 3) NÓI — có barge-in (vừa nói vừa nghe wake word) hoặc chặn như cũ
         print(f"Trợ lý: {response}\n")
@@ -365,9 +437,43 @@ def _make_screen_controller():
         return None
 
 
-def _notify_reminder(bus, synth, message):
-    print(f"\n🔔 Nhắc: {message}")
-    _say(synth, bus, f"🔔 {message}", "happy")
+def _frame_reminder(message):
+    """Bọc nội dung nhắc thành câu RÕ RÀNG là 'lời nhắc' — để không nghe như trợ lý đang
+    tự thực thi lệnh hay báo lỗi (vd nội dung 'mở Claude' đọc trơn dễ hiểu nhầm)."""
+    msg = (message or "").strip().rstrip(".!?").strip()
+    if not msg:
+        return "Đến giờ rồi, bạn có một lời nhắc."
+    return f"Đến giờ rồi, bạn nhờ tôi nhắc: {msg}."
+
+
+def _compose_brief(profile, tasks):
+    """Soạn nội dung bản tin sáng: chào + thời tiết + việc hôm nay. (Không qua agent/LLM.)"""
+    parts = ["Chào buổi sáng!"]
+    try:
+        loc = (profile.get_default_location() if profile else None) or config.WEATHER_DEFAULT_LOCATION
+        from actions.weather import get_weather
+        parts.append(get_weather(loc))
+    except Exception as e:
+        logger.warning("Bản tin sáng: không lấy được thời tiết: %s", e)
+    items = tasks.list() if tasks else []
+    if items:
+        parts.append(f"Hôm nay bạn có {len(items)} việc cần làm: "
+                     + "; ".join(t["text"] for t in items) + ".")
+    else:
+        parts.append("Hôm nay bạn chưa có việc nào cần làm.")
+    return " ".join(parts)
+
+
+def _run_scheduled(bus, synth, agent, message, kind):
+    """Callback khi một mục lịch tới hạn. kind='do' -> THỰC THI lệnh qua _dispatch (có khoá
+    trong _dispatch chống chạy song song vòng lặp chính); 'remind' -> chỉ đọc lời nhắc."""
+    if kind == "do":
+        print(f"\n⏰ Thực thi theo lịch: {message}")
+        response, emotion = _dispatch(agent, message, bus)
+        _say(synth, bus, response, emotion or guess_emotion(response))
+    else:
+        print(f"\n🔔 Nhắc: {message}")
+        _say(synth, bus, _frame_reminder(message), "happy")
     bus.emit(state="idle")
 
 
@@ -384,38 +490,88 @@ def main():
 
     synth = _make_speaker()
 
-    scheduler = ReminderScheduler(notify=lambda msg: _notify_reminder(bus, synth, msg))
-    scheduler.start()
+    scheduler = ReminderScheduler()      # notify + start() đặt SAU khi có agent (lịch 'do' cần agent)
 
     browser = _make_browser_bridge()
     screen = _make_screen_controller()
 
+    # MCP client (lịch/email qua server ngoài) — opt-in; cần server + OAuth do người dùng dựng.
+    mcp = None
+    if config.MCP_ENABLED and config.MCP_COMMAND:
+        mcp = MCPClient(config.MCP_COMMAND, args=config.MCP_ARGS.split())
+        if not mcp.start():
+            logger.warning("MCP không kết nối được — bỏ qua (kiểm tra MCP_COMMAND/server/OAuth).")
+            mcp = None
+
     router = None
     if config.USE_ROUTER:
         from agent.router import Router
-        router = Router(llm)
+        router = Router(llm, mcp_prefix=config.MCP_TOOL_PREFIX)
 
     profile = UserProfile(config.USER_PROFILE_PATH or None)
+    tasks = TaskStore(config.TASKS_PATH or None)
+    routines = RoutineStore(config.ROUTINES_PATH or None)
+
+    persona = mood = None
+    if config.PERSONA_ENABLED:
+        persona = PersonaState(config.PERSONA_PATH or None, provider=config.LLM_PROVIDER)
+        mood = MoodState(baseline_valence=persona.baseline_valence(),
+                         baseline_arousal=persona.baseline_arousal())
 
     agent = Agent(llm=llm,
                   registry=build_default_registry(AssistantActions(), scheduler=scheduler,
                                                    browser=browser, screen=screen,
-                                                   profile=profile),
+                                                   profile=profile, tasks=tasks,
+                                                   routines=routines, mcp=mcp),
                   max_history_turns=config.MAX_HISTORY_TURNS,
                   memory_path=config.MEMORY_PATH or None, router=router, profile=profile,
                   auto_extract=config.LTM_AUTO_EXTRACT,
-                  consolidate_every=config.LTM_CONSOLIDATE_EVERY)
+                  consolidate_every=config.LTM_CONSOLIDATE_EVERY,
+                  persona=persona, mood=mood, auto_tune=config.PERSONA_AUTO_TUNE)
+
+    # Giờ đã có agent -> nối callback lịch (remind đọc / do thực thi) rồi chạy scheduler.
+    scheduler.notify = lambda msg, kind="remind": _run_scheduled(bus, synth, agent, msg, kind)
+    scheduler.start()
+
+    # Chủ động: bản tin sáng + theo dõi pin (vòng nền).
+    monitor = None
+    if config.PROACTIVE_ENABLED:
+        try:
+            _bh, _bm = (int(x) for x in config.MORNING_BRIEF_TIME.split(":"))
+        except (ValueError, AttributeError):
+            _bh, _bm = 7, 0
+
+        def _on_brief():
+            print("\n☀️ Bản tin sáng")
+            _say(synth, bus, _compose_brief(profile, tasks), "happy")
+            bus.emit(state="idle")
+
+        def _on_battery(pct):
+            _say(synth, bus, f"Pin còn khoảng {int(pct)} phần trăm, bạn nên cắm sạc nhé.", "sad")
+            bus.emit(state="idle")
+
+        monitor = ProactiveMonitor(on_brief=_on_brief, on_battery=_on_battery,
+                                   brief_time=(_bh, _bm),
+                                   battery_threshold=config.BATTERY_ALERT_THRESHOLD)
+        monitor.start()
 
     voice_io = _make_voice_input()
 
-    worker = threading.Thread(target=_assistant_loop, args=(agent, bus, synth, voice_io), daemon=True)
+    worker = threading.Thread(target=_assistant_loop,
+                              args=(agent, bus, synth, voice_io, routines), daemon=True)
     worker.start()
 
-    win = AvatarWindow(bus=bus, title="Trợ lý AI")
+    # Persona bật -> tâm trạng dẫn khuôn mặt: tắt tự reset về neutral (emotion_hold_ms=0).
+    win = AvatarWindow(bus=bus, title="Trợ lý AI",
+                       emotion_hold_ms=0 if config.PERSONA_ENABLED else None)
     try:
         win.run()          # Tk mainloop (main thread) — chặn tới khi đóng cửa sổ
     finally:
         scheduler.stop()
+        if monitor is not None:
+            monitor.stop()
+        if mcp is not None:
+            mcp.stop()
         if browser is not None:
             browser.stop()
 

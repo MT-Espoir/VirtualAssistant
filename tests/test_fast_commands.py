@@ -7,7 +7,7 @@ except ImportError:
 
 from voice.fast_commands import (match_fast_command, match_avatar_command,
                                  match_mode_command, match_confirmation,
-                                 match_persona_command)
+                                 match_persona_command, match_routine_command)
 
 
 def test_scroll_down_variants():
@@ -211,6 +211,20 @@ def test_persona_command_reset():
 def test_persona_command_none_for_other():
     for t in ("mở youtube", "thời tiết hôm nay", "", None):
         assert match_persona_command(t) is None
+
+
+# --------------------------- chạy routine bằng lời --------------------------- #
+
+def test_routine_command_extracts_name():
+    assert match_routine_command("chạy routine buổi sáng") == "buoi sang"
+    assert match_routine_command("khởi động routine tối") == "toi"
+    assert match_routine_command("thực hiện quy trình làm việc") == "lam viec"
+
+
+def test_routine_command_none_and_no_hijack():
+    # 'chạy chrome' (không có từ 'routine') KHÔNG bị coi là chạy routine
+    for t in ("mở chrome", "chạy chrome", "phát nhạc", "", None):
+        assert match_routine_command(t) is None
 
 
 if __name__ == "__main__":

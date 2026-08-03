@@ -37,6 +37,9 @@ captures/
 .env.*
 !.env.example
 *.pem
+# OAuth Google (MCP server cá nhân) — cấp quyền vào tài khoản, TUYỆT ĐỐI không commit
+mcp_servers/credentials.json
+mcp_servers/token*.json
 *.crx
 
 # Extension Chrome + tài liệu — giữ cục bộ, không commit

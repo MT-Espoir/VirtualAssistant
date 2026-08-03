@@ -73,6 +73,18 @@ def test_to_gemini_tools_uppercases_type_and_omits_empty():
     assert "parameters" not in decls[1]             # không có properties -> no-arg
 
 
+def test_to_gemini_tools_strips_unsupported_fields():
+    # Schema MCP/pydantic có additionalProperties/title/default -> Gemini 400 nếu không lọc
+    tools = [{"name": "gws_gmail_unread", "description": "d",
+              "input_schema": {"type": "object", "additionalProperties": False, "title": "X",
+                               "properties": {"user_email": {"type": "string", "default": "",
+                                                             "title": "User Email"}}}}]
+    params = to_gemini_tools(tools)[0]["function_declarations"][0]["parameters"]
+    assert "additionalProperties" not in params and "title" not in params
+    assert "default" not in params["properties"]["user_email"]      # trường lạ bị bỏ
+    assert params["properties"]["user_email"]["type"] == "STRING"    # trường hợp lệ giữ nguyên
+
+
 def test_to_gemini_contents_maps_roles_and_tools():
     msgs = [
         Message(role="user", text="chào"),

@@ -94,6 +94,43 @@ def test_select_empty_case_falls_back_full():
     assert len(specs) == len(reg.specs())
 
 
+def test_classify_task_case():
+    # "task" không bị nuốt và không nuốt case khác
+    assert Router(_FakeLLM("task")).classify("thêm việc mua sữa") == "task"
+
+
+def test_select_narrows_to_task_case():
+    from services.tasks import TaskStore
+    from services.routines import RoutineStore
+    reg = build_default_registry(_FakeActions(), tasks=TaskStore(path="__none__.json"),
+                                 routines=RoutineStore(path="__none__.json"))
+    _, specs = Router(_FakeLLM("task")).select("thêm việc mua sữa", reg)
+    names = {s["name"] for s in specs}
+    assert names == set(CASE_TOOLS["task"])
+    assert "open_app" not in names and "schedule_reminder" not in names
+
+
+class _FakeMCP:
+    def __init__(self, names):
+        self._names = names
+    def list_tools(self):
+        return [{"name": n, "description": "", "input_schema": {"type": "object", "properties": {}}}
+                for n in self._names]
+
+
+def test_pim_narrows_by_tool_prefix():
+    # prefix phải ĐẶC THÙ để không nuốt tool sẵn có (vd 'g' sẽ dính get_weather)
+    reg = build_default_registry(_FakeActions(), mcp=_FakeMCP(["gws_list_events", "gws_send_mail"]))
+    _, specs = Router(_FakeLLM("pim"), mcp_prefix="gws_").select("lịch hôm nay có gì", reg)
+    assert {s["name"] for s in specs} == {"gws_list_events", "gws_send_mail"}
+
+
+def test_pim_without_prefix_uses_full():
+    reg = _registry()      # không có MCP + không prefix -> pim giữ full tool
+    _, specs = Router(_FakeLLM("pim")).select("lịch", reg)
+    assert len(specs) == len(reg.specs())
+
+
 if __name__ == "__main__":
     if pytest is not None:
         raise SystemExit(pytest.main([__file__, "-v"]))

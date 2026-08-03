@@ -23,7 +23,8 @@ _DEFAULT_STORE = os.path.join(os.path.dirname(__file__), "reminders.json")
 
 class ReminderScheduler:
     def __init__(self, notify=None, store_path=None, poll_interval=5):
-        self.notify = notify or (lambda msg: logger.info("🔔 Nhắc: %s", msg))
+        # notify(message, kind): kind = "remind" (đọc nhắc) | "do" (thực thi lệnh theo lịch).
+        self.notify = notify or (lambda msg, kind="remind": logger.info("🔔 Nhắc: %s", msg))
         self.store_path = store_path or _DEFAULT_STORE
         self.poll_interval = poll_interval
         self._tasks = {}                 # id -> {"id","message","fire_at"(iso)}
@@ -33,9 +34,9 @@ class ReminderScheduler:
         self._load()
 
     # ------------------------- thao tác dữ liệu ------------------------- #
-    def add(self, message: str, fire_at: datetime) -> dict:
+    def add(self, message: str, fire_at: datetime, kind: str = "remind") -> dict:
         task = {"id": uuid.uuid4().hex[:6], "message": message,
-                "fire_at": fire_at.isoformat()}
+                "fire_at": fire_at.isoformat(), "kind": kind}
         with self._lock:
             self._tasks[task["id"]] = task
             self._save()
@@ -63,7 +64,7 @@ class ReminderScheduler:
     def _fire_due(self):
         for task in self.due(datetime.now()):
             try:
-                self.notify(task["message"])
+                self.notify(task["message"], task.get("kind", "remind"))
             except Exception as e:  # notify lỗi không được làm chết scheduler
                 logger.error("Lỗi khi nhắc: %s", e)
             self.cancel(task["id"])

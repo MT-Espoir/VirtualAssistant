@@ -32,7 +32,8 @@ def _build_parts():
     # Truyền phụ thuộc giả để MỌI nhóm tool được đăng ký (web/system/screen/browser/
     # schedule/weather) -> LLM thấy đúng bộ tool như lúc chạy thật.
     registry = build_default_registry(AssistantActions(), scheduler=_StubDep(),
-                                      browser=_StubDep(), screen=_StubDep())
+                                      browser=_StubDep(), screen=_StubDep(),
+                                      tasks=_StubDep(), routines=_StubDep())
     router = Router(llm) if config.USE_ROUTER else None
     return llm, registry, router
 

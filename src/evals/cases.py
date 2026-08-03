@@ -32,6 +32,7 @@ CASES = [
 
     # --- schedule ---
     {"id": "sch-add", "text": "nhắc tôi họp lúc 3 giờ chiều", "expect": ["schedule_reminder"], "case": "schedule"},
+    {"id": "sch-action", "text": "22h30 mở youtube giúp tôi", "expect": ["schedule_action"], "case": "schedule"},
     {"id": "sch-list", "text": "xem các lịch nhắc của tôi", "expect": ["list_reminders"], "case": "schedule"},
 
     # --- screen ---
@@ -47,6 +48,16 @@ CASES = [
     {"id": "gen-hi", "text": "chào buổi sáng", "expect": [], "case": "general"},
     {"id": "gen-how", "text": "bạn khỏe không", "expect": [], "case": "general"},
     {"id": "gen-thanks", "text": "cảm ơn bạn nhiều nhé", "expect": [], "case": "general"},
+
+    # --- task (việc cần làm, KHÔNG gắn giờ) ---
+    {"id": "task-add", "text": "thêm việc mua sữa", "expect": ["add_task"], "case": "task"},
+    {"id": "task-list", "text": "còn việc gì cần làm không", "expect": ["list_tasks"], "case": "task"},
+    {"id": "task-done", "text": "xong việc mua sữa rồi", "expect": ["complete_task"], "case": "task"},
+    {"id": "task-routine", "text": "tạo routine buổi sáng gồm mở chrome và đọc thời tiết",
+     "expect": ["create_routine"], "case": "task"},
+    # phân biệt: có GIỜ -> schedule, không phải task
+    {"id": "task-vs-sch", "text": "nhắc tôi mua sữa lúc 5 giờ chiều",
+     "expect": ["schedule_reminder"], "case": "schedule"},
 
     # --- đa bước ---
     {"id": "multi", "text": "mở notepad rồi tăng âm lượng lên 60",

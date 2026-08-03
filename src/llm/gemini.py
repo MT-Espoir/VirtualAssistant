@@ -71,12 +71,21 @@ class RateTracker:
         self._rpd_blocked_date = self._today(now)
 
 
+# Trường Gemini function-declaration hiểu. CHỈ giữ các trường này -> tự bỏ
+# additionalProperties/title/default/$defs/$schema... (schema MCP/pydantic có nhưng Gemini
+# trả 400 "Unknown name 'additionalProperties'").
+_GEMINI_SCHEMA_KEYS = {"type", "description", "properties", "items", "required",
+                       "enum", "format", "nullable"}
+
+
 def _convert_schema(node):
-    """Chuyển JSON Schema -> Schema Gemini (đệ quy, viết HOA 'type')."""
+    """Chuyển JSON Schema -> Schema Gemini (đệ quy, viết HOA 'type'). Lọc bỏ trường lạ."""
     if not isinstance(node, dict):
         return node
     out = {}
     for k, v in node.items():
+        if k not in _GEMINI_SCHEMA_KEYS:
+            continue                                   # bỏ trường Gemini không chấp nhận
         if k == "type" and isinstance(v, str):
             out["type"] = _TYPE_MAP.get(v.lower(), v.upper())
         elif k == "properties" and isinstance(v, dict):

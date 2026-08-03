@@ -1,0 +1,196 @@
+﻿ID,Tên,Mô tả,Trạng thái
+T001,tests/test_agent.py::test_clean_strips_cjk,Clean strips cjk,Đạt
+T002,tests/test_agent.py::test_clean_keeps_vietnamese,Clean keeps vietnamese,Đạt
+T003,tests/test_agent.py::test_clean_removes_duplicate_lines,Clean removes duplicate lines,Đạt
+T004,tests/test_agent.py::test_clean_none_safe,Clean none safe,Đạt
+T005,tests/test_agent.py::test_no_tool_returns_text,No tool returns text,Đạt
+T006,tests/test_agent.py::test_terminal_tool_speaks_result_no_extra_llm,Terminal tool speaks result no extra llm,Đạt
+T007,tests/test_agent.py::test_multiple_terminal_tools_joined,Multiple terminal tools joined,Đạt
+T008,tests/test_agent.py::test_non_terminal_tool_loops_for_summary,Non terminal tool loops for summary,Đạt
+T009,tests/test_agent.py::test_unknown_tool_reported_not_crash,Unknown tool reported not crash,Đạt
+T010,tests/test_agent.py::test_tool_error_fed_back,Tool error fed back,Đạt
+T011,tests/test_agent.py::test_stops_at_max_iterations,Stops at max iterations,Đạt
+T012,tests/test_agent.py::test_parses_emotion_tag_and_strips,Parses emotion tag and strips,Đạt
+T013,tests/test_agent.py::test_emotion_none_without_tag,Emotion none without tag,Đạt
+T014,tests/test_agent.py::test_emotion_sad_tag,Emotion sad tag,Đạt
+T015,tests/test_agent.py::test_emotion_cry_tag,Emotion cry tag,Đạt
+T016,tests/test_agent.py::test_remembers_previous_turns,Remembers previous turns,Đạt
+T017,tests/test_agent.py::test_history_trimmed_to_cap,History trimmed to cap,Đạt
+T018,tests/test_agent.py::test_memory_file_roundtrip,Memory file roundtrip,Đạt
+T019,tests/test_agent.py::test_clear_memory,Clear memory,Đạt
+T020,tests/test_app_web.py::test_app_alias_to_executable,App alias to executable,Đạt
+T021,tests/test_app_web.py::test_app_vietnamese_name,App vietnamese name,Đạt
+T022,tests/test_app_web.py::test_app_canonical_name,App canonical name,Đạt
+T023,tests/test_app_web.py::test_app_unknown_returns_raw,App unknown returns raw,Đạt
+T024,tests/test_app_web.py::test_web_canonical,Web canonical,Đạt
+T025,tests/test_app_web.py::test_web_alias,Web alias,Đạt
+T026,tests/test_app_web.py::test_web_unknown_guesses_domain,Web unknown guesses domain,Đạt
+T027,tests/test_app_web.py::test_web_domain_passthrough,Web domain passthrough,Đạt
+T028,tests/test_app_web.py::test_web_fixes_missing_colon_scheme,Web fixes missing colon scheme,Đạt
+T029,tests/test_app_web.py::test_web_keeps_existing_scheme,Web keeps existing scheme,Đạt
+T030,tests/test_app_web.py::test_open_website_uses_resolved_url,Open website uses resolved url,Đạt
+T031,tests/test_app_web.py::test_first_video_id_extracts_first_match,First video id extracts first match,Đạt
+T032,tests/test_app_web.py::test_first_video_id_none_when_absent,First video id none when absent,Đạt
+T033,tests/test_app_web.py::test_first_video_id_fallback_watch_link,First video id fallback watch link,Đạt
+T034,tests/test_app_web.py::test_first_video_id_none_on_network_error,First video id none on network error,Đạt
+T035,tests/test_app_web.py::test_play_direct_opens_watch_url_when_found,Play direct opens watch url when found,Đạt
+T036,tests/test_app_web.py::test_play_direct_falls_back_to_results_when_not_found,Play direct falls back to results when not found,Đạt
+T037,tests/test_avatar.py::test_idle_neutral,Idle neutral,Đạt
+T038,tests/test_avatar.py::test_happy_pose,Happy pose,Đạt
+T039,tests/test_avatar.py::test_sad_pose,Sad pose,Đạt
+T040,tests/test_avatar.py::test_cry_pose,Cry pose,Đạt
+T041,tests/test_avatar.py::test_thinking_forces_confused_regardless_of_emotion,Thinking forces confused regardless of emotion,Đạt
+T042,tests/test_avatar.py::test_non_thinking_states_use_emotion_as_pose,Non thinking states use emotion as pose,Đạt
+T043,tests/test_avatar.py::test_listening_label,Listening label,Đạt
+T044,tests/test_avatar.py::test_unknown_state_defaults_to_idle,Unknown state defaults to idle,Đạt
+T045,tests/test_avatar.py::test_unknown_emotion_defaults_to_neutral,Unknown emotion defaults to neutral,Đạt
+T046,tests/test_avatar.py::test_guess_sad_on_error,Guess sad on error,Đạt
+T047,tests/test_avatar.py::test_guess_happy_default,Guess happy default,Đạt
+T048,tests/test_avatar.py::test_bus_emit_and_drain_order,Bus emit and drain order,Đạt
+T049,tests/test_browser_protocol.py::test_build_simple_action,Build simple action,Đạt
+T050,tests/test_browser_protocol.py::test_build_is_case_insensitive,Build is case insensitive,Đạt
+T051,tests/test_browser_protocol.py::test_build_set_volume_clamps,Build set volume clamps,Đạt
+T052,tests/test_browser_protocol.py::test_build_seek_keeps_negative,Build seek keeps negative,Đạt
+T053,tests/test_browser_protocol.py::test_build_invalid_action_raises,Build invalid action raises,Đạt
+T054,tests/test_browser_protocol.py::test_build_missing_value_raises,Build missing value raises,Đạt
+T055,tests/test_browser_protocol.py::test_build_non_numeric_value_raises,Build non numeric value raises,Đạt
+T056,tests/test_browser_protocol.py::test_normalize_unknown_returns_none,Normalize unknown returns none,Đạt
+T057,tests/test_browser_protocol.py::test_summary_success_pause,Summary success pause,Đạt
+T058,tests/test_browser_protocol.py::test_summary_success_set_volume_includes_value,Summary success set volume includes value,Đạt
+T059,tests/test_browser_protocol.py::test_summary_error_no_media,Summary error no media,Đạt
+T060,tests/test_browser_protocol.py::test_summary_error_not_connected,Summary error not connected,Đạt
+T061,tests/test_browser_protocol.py::test_summary_non_dict,Summary non dict,Đạt
+T062,tests/test_browser_protocol.py::test_tab_list_formats,Tab list formats,Đạt
+T063,tests/test_browser_protocol.py::test_tab_list_empty,Tab list empty,Đạt
+T064,tests/test_browser_protocol.py::test_tab_list_error_not_connected,Tab list error not connected,Đạt
+T065,tests/test_browser_protocol.py::test_close_preview_asks_confirmation_and_does_not_close,Close preview asks confirmation and does not close,Đạt
+T066,tests/test_browser_protocol.py::test_close_no_match,Close no match,Đạt
+T067,tests/test_browser_protocol.py::test_close_commit_reports_closed_count,Close commit reports closed count,Đạt
+T068,tests/test_browser_protocol.py::test_close_error,Close error,Đạt
+T069,tests/test_browser_protocol.py::test_normalize_and_host,Normalize and host,Đạt
+T070,tests/test_browser_protocol.py::test_build_open_derives_domain,Build open derives domain,Đạt
+T071,tests/test_browser_protocol.py::test_build_open_adds_scheme,Build open adds scheme,Đạt
+T072,tests/test_browser_protocol.py::test_build_open_explicit_domain,Build open explicit domain,Đạt
+T073,tests/test_browser_protocol.py::test_build_open_empty_raises,Build open empty raises,Đạt
+T074,tests/test_browser_protocol.py::test_summary_open_reused,Summary open reused,Đạt
+T075,tests/test_browser_protocol.py::test_summary_open_new,Summary open new,Đạt
+T076,tests/test_browser_protocol.py::test_summary_open_error,Summary open error,Đạt
+T077,tests/test_browser_tools.py::test_browser_tool_registered_only_with_browser,Browser tool registered only with browser,Đạt
+T078,tests/test_browser_tools.py::test_media_control_sends_correct_command,Media control sends correct command,Đạt
+T079,tests/test_browser_tools.py::test_media_control_set_volume_passes_value,Media control set volume passes value,Đạt
+T080,tests/test_browser_tools.py::test_media_control_invalid_action_no_send,Media control invalid action no send,Đạt
+T081,tests/test_browser_tools.py::test_media_control_reports_error_response,Media control reports error response,Đạt
+T082,tests/test_browser_tools.py::test_tab_tools_registered_with_browser,Tab tools registered with browser,Đạt
+T083,tests/test_browser_tools.py::test_list_tabs_sends_get_tabs,List tabs sends get tabs,Đạt
+T084,tests/test_browser_tools.py::test_close_tab_default_is_dry_run_preview,Close tab default is dry run preview,Đạt
+T085,tests/test_browser_tools.py::test_close_tab_confirm_true_actually_closes,Close tab confirm true actually closes,Đạt
+T086,tests/test_browser_tools.py::test_close_tab_empty_keyword_no_send,Close tab empty keyword no send,Đạt
+T087,tests/test_browser_tools.py::test_open_reuse_registered,Open reuse registered,Đạt
+T088,tests/test_browser_tools.py::test_open_reuse_sends_derived_domain,Open reuse sends derived domain,Đạt
+T089,tests/test_browser_tools.py::test_open_reuse_new_tab_summary,Open reuse new tab summary,Đạt
+T090,tests/test_browser_tools.py::test_open_reuse_empty_url_no_send,Open reuse empty url no send,Đạt
+T091,tests/test_corrections.py::test_fixes_github_in_sentence,Fixes github in sentence,Đạt
+T092,tests/test_corrections.py::test_fixes_ignoring_accents_and_case,Fixes ignoring accents and case,Đạt
+T093,tests/test_corrections.py::test_fixes_multiword_target,Fixes multiword target,Đạt
+T094,tests/test_corrections.py::test_leaves_unrelated_text_untouched,Leaves unrelated text untouched,Đạt
+T095,tests/test_corrections.py::test_multiple_corrections_in_one_sentence,Multiple corrections in one sentence,Đạt
+T096,tests/test_corrections.py::test_empty_and_none_safe,Empty and none safe,Đạt
+T097,tests/test_corrections.py::test_longer_phrase_preferred_over_shorter,Longer phrase preferred over shorter,Đạt
+T098,tests/test_corrections.py::test_load_corrections_includes_defaults,Load corrections includes defaults,Đạt
+T099,tests/test_fast_commands.py::test_scroll_down_variants,Scroll down variants,Đạt
+T100,tests/test_fast_commands.py::test_scroll_up_variants,Scroll up variants,Đạt
+T101,tests/test_fast_commands.py::test_screenshot_variants,Screenshot variants,Đạt
+T102,tests/test_fast_commands.py::test_matches_within_longer_sentence,Matches within longer sentence,Đạt
+T103,tests/test_fast_commands.py::test_ignores_accents_and_case,Ignores accents and case,Đạt
+T104,tests/test_fast_commands.py::test_non_command_returns_none,Non command returns none,Đạt
+T105,tests/test_fast_commands.py::test_volume_absolute_level,Volume absolute level,Đạt
+T106,tests/test_fast_commands.py::test_volume_relative_up_down,Volume relative up down,Đạt
+T107,tests/test_fast_commands.py::test_volume_video_routes_to_browser,Volume video routes to browser,Đạt
+T108,tests/test_fast_commands.py::test_volume_video_without_number_defers_to_llm,Volume video without number defers to llm,Đạt
+T109,tests/test_fast_commands.py::test_non_volume_sentence_not_matched,Non volume sentence not matched,Đạt
+T110,tests/test_fast_commands.py::test_youtube_not_fast_pathed,Youtube not fast pathed,Đạt
+T111,tests/test_fast_commands.py::test_returns_fresh_args_each_call,Returns fresh args each call,Đạt
+T112,tests/test_fast_commands.py::test_avatar_smaller,Avatar smaller,Đạt
+T113,tests/test_fast_commands.py::test_avatar_bigger,Avatar bigger,Đạt
+T114,tests/test_fast_commands.py::test_avatar_dimmer,Avatar dimmer,Đạt
+T115,tests/test_fast_commands.py::test_avatar_clearer,Avatar clearer,Đạt
+T116,tests/test_fast_commands.py::test_avatar_none_for_other,Avatar none for other,Đạt
+T117,tests/test_ollama_client.py::test_parse_text_response,Parse text response,Đạt
+T118,tests/test_ollama_client.py::test_parse_tool_call_dict_args,Parse tool call dict args,Đạt
+T119,tests/test_ollama_client.py::test_parse_tool_call_json_string_args,Parse tool call json string args,Đạt
+T120,tests/test_ollama_client.py::test_payload_has_system_and_tools,Payload has system and tools,Đạt
+T121,tests/test_ollama_client.py::test_tool_result_becomes_tool_role,Tool result becomes tool role,Đạt
+T122,tests/test_robot_effect.py::test_ring_modulate_shape_and_dtype,Ring modulate shape and dtype,Đạt
+T123,tests/test_robot_effect.py::test_ring_modulate_stereo,Ring modulate stereo,Đạt
+T124,tests/test_robot_effect.py::test_ring_modulate_empty,Ring modulate empty,Đạt
+T125,tests/test_robot_effect.py::test_resample_speed_shortens_when_faster,Resample speed shortens when faster,Đạt
+T126,tests/test_robot_effect.py::test_resample_speed_lengthens_when_slower,Resample speed lengthens when slower,Đạt
+T127,tests/test_robot_effect.py::test_resample_speed_factor_one_unchanged,Resample speed factor one unchanged,Đạt
+T128,tests/test_robot_effect.py::test_resample_speed_stereo_keeps_channels,Resample speed stereo keeps channels,Đạt
+T129,tests/test_robot_effect.py::test_resample_speed_empty_and_bad_factor,Resample speed empty and bad factor,Đạt
+T130,tests/test_router.py::test_prompts_load_has_base_and_cases,Prompts load has base and cases,Đạt
+T131,tests/test_router.py::test_prompts_base_shortcut,Prompts base shortcut,Đạt
+T132,tests/test_router.py::test_classify_returns_known_case,Classify returns known case,Đạt
+T133,tests/test_router.py::test_classify_parses_label_within_noise,Classify parses label within noise,Đạt
+T134,tests/test_router.py::test_classify_unknown_falls_back_general,Classify unknown falls back general,Đạt
+T135,tests/test_router.py::test_classify_error_falls_back_general,Classify error falls back general,Đạt
+T136,tests/test_router.py::test_select_narrows_tools_to_case,Select narrows tools to case,Đạt
+T137,tests/test_router.py::test_select_general_uses_all_tools,Select general uses all tools,Đạt
+T138,tests/test_router.py::test_select_empty_case_falls_back_full,Select empty case falls back full,Đạt
+T139,tests/test_scheduler.py::test_add_and_list,Add and list,Đạt
+T140,tests/test_scheduler.py::test_due_only_returns_past,Due only returns past,Đạt
+T141,tests/test_scheduler.py::test_cancel,Cancel,Đạt
+T142,tests/test_scheduler.py::test_persistence_reload,Persistence reload,Đạt
+T143,tests/test_scheduler.py::test_fire_due_calls_notify_and_removes,Fire due calls notify and removes,Đạt
+T144,tests/test_scheduler.py::test_parse_delay_minutes,Parse delay minutes,Đạt
+T145,tests/test_scheduler.py::test_parse_at_hhmm_future,Parse at hhmm future,Đạt
+T146,tests/test_scheduler.py::test_parse_at_hhmm_past_rolls_to_tomorrow,Parse at hhmm past rolls to tomorrow,Đạt
+T147,tests/test_scheduler.py::test_parse_none_when_no_input,Parse none when no input,Đạt
+T148,tests/test_scheduler.py::test_parse_delay_minutes_as_string_with_unit,Parse delay minutes as string with unit,Đạt
+T149,tests/test_scheduler.py::test_parse_relative_leaked_into_at,Parse relative leaked into at,Đạt
+T150,tests/test_scheduler.py::test_parse_at_with_h_separator,Parse at with h separator,Đạt
+T151,tests/test_scheduler.py::test_schedule_tools_registered_only_with_scheduler,Schedule tools registered only with scheduler,Đạt
+T152,tests/test_scheduler.py::test_schedule_reminder_tool_adds_task,Schedule reminder tool adds task,Đạt
+T153,tests/test_scheduler.py::test_cancel_reminder_tool,Cancel reminder tool,Đạt
+T154,tests/test_screen_control.py::test_search_finds_line_case_insensitive,Search finds line case insensitive,Đạt
+T155,tests/test_screen_control.py::test_search_ignores_accents,Search ignores accents,Đạt
+T156,tests/test_screen_control.py::test_search_multiple_matches,Search multiple matches,Đạt
+T157,tests/test_screen_control.py::test_search_empty_query_or_text,Search empty query or text,Đạt
+T158,tests/test_screen_control.py::test_summarize_found_and_not_found,Summarize found and not found,Đạt
+T159,tests/test_screen_control.py::test_summarize_truncates_long_list,Summarize truncates long list,Đạt
+T160,tests/test_screen_control.py::test_screen_tools_registered_only_with_screen,Screen tools registered only with screen,Đạt
+T161,tests/test_screen_control.py::test_screenshot_tool_calls_capture,Screenshot tool calls capture,Đạt
+T162,tests/test_screen_control.py::test_find_tool_passes_query,Find tool passes query,Đạt
+T163,tests/test_screen_control.py::test_scroll_tool_default_amount,Scroll tool default amount,Đạt
+T164,tests/test_stt_utils.py::test_strips_region_suffix,Strips region suffix,Đạt
+T165,tests/test_stt_utils.py::test_plain_code_lowercased,Plain code lowercased,Đạt
+T166,tests/test_stt_utils.py::test_empty_or_none_returns_none,Empty or none returns none,Đạt
+T167,tests/test_system_info.py::test_memory_info,Memory info,Đạt
+T168,tests/test_system_info.py::test_disk_info,Disk info,Đạt
+T169,tests/test_system_info.py::test_cpu_info,Cpu info,Đạt
+T170,tests/test_system_info.py::test_battery_info,Battery info,Đạt
+T171,tests/test_system_info.py::test_battery_no_battery,Battery no battery,Đạt
+T172,tests/test_system_info.py::test_summary_all_has_every_section,Summary all has every section,Đạt
+T173,tests/test_system_info.py::test_summary_single_section,Summary single section,Đạt
+T174,tests/test_system_info.py::test_summary_unknown,Summary unknown,Đạt
+T175,tests/test_wake_word.py::test_parse_splits_and_trims,Parse splits and trims,Đạt
+T176,tests/test_wake_word.py::test_match_at_start_returns_remainder,Match at start returns remainder,Đạt
+T177,tests/test_wake_word.py::test_match_ignores_accents,Match ignores accents,Đạt
+T178,tests/test_wake_word.py::test_match_strips_leading_punctuation,Match strips leading punctuation,Đạt
+T179,tests/test_wake_word.py::test_match_wake_word_only_gives_empty_remainder,Match wake word only gives empty remainder,Đạt
+T180,tests/test_wake_word.py::test_match_case_insensitive,Match case insensitive,Đạt
+T181,tests/test_wake_word.py::test_no_match_for_song_lyrics,No match for song lyrics,Đạt
+T182,tests/test_wake_word.py::test_no_match_empty_text,No match empty text,Đạt
+T183,tests/test_wake_word.py::test_empty_wake_words_always_matches,Empty wake words always matches,Đạt
+T184,tests/test_wake_word.py::test_filters_wake_word_present_in_ai_response,Filters wake word present in ai response,Đạt
+T185,tests/test_wake_word.py::test_keeps_all_when_response_has_no_wake_word,Keeps all when response has no wake word,Đạt
+T186,tests/test_wake_word.py::test_filter_ignores_accents,Filter ignores accents,Đạt
+T187,tests/test_web_content.py::test_html_to_text_strips_tags_and_scripts,Html to text strips tags and scripts,Đạt
+T188,tests/test_web_content.py::test_fetch_invalid_url,Fetch invalid url,Đạt
+T189,tests/test_web_content.py::test_fetch_returns_text,Fetch returns text,Đạt
+T190,tests/test_web_content.py::test_fetch_truncates,Fetch truncates,Đạt
+T191,tests/test_web_content.py::test_fetch_handles_error,Fetch handles error,Đạt
+T192,tests/test_web_content.py::test_wikipedia_returns_extract,Wikipedia returns extract,Đạt
+T193,tests/test_web_content.py::test_wikipedia_not_found,Wikipedia not found,Đạt
+T194,tests/test_web_content.py::test_wikipedia_empty_topic,Wikipedia empty topic,Đạt
+T195,tests/test_web_content.py::test_wikipedia_error,Wikipedia error,Đạt

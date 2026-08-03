@@ -153,6 +153,25 @@ class Config:
     # có biên). TỐN thêm 1 lượt LLM/lần củng cố -> chỉ bật với provider NHANH (Gemini).
     PERSONA_AUTO_TUNE = _get_bool("PERSONA_AUTO_TUNE", False)
 
+    # --- MCP client (Slice 3: lịch/email qua MCP server) ---
+    # Bật khi ĐÃ cài server MCP + cấp OAuth. MCP_COMMAND/MCP_ARGS = lệnh chạy server (stdio).
+    MCP_ENABLED = _get_bool("MCP_ENABLED", False)
+    MCP_COMMAND = _get("MCP_COMMAND", "")           # vd "npx" hoặc đường dẫn python của server
+    MCP_ARGS = _get("MCP_ARGS", "")                 # vd "-y @some/google-workspace-mcp" (cách nhau bởi khoảng trắng)
+    # Tiền tố tên tool của server (vd "gcal_") -> router thu hẹp case 'pim' theo tiền tố.
+    # Rỗng = không thu hẹp (case pim dùng toàn bộ tool).
+    MCP_TOOL_PREFIX = _get("MCP_TOOL_PREFIX", "")
+
+    # --- Chủ động (proactive): bản tin sáng + theo dõi pin ---
+    PROACTIVE_ENABLED = _get_bool("PROACTIVE_ENABLED", True)
+    MORNING_BRIEF_TIME = _get("MORNING_BRIEF_TIME", "07:00")   # giờ đọc bản tin sáng (HH:MM)
+    BATTERY_ALERT_THRESHOLD = _get_int("BATTERY_ALERT_THRESHOLD", 20)  # % pin nhắc cắm sạc
+
+    # --- Việc cần làm (to-do) + Quy trình (routine) — local, bền vững ---
+    # Rỗng = dùng file mặc định trong src/services/ (đã gitignore, dữ liệu cá nhân).
+    TASKS_PATH = _get("TASKS_PATH", "")
+    ROUTINES_PATH = _get("ROUTINES_PATH", "")
+
     # --- Hồ sơ NGƯỜI DÙNG bền vững (tên, xưng hô, địa điểm mặc định...) ---
     # Rỗng = dùng vị trí mặc định components/user/user_data/profile.json. Đây là DỮ LIỆU
     # CÁ NHÂN -> đã gitignore, không commit.
