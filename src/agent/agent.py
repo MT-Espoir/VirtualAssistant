@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from llm.client import LLMClient, Message, ToolResult
 from agent.tools import ToolRegistry
 from agent.memory import ShortTermMemory, parse_extracted_facts, EXTRACT_SYSTEM
+from agent.persona import score_user_valence, parse_trait_nudges, PERSONA_TUNE_SYSTEM
 from voice.fast_commands import match_confirmation
 from utils.logger import get_logger
 
@@ -71,20 +72,25 @@ class Agent:
                  system: str = DEFAULT_SYSTEM, max_iterations: int = 6,
                  max_history_turns: int = 10, memory_path: str = None, router=None,
                  profile=None, auto_extract: bool = False, consolidate_every: int = 6,
-                 extractor=None):
+                 extractor=None, persona=None, mood=None,
+                 auto_tune: bool = False, persona_tuner=None):
         self.llm = llm
         self.registry = registry
         self.system = system
         self.max_iterations = max_iterations
         self.router = router         # tùy chọn: phân loại case -> thu hẹp prompt+tool
         self.profile = profile       # trí nhớ DÀI HẠN: hồ sơ người dùng -> bơm vào prompt
+        self.persona = persona       # PersonaState: nhân cách (card) -> bơm vào prompt
+        self.mood = mood             # MoodState: tâm trạng phiên -> bơm vào prompt + dẫn avatar
         self.pending = None          # hành động khó hoàn tác đang CHỜ người dùng xác nhận
         # Trí nhớ NGẮN HẠN: vài lượt gần đây (session-only nếu memory_path rỗng).
         self.stm = ShortTermMemory(max_turns=max_history_turns, path=memory_path or None)
         # Củng cố STM -> LTM: gom lượt bị đẩy ra, thỉnh thoảng trích sự thật bền vững.
         self.auto_extract = auto_extract
+        self.auto_tune = auto_tune   # Phase 2: LLM nudge núm tính cách khi củng cố (opt-in)
         self.consolidate_every = consolidate_every
         self.extractor = extractor   # callable(transcript)->text; None = dùng self.llm
+        self.persona_tuner = persona_tuner  # callable(transcript, traits)->text; None = self.llm
         self._evicted = []           # đệm các lượt bị đẩy khỏi STM, chờ củng cố
 
     @property
@@ -111,9 +117,17 @@ class Agent:
         # Bơm tóm tắt hồ sơ người dùng vào đầu system prompt -> trợ lý luôn "biết" người
         # dùng (tên, xưng hô, địa điểm mặc định) mà không tốn lượt hỏi lại.
         if self.profile is not None:
-            summary = self.profile.summary()
+            summary = self.profile.summary(query=user_text)
             if summary:
                 system = summary + "\n\n" + system
+
+        # Bơm NHÂN CÁCH + TÂM TRẠNG lên trên cùng -> định hình giọng/thái độ câu trả lời.
+        if self.persona is not None:
+            preamble = self.persona.render()
+            if self.mood is not None:
+                preamble += "\nTâm trạng hiện tại của bạn: " + self.mood.label() + "."
+            if preamble:
+                system = preamble + "\n\n" + system
 
         messages = list(self.stm.messages()) + [Message(role="user", text=user_text)]
 
@@ -149,14 +163,29 @@ class Agent:
 
         text, emotion = _split_emotion(final_text)
         text = _clean_text(text)
+
+        # Cập nhật TÂM TRẠNG (tất định) từ cảm xúc user + kết quả việc (thẻ #emotion) +
+        # mức thân thiết; rồi để tâm trạng DẪN pose avatar thay cho thẻ tức thời.
+        if self.mood is not None:
+            outcome = 1.0 if emotion == "happy" else -1.0 if emotion in ("sad", "cry") else 0.0
+            fam = self.persona.familiarity() if self.persona is not None else 0.3
+            self.mood.update(user_valence=score_user_valence(user_text),
+                             outcome=outcome, familiarity=fam)
+            emotion = self.mood.to_pose()
+        if self.persona is not None:
+            self.persona.record_interaction()      # thân thiết tăng dần theo tương tác
+
         self._remember(user_text, text)
         return AgentReply(text=text, emotion=emotion)
 
     # ------------------------- bộ nhớ hai tầng ------------------------- #
     def _remember(self, user_text, assistant_text):
-        """Ghi lượt vào STM; các lượt bị đẩy ra được gom lại để (tuỳ chọn) củng cố vào LTM."""
+        """Ghi lượt vào STM; các lượt bị đẩy ra được gom lại để (tuỳ chọn) củng cố vào LTM
+        (trích sự thật) và/hoặc tinh chỉnh nhân cách (nudge núm)."""
         evicted = self.stm.add(user_text, assistant_text)
-        if self.auto_extract and self.profile is not None and evicted:
+        wants = ((self.auto_extract and self.profile is not None)
+                 or (self.auto_tune and self.persona is not None))
+        if wants and evicted:
             self._evicted.extend(evicted)
             if len(self._evicted) >= self.consolidate_every * 2:
                 self._consolidate()
@@ -166,13 +195,19 @@ class Agent:
         self._evicted = []
 
     def _consolidate(self):
-        """Trích sự thật bền vững từ các lượt sắp quên -> lưu vào trí nhớ dài hạn (LTM)."""
+        """Từ các lượt sắp quên: trích sự thật (LTM) và/hoặc tinh chỉnh nhân cách (nudge núm)."""
         turns, self._evicted = self._evicted, []
         transcript = "\n".join(
             f"{'Người dùng' if m.role == 'user' else 'Trợ lý'}: {m.text}"
             for m in turns if m.text)
         if not transcript.strip():
             return
+        if self.auto_extract and self.profile is not None:
+            self._extract_facts(transcript)
+        if self.auto_tune and self.persona is not None:
+            self._tune_persona(transcript)
+
+    def _extract_facts(self, transcript):
         try:
             raw = self._extract(transcript)
         except Exception as e:                 # trích xuất lỗi KHÔNG được làm vỡ luồng chính
@@ -183,6 +218,34 @@ class Agent:
             self.profile.add_auto_fact(fact)
         if facts:
             logger.info("🧠 củng cố %d sự thật vào trí nhớ dài hạn", len(facts))
+
+    def _tune_persona(self, transcript):
+        """Phase 2: LLM gợi ý nudge núm tính cách (có biên) từ hội thoại. Lỗi -> bỏ qua."""
+        traits = self.persona.data.get("traits", {})
+        try:
+            raw = self._suggest_nudges(transcript, traits)
+        except Exception as e:
+            logger.warning("Tinh chỉnh nhân cách lỗi: %s", e)
+            return
+        nudges = parse_trait_nudges(raw)
+        for trait, delta in nudges.items():
+            self.persona.adjust(trait, delta)          # adjust đã kẹp [0,1] + log + lưu
+        if nudges and self.mood is not None:           # warmth/energy đổi -> cập nhật baseline
+            self.mood.set_baseline(self.persona.baseline_valence(),
+                                   self.persona.baseline_arousal())
+        if nudges:
+            logger.info("🎭 tinh chỉnh %d núm tính cách", len(nudges))
+
+    def _suggest_nudges(self, transcript, traits):
+        """Bộ gợi ý nudge (tiêm vào để test) hoặc LLM."""
+        if self.persona_tuner is not None:
+            return self.persona_tuner(transcript, traits)
+        tstr = ", ".join(f"{k}={v:.2f}" for k, v in traits.items())
+        turn = self.llm.generate(
+            system=PERSONA_TUNE_SYSTEM,
+            messages=[Message(role="user", text=f"Núm hiện tại: {tstr}\n\nHội thoại:\n{transcript}")],
+            tools=[])
+        return turn.text
 
     def _extract(self, transcript):
         """Gọi bộ trích (tiêm vào để test) hoặc LLM để rút sự thật từ đoạn hội thoại."""

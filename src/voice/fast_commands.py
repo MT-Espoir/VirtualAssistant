@@ -150,6 +150,43 @@ _CONFIRM_NO_PHRASES = ("khong can", "khong lam", "khong dong", "khong muon", "th
                        "bo di", "de sau", "dung lai", "khoan da")
 
 
+# Chỉnh NÚM tính cách bằng lời (học tường minh). Mỗi lệnh nhích một núm ±0.15 (có biên,
+# kẹp [0,1]). Đặt cụm đặc thù trước. 'say' = câu xác nhận thân thiện đọc lại.
+_PERSONA_RULES = [
+    (["vui tinh hon", "hai huoc hon", "hai hon", "dua nhieu hon", "vui hon chut", "vui ve hon"],
+     {"trait": "humor", "delta": 0.15, "say": "Được, mình sẽ vui tính hơn nhé!"}),
+    (["bot dua", "nghiem tuc hon", "dung dan hon", "it dua di", "bot hai"],
+     {"trait": "humor", "delta": -0.15, "say": "Ừ, mình sẽ nghiêm túc hơn."}),
+    (["than thien hon", "am ap hon", "gan gui hon", "diu dang hon", "tinh cam hon"],
+     {"trait": "warmth", "delta": 0.15, "say": "Mình sẽ thân thiện hơn với bạn."}),
+    (["lanh lung hon", "bot than", "xa cach hon", "lanh hon"],
+     {"trait": "warmth", "delta": -0.15, "say": "Được, mình sẽ tiết chế hơn."}),
+    (["trang trong hon", "lich su hon", "trinh trong hon"],
+     {"trait": "formality", "delta": 0.15, "say": "Vâng, tôi sẽ trang trọng hơn."}),
+    (["thoai mai hon", "suong sa hon", "bot trang trong", "tu nhien hon", "than mat hon"],
+     {"trait": "formality", "delta": -0.15, "say": "Oke, mình nói thoải mái hơn nhé."}),
+    (["nang dong hon", "soi noi hon", "hao hung hon", "nhiet hon"],
+     {"trait": "energy", "delta": 0.15, "say": "Yeah, mình sẽ sôi nổi hơn!"}),
+    (["tram hon", "binh tinh hon", "nhe nhang hon", "diu lai", "cham lai"],
+     {"trait": "energy", "delta": -0.15, "say": "Ừ, mình sẽ nhẹ nhàng hơn."}),
+]
+_PERSONA_RESET_KWS = ["reset tinh cach", "ve tinh cach mac dinh", "tinh cach mac dinh",
+                      "tinh cach binh thuong", "khoi phuc tinh cach", "tinh cach ban dau"]
+
+
+def match_persona_command(text):
+    """Lệnh chỉnh tính cách trợ lý -> dict {trait,delta,say} | {reset,say} | None.
+
+    Kiểm 'reset' TRƯỚC (cụm reset không chứa núm nào ở trên)."""
+    t = _norm(text)
+    if not t:
+        return None
+    if any(k in t for k in _PERSONA_RESET_KWS):
+        return {"reset": True, "say": "Mình đã quay lại tính cách ban đầu."}
+    m = _first_match(text, _PERSONA_RULES)
+    return dict(m[1]) if m else None
+
+
 def match_confirmation(text):
     """Phân loại câu trả lời xác nhận: 'yes' | 'no' | None (không rõ).
 

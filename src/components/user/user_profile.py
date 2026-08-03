@@ -14,8 +14,15 @@ import json
 import os
 
 from utils.logger import get_logger
+from utils.text_norm import norm
 
 logger = get_logger(__name__)
+
+# Truy hồi liên quan: khi tổng số ghi chú vượt ngưỡng, CHỈ bơm top-K fact liên quan câu
+# hỏi hiện tại (thay vì bơm hết) — né "lost in the middle" + tiết kiệm token. Dưới ngưỡng
+# thì bơm hết như cũ.
+_RETRIEVAL_THRESHOLD = 6
+_RETRIEVAL_K = 5
 
 _DEFAULT_PATH = os.path.join(os.path.dirname(__file__), "user_data", "profile.json")
 
@@ -57,8 +64,25 @@ def apply_update(data, name=None, address_form=None, location=None, note=None):
     return data, changes
 
 
-def summarize(data):
-    """Câu ngắn mô tả người dùng để bơm vào system prompt. '' nếu chưa biết gì."""
+def _relevant_facts(facts, query, k):
+    """Chọn tối đa k fact liên quan 'query' nhất (đếm token trùng, bỏ dấu). Bỏ fact không
+    trùng token nào (0 điểm) -> khi câu hỏi không liên quan gì thì không bơm nhiễu."""
+    qt = set(norm(query).split())
+    scored = []
+    for i, f in enumerate(facts):
+        overlap = len(qt & set(norm(f).split()))
+        if overlap > 0:
+            scored.append((overlap, i, f))         # (điểm, thứ tự=độ mới, fact)
+    scored.sort(key=lambda x: (x[0], x[1]), reverse=True)
+    return [f for _, _, f in scored[:k]]
+
+
+def summarize(data, query=None):
+    """Câu ngắn mô tả người dùng để bơm vào system prompt. '' nếu chưa biết gì.
+
+    Nếu có `query` và số ghi chú vượt ngưỡng -> chỉ đưa top-K fact LIÊN QUAN; ngược lại
+    đưa hết (giữ hành vi cũ khi ít fact / không có query).
+    """
     if not data:
         return ""
     parts = []
@@ -69,12 +93,19 @@ def summarize(data):
     loc = (data.get("preferences") or {}).get("default_location")
     if loc:
         parts.append(f"Địa điểm mặc định của người dùng: {loc}.")
+
     notes = data.get("notes") or []
-    if notes:
-        parts.append("Cần nhớ: " + "; ".join(notes) + ".")
     auto = data.get("auto_facts") or []
-    if auto:
-        parts.append("Quan sát từ hội thoại: " + "; ".join(auto) + ".")
+    if query and (len(notes) + len(auto)) > _RETRIEVAL_THRESHOLD:
+        picked = _relevant_facts(notes + auto, query, _RETRIEVAL_K)
+        if picked:
+            parts.append("Liên quan lúc này: " + "; ".join(picked) + ".")
+    else:
+        if notes:
+            parts.append("Cần nhớ: " + "; ".join(notes) + ".")
+        if auto:
+            parts.append("Quan sát từ hội thoại: " + "; ".join(auto) + ".")
+
     if not parts:
         return ""
     return "Thông tin người dùng (dùng để cá nhân hoá và xưng hô đúng): " + " ".join(parts)
@@ -130,8 +161,8 @@ class UserProfile:
         self.data["auto_facts"] = self.data["auto_facts"][-_MAX_AUTO_FACTS:]
         self._save()
 
-    def summary(self):
-        return summarize(self.data)
+    def summary(self, query=None):
+        return summarize(self.data, query=query)
 
     def get_default_location(self):
         return (self.data.get("preferences") or {}).get("default_location")

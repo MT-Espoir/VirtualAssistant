@@ -9,7 +9,8 @@ from unittest.mock import MagicMock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from components.user.user_profile import UserProfile, apply_update, summarize
+from components.user.user_profile import (UserProfile, apply_update, summarize,
+                                          _relevant_facts)
 from agent.tools import build_default_registry
 
 
@@ -52,6 +53,29 @@ def test_summarize_includes_known_fields():
 def test_summarize_includes_auto_facts():
     data = {"auto_facts": ["Thích cà phê"], "notes": [], "preferences": {}}
     assert "Thích cà phê" in summarize(data) and "Quan sát" in summarize(data)
+
+
+# --------------------------- retrieval phẳng top-K --------------------------- #
+
+def test_relevant_facts_picks_by_overlap():
+    facts = ["thích cà phê sữa", "hay chạy bộ buổi sáng", "làm nghề lập trình"]
+    picked = _relevant_facts(facts, "sáng nay chạy bộ không", 2)
+    assert "hay chạy bộ buổi sáng" in picked
+
+
+def test_summarize_retrieves_only_relevant_when_many():
+    data = {"notes": [f"ghi chú {i}" for i in range(4)],
+            "auto_facts": ["thích trà xanh", "chơi cầu lông", "xem phim kinh dị", "nghe nhạc vàng"],
+            "preferences": {}}                       # tổng 8 > ngưỡng 6 -> truy hồi
+    s = summarize(data, query="tối nay xem phim gì")
+    assert "Liên quan lúc này" in s and "phim" in s
+    # câu không liên quan -> không bơm dòng fact nào
+    assert "Liên quan lúc này" not in summarize(data, query="tăng âm lượng")
+
+
+def test_summarize_dumps_all_when_few_facts():
+    data = {"notes": ["thích cà phê"], "auto_facts": [], "preferences": {}}
+    assert "Cần nhớ" in summarize(data, query="bất kỳ câu gì")   # dưới ngưỡng -> bơm hết
 
 
 # --------------------------- UserProfile (I/O) --------------------------- #

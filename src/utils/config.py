@@ -143,6 +143,16 @@ class Config:
     # Gom bao nhiêu lượt bị đẩy ra rồi mới củng cố một lần (đỡ tốn lượt LLM).
     LTM_CONSOLIDATE_EVERY = _get_int("LTM_CONSOLIDATE_EVERY", 6)
 
+    # --- Persona: nhân cách + tâm trạng (Phase 0) ---
+    # Bật -> bơm nhân cách (character card, thích nghi provider) + tâm trạng (công thức)
+    # vào prompt, và để tâm trạng dẫn khuôn mặt avatar (bỏ tự reset về neutral sau 5s).
+    PERSONA_ENABLED = _get_bool("PERSONA_ENABLED", True)
+    # Rỗng = dùng components/user/user_data/persona.json (dữ liệu cá nhân, đã gitignore).
+    PERSONA_PATH = _get("PERSONA_PATH", "")
+    # Phase 2 (opt-in): khi CỦNG CỐ trí nhớ, gọi LLM đề xuất nudge NÚM tính cách (rất nhỏ,
+    # có biên). TỐN thêm 1 lượt LLM/lần củng cố -> chỉ bật với provider NHANH (Gemini).
+    PERSONA_AUTO_TUNE = _get_bool("PERSONA_AUTO_TUNE", False)
+
     # --- Hồ sơ NGƯỜI DÙNG bền vững (tên, xưng hô, địa điểm mặc định...) ---
     # Rỗng = dùng vị trí mặc định components/user/user_data/profile.json. Đây là DỮ LIỆU
     # CÁ NHÂN -> đã gitignore, không commit.
@@ -154,9 +164,12 @@ class Config:
     # dùng model khả dụng đầu tiên; hết RPM chặn ~60s (rơi xuống model kế rồi tự quay lại),
     # hết RPD chặn tới hết ngày. RPM/RPD = 0 nghĩa là không giới hạn. ĐỔI tên model cho
     # khớp ID thật trong Google AI Studio nếu cần.
+    # Mặc định dùng model KHẢ DỤNG cho key free tier mới (gemini-2.5-* đã bị chặn 404 cho
+    # key mới -> loại bỏ để khỏi tốn round-trip lỗi). rpm/rpd=0 = không giới hạn chủ động,
+    # dựa 429 thật. ĐỔI cho khớp hạn mức key của bạn nếu cần.
     GEMINI_MODELS = _get(
         "GEMINI_MODELS",
-        "gemini-2.5-flash:5:20,gemini-2.5-flash-lite:10:20,gemini-3.1-flash-lite:15:500")
+        "gemini-3.1-flash-lite:15:500,gemini-flash-lite-latest:0:0,gemini-flash-latest:0:0")
 
     # --- LLM local qua Ollama ---
     OLLAMA_URL = _get("OLLAMA_URL", "http://localhost:11434")

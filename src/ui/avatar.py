@@ -57,9 +57,13 @@ def _round_rect(canvas, x1, y1, x2, y2, radius=10, **kwargs):
 
 
 class AvatarWindow:
-    def __init__(self, bus=None, title="Trợ lý AI", scale=None, opacity=None):
+    def __init__(self, bus=None, title="Trợ lý AI", scale=None, opacity=None,
+                 emotion_hold_ms=None):
         self.bus = bus
         self.state, self.emotion, self.message = "idle", "neutral", ""
+        # Giữ cảm xúc bao lâu rồi tự về neutral. <=0 = KHÔNG tự reset (để Persona/tâm trạng
+        # dẫn dắt khuôn mặt). None = dùng mặc định EMOTION_HOLD_MS.
+        self.emotion_hold_ms = EMOTION_HOLD_MS if emotion_hold_ms is None else emotion_hold_ms
         self._blinking = False
         self._emotion_reset_id = None
         self._drag_origin = (0, 0)
@@ -161,12 +165,13 @@ class AvatarWindow:
 
     # ------------------------- cảm xúc tự về neutral ------------------------- #
     def _schedule_emotion_reset(self):
-        """Sau EMOTION_HOLD_MS kể từ cảm xúc gần nhất, đưa mặt về neutral."""
+        """Sau emotion_hold_ms kể từ cảm xúc gần nhất, đưa mặt về neutral.
+        emotion_hold_ms <= 0 -> KHÔNG tự reset (Persona/tâm trạng dẫn dắt)."""
         if self._emotion_reset_id is not None:
             self.root.after_cancel(self._emotion_reset_id)
             self._emotion_reset_id = None
-        if self.emotion != "neutral":
-            self._emotion_reset_id = self.root.after(EMOTION_HOLD_MS, self._reset_emotion)
+        if self.emotion_hold_ms and self.emotion_hold_ms > 0 and self.emotion != "neutral":
+            self._emotion_reset_id = self.root.after(self.emotion_hold_ms, self._reset_emotion)
 
     def _reset_emotion(self):
         self._emotion_reset_id = None

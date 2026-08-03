@@ -20,6 +20,8 @@ Thumbs.db
 # Local data / logs
 *.log
 src/services/reminders.json
+src/services/tasks.json
+src/services/routines.json
 
 # Hồ sơ người dùng (dữ liệu cá nhân: tên, địa điểm...) — local, không commit
 src/components/user/user_data/
@@ -32,6 +34,8 @@ captures/
 
 # Bí mật / khoá / gói build — KHÔNG commit
 .env
+.env.*
+!.env.example
 *.pem
 *.crx
 

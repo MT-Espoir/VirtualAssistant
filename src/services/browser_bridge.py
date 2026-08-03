@@ -29,6 +29,19 @@ KEEPALIVE_INTERVAL_S = 20      # < 30s để giữ service worker MV3 sống
 _HANDSHAKE_TIMEOUT_S = 5
 
 
+def is_origin_allowed(origin):
+    """Chỉ cho phép kết nối từ EXTENSION Chrome (`chrome-extension://...`) hoặc client
+    KHÔNG phải trình duyệt (không gửi Origin — vd test/native tin cậy).
+
+    CHẶN mọi Origin http/https: một website độc có thể mở `ws://127.0.0.1:8765`, nhưng
+    TRÌNH DUYỆT tự đặt Origin theo tên miền của site và JS không sửa được -> site không
+    thể giả `chrome-extension://`. Đây là lớp chặn chính cho vector "website điều khiển
+    bridge" (bổ sung cho token bắt tay)."""
+    if not origin:
+        return True
+    return origin.startswith("chrome-extension://")
+
+
 class BrowserBridge:
     def __init__(self, host="127.0.0.1", port=8765, token="", timeout=8):
         self.host = host
@@ -88,8 +101,24 @@ class BrowserBridge:
                     self.host, self.port)
 
     # ------------------------- xử lý kết nối ------------------------- #
+    def _origin_ok(self, ws):
+        """Đọc Origin từ handshake WS (an toàn với mọi phiên bản websockets) rồi kiểm."""
+        origin = None
+        req = getattr(ws, "request", None)
+        if req is not None:
+            try:
+                headers = req.headers
+                origin = headers.get("Origin") or headers.get("origin")
+            except Exception:
+                origin = None
+        return is_origin_allowed(origin)
+
     async def _handler(self, ws):
-        """Một kết nối extension: bắt tay token rồi vòng nhận message."""
+        """Một kết nối extension: kiểm Origin -> bắt tay token -> vòng nhận message."""
+        if not self._origin_ok(ws):
+            logger.warning("Từ chối kết nối WS: Origin không hợp lệ (chỉ nhận extension).")
+            await ws.close()
+            return
         if not await self._handshake(ws):
             return
         self._client = ws

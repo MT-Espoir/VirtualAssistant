@@ -247,7 +247,7 @@ def test_emotion_cry_tag():
 class _FakeProfile:
     def __init__(self, summary):
         self._summary = summary
-    def summary(self):
+    def summary(self, query=None):
         return self._summary
 
 
@@ -267,12 +267,54 @@ def test_empty_profile_not_injected():
     assert llm.last_system and not llm.last_system.startswith("\n")
 
 
+# --------------------------- Persona + tâm trạng --------------------------- #
+
+def test_persona_and_mood_injected_into_system():
+    from agent.persona import PersonaState, MoodState
+    llm = FakeLLMClient([AssistantTurn(text="Chào bạn nhé!")])
+    persona = PersonaState(provider="ollama", persist=False)
+    mood = MoodState(baseline_valence=0.2)
+    agent = Agent(llm, build_default_registry(make_actions()), persona=persona, mood=mood)
+    agent.run("chào")
+    assert "Văn phong" in llm.last_system and "Tâm trạng hiện tại" in llm.last_system
+
+
+def test_mood_drives_reply_emotion_positive():
+    from agent.persona import PersonaState, MoodState
+    # Thẻ #emotion=happy (làm được việc) + câu user tích cực -> mood đẩy pose 'happy'
+    llm = FakeLLMClient([AssistantTurn(text="Xong rồi!\n#emotion: happy")])
+    persona = PersonaState(provider="ollama", persist=False)
+    agent = Agent(llm, build_default_registry(make_actions()),
+                  persona=persona, mood=MoodState(baseline_valence=0.2))
+    reply = agent.run("tuyệt quá cảm ơn bạn")
+    assert reply.emotion == "happy"
+
+
+def test_persona_familiarity_grows_with_interaction():
+    from agent.persona import PersonaState, MoodState
+    persona = PersonaState(provider="ollama", persist=False)
+    start = persona.familiarity()
+    agent = Agent(FakeLLMClient([AssistantTurn(text=f"r{i}") for i in range(5)]),
+                  build_default_registry(make_actions()),
+                  persona=persona, mood=MoodState())
+    for i in range(3):
+        agent.run(f"câu {i}")
+    assert persona.familiarity() > start
+    assert persona.data["rapport"]["interaction_count"] == 3
+
+
+def test_no_mood_keeps_tag_emotion():
+    # Không có mood -> giữ nguyên cảm xúc từ thẻ (không phá hành vi cũ)
+    reply = make_agent([AssistantTurn(text="Đã mở.\n#emotion: happy")]).run("mở chrome")
+    assert reply.emotion == "happy"
+
+
 # --------------------------- Củng cố STM -> LTM (auto-extract) --------------------------- #
 
 class _CapturingProfile:
     def __init__(self):
         self.facts = []
-    def summary(self):
+    def summary(self, query=None):
         return ""
     def add_auto_fact(self, fact):
         self.facts.append(fact)
@@ -288,6 +330,32 @@ def test_consolidation_extracts_facts_into_ltm():
     agent.run("tôi hay uống trà buổi sáng")     # lượt 1: chưa đẩy ra
     agent.run("câu khác")                        # lượt 2: đẩy lượt 1 -> đủ ngưỡng -> củng cố
     assert "Thích uống trà" in profile.facts
+
+
+def test_auto_tune_nudges_persona_traits():
+    from agent.persona import PersonaState, MoodState
+    persona = PersonaState(provider="ollama", persist=False)
+    h0, f0 = persona._trait("humor"), persona._trait("formality")
+    agent = Agent(FakeLLMClient([AssistantTurn(text=f"r{i}") for i in range(10)]),
+                  build_default_registry(make_actions()),
+                  persona=persona, mood=MoodState(),
+                  auto_tune=True, consolidate_every=1, max_history_turns=1,
+                  persona_tuner=lambda transcript, traits: "humor: +\nformality: -")
+    agent.run("a"); agent.run("b")                 # đẩy lượt -> củng cố -> nudge
+    assert persona._trait("humor") > h0 and persona._trait("formality") < f0
+
+
+def test_auto_tune_off_keeps_traits():
+    from agent.persona import PersonaState, MoodState
+    persona = PersonaState(provider="ollama", persist=False)
+    h0 = persona._trait("humor")
+    agent = Agent(FakeLLMClient([AssistantTurn(text=f"r{i}") for i in range(10)]),
+                  build_default_registry(make_actions()),
+                  persona=persona, mood=MoodState(), auto_tune=False,
+                  consolidate_every=1, max_history_turns=1,
+                  persona_tuner=lambda transcript, traits: "humor: +")
+    agent.run("a"); agent.run("b")
+    assert persona._trait("humor") == h0           # tắt -> không đổi
 
 
 def test_no_consolidation_when_auto_extract_off():

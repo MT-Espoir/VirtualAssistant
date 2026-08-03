@@ -1,6 +1,7 @@
 """Mở/đóng ứng dụng — có ánh xạ tên thân thiện (kể cả tiếng Việt) sang file thực thi."""
 
 import os
+import re
 import subprocess
 
 from utils.data_loader import DataLoader
@@ -9,6 +10,14 @@ from utils.logger import get_logger
 logger = get_logger(__name__)
 
 _data = DataLoader()
+
+# Chỉ cho phép tên thực thi "lành" (chữ/số/dấu chấm/gạch/khoảng trắng). Chặn ký tự shell
+# (& | ; $ > < ` ...) để không thể tiêm lệnh. Dùng chung cho mở/đóng app.
+_SAFE_EXE_RE = re.compile(r"^[\w.\-+ ]{1,60}$", re.UNICODE)
+
+
+def _is_safe_exe(exe):
+    return bool(exe) and bool(_SAFE_EXE_RE.match(exe))
 
 
 def resolve_app_command(name):
@@ -40,6 +49,9 @@ def resolve_app_command(name):
 
 def open_application(app_name):
     exe = resolve_app_command(app_name)
+    if not _is_safe_exe(exe):
+        logger.warning("Từ chối mở app tên không hợp lệ: %r", app_name)
+        return f"Tên ứng dụng không hợp lệ: {app_name}."
     try:
         if os.name == 'nt':
             os.startfile(exe)
@@ -55,10 +67,14 @@ def open_application(app_name):
 
 def close_application(app_name):
     exe = resolve_app_command(app_name)
+    if not _is_safe_exe(exe):
+        logger.warning("Từ chối đóng app tên không hợp lệ: %r", app_name)
+        return f"Tên ứng dụng không hợp lệ: {app_name}."
     try:
         if os.name == 'nt':
-            # Không dùng /f: đóng nhẹ nhàng để tránh mất dữ liệu chưa lưu.
-            os.system(f'taskkill /im {exe}.exe')
+            # Truyền dạng ARGV (không qua shell) -> không thể tiêm lệnh; không /f để đóng
+            # nhẹ nhàng, tránh mất dữ liệu chưa lưu.
+            subprocess.run(['taskkill', '/im', f'{exe}.exe'], check=False)
         else:
             subprocess.call(['pkill', exe])
         return f"Đã đóng {app_name}."

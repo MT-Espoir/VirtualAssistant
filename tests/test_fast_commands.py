@@ -6,7 +6,8 @@ except ImportError:
     pytest = None
 
 from voice.fast_commands import (match_fast_command, match_avatar_command,
-                                 match_mode_command, match_confirmation)
+                                 match_mode_command, match_confirmation,
+                                 match_persona_command)
 
 
 def test_scroll_down_variants():
@@ -189,6 +190,27 @@ def test_confirmation_none_for_new_request():
 def test_confirmation_long_co_sentence_not_yes():
     # "có" mở đầu câu DÀI không được nhận nhầm là đồng ý (an toàn)
     assert match_confirmation("có xem giúp tôi mấy giờ rồi") is None
+
+
+# --------------------------- chỉnh tính cách bằng lời --------------------------- #
+
+def test_persona_command_adjust_traits():
+    assert match_persona_command("vui tính hơn đi")["trait"] == "humor"
+    assert match_persona_command("vui tính hơn đi")["delta"] > 0
+    assert match_persona_command("nghiêm túc hơn chút")["delta"] < 0
+    assert match_persona_command("thân thiện hơn nhé")["trait"] == "warmth"
+    assert match_persona_command("sôi nổi hơn")["trait"] == "energy"
+
+
+def test_persona_command_reset():
+    r = match_persona_command("reset tính cách")
+    assert r["reset"] is True
+    assert match_persona_command("về tính cách mặc định")["reset"] is True
+
+
+def test_persona_command_none_for_other():
+    for t in ("mở youtube", "thời tiết hôm nay", "", None):
+        assert match_persona_command(t) is None
 
 
 if __name__ == "__main__":
