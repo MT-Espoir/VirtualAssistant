@@ -4,11 +4,6 @@ Trợ lý chạy trên Windows: nghe/gõ yêu cầu tiếng Việt, một **LLM 
 cụ** (tool-calling) để thực thi — mở/đóng ứng dụng, chỉnh âm lượng & độ sáng, tìm
 kiếm web/YouTube, tắt/khởi động lại máy — rồi trả lời bằng giọng nói.
 
-> 🎯 **Định hướng:** dự án portfolio thể hiện kiến trúc **agent tool-calling** hiện
-> đại (tách lớp sạch, có kiểm thử). Xem [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-> Một số thành phần (module `personality`) là thử nghiệm, chưa nối vào luồng chính —
-> xem [Hạn chế đã biết](#hạn-chế-đã-biết).
-
 ## Tính năng
 
 - 🎙️ **Nhập bằng giọng nói** (STT: Google / Whisper) hoặc **văn bản** (`agent_cli.py`).
@@ -103,9 +98,7 @@ Logic hiểu lệnh nằm ở [`core/agent.py`](src/core/agent.py) — vòng l�
 **không phụ thuộc micro/loa và không phụ thuộc nhà cung cấp LLM**. `main.py` chỉ là
 lớp I/O mỏng. Các hành động hệ thống gói sau [`core/actions_facade.py`](src/core/actions_facade.py)
 và phơi ra dưới dạng tool trong [`core/tools.py`](src/core/tools.py). Nhờ dependency
-injection, có thể kiểm thử toàn bộ vòng lặp bằng LLM giả. Chi tiết & sơ đồ:
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-
+injection, có thể kiểm thử toàn bộ vòng lặp bằng LLM giả.
 ## Testing
 
 ```bash
