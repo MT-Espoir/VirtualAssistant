@@ -117,7 +117,8 @@ class ToolRegistry:
 
 # Bộ tool mặc định (điều khiển máy tính) dựng từ AssistantActions
 def build_default_registry(actions, scheduler=None, browser=None, screen=None,
-                           profile=None, tasks=None, routines=None, mcp=None) -> ToolRegistry:
+                           profile=None, tasks=None, routines=None, contacts=None,
+                           mcp=None) -> ToolRegistry:
     """Tạo registry điều khiển máy tính từ một facade actions (hoặc mock).
 
     Nếu truyền `scheduler` (ReminderScheduler) thì đăng ký thêm bộ tool lập lịch.
@@ -347,6 +348,9 @@ def build_default_registry(actions, scheduler=None, browser=None, screen=None,
     if routines is not None:
         _register_routine_tools(reg, routines)
 
+    if contacts is not None:
+        _register_contact_tools(reg, contacts)
+
     if mcp is not None:
         _register_mcp_tools(reg, mcp)
 
@@ -533,6 +537,96 @@ def _register_task_tools(reg: ToolRegistry, tasks):
         handler=remove_task,
         destructive=True,
         confirm_message=lambda keyword=None: f"xoá việc '{keyword}'",
+    ))
+
+
+def _register_contact_tools(reg: ToolRegistry, contacts):
+    """Tool SỔ DANH BẠ cục bộ: lưu/tra địa chỉ email theo tên để khỏi phải đọc cả địa chỉ.
+    Là nguồn PHỤ — trợ lý tra Google Contacts (gws_contacts_search) trước, không thấy mới
+    dùng/lưu sổ này. remove_contact là destructive -> Agent tự hỏi xác nhận."""
+
+    def save_contact(name, email):
+        c = contacts.add(name, email)
+        if c is None:
+            return "Cần cả TÊN và địa chỉ EMAIL để lưu liên hệ."
+        return f'Đã lưu liên hệ: {c["name"]} — {c["email"]}.'
+
+    def find_contact(name):
+        matches = contacts.find(name)
+        if not matches:
+            return f"Không thấy liên hệ nào tên '{name}' trong sổ danh bạ."
+        lines = "\n".join(f'- {c["name"]}: {c["email"]}' for c in matches)
+        return f"Tìm thấy {len(matches)} liên hệ:\n{lines}"
+
+    def list_contacts():
+        items = contacts.list()
+        if not items:
+            return "Sổ danh bạ đang trống."
+        lines = "\n".join(f'- {c["name"]}: {c["email"]}' for c in items)
+        return f"Có {len(items)} liên hệ:\n{lines}"
+
+    def remove_contact(name):
+        matches = contacts.find(name)
+        if not matches:
+            return f"Không thấy liên hệ nào tên '{name}'."
+        if len(matches) > 1:
+            names = ", ".join(c["name"] for c in matches)
+            return f"Có {len(matches)} liên hệ khớp: {names}. Bạn muốn xoá ai?"
+        removed = contacts.remove(matches[0]["id"])
+        return f'Đã xoá liên hệ: {removed["name"]}.'
+
+    reg.register(Tool(
+        name="save_contact",
+        description="Lưu một liên hệ (tên -> email) vào sổ danh bạ để lần sau chỉ cần gọi "
+                    "tên. Dùng khi người dùng nói 'lưu liên hệ...', 'số/mail của X là...', "
+                    "'ghi nhớ email của...'.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Tên hoặc biệt danh, vd 'sếp', 'mẹ'"},
+                "email": {"type": "string", "description": "Địa chỉ email của liên hệ"},
+            },
+            "required": ["name", "email"],
+        },
+        handler=save_contact,
+    ))
+
+    reg.register(Tool(
+        name="find_contact",
+        description="Tra địa chỉ email của một liên hệ đã lưu trong sổ danh bạ CỤC BỘ theo "
+                    "tên. Dùng để lấy email trước khi soạn/gửi mail khi người dùng chỉ nói tên.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Tên liên hệ cần tra, vd 'sếp'"},
+            },
+            "required": ["name"],
+        },
+        handler=find_contact,
+    ))
+
+    reg.register(Tool(
+        name="list_contacts",
+        description="Liệt kê toàn bộ liên hệ trong sổ danh bạ cục bộ. Dùng khi người dùng "
+                    "hỏi 'danh bạ có ai', 'tôi lưu những liên hệ nào'.",
+        input_schema={"type": "object", "properties": {}},
+        handler=list_contacts,
+    ))
+
+    reg.register(Tool(
+        name="remove_contact",
+        description="Xoá một liên hệ khỏi sổ danh bạ, khớp theo tên. Trợ lý sẽ tự hỏi xác "
+                    "nhận trước khi xoá.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Tên liên hệ cần xoá"},
+            },
+            "required": ["name"],
+        },
+        handler=remove_contact,
+        destructive=True,
+        confirm_message=lambda name=None: f"xoá liên hệ '{name}'",
     ))
 
 

@@ -17,6 +17,7 @@ from components.user.user_profile import UserProfile
 from agent.persona import PersonaState, MoodState
 from services.tasks import TaskStore
 from services.routines import RoutineStore
+from services.contacts import ContactStore
 from services.proactive import ProactiveMonitor
 from services.mcp_bridge import MCPClient
 from llm.client import build_default_llm_client
@@ -511,6 +512,7 @@ def main():
     profile = UserProfile(config.USER_PROFILE_PATH or None)
     tasks = TaskStore(config.TASKS_PATH or None)
     routines = RoutineStore(config.ROUTINES_PATH or None)
+    contacts = ContactStore(config.CONTACTS_PATH or None)
 
     persona = mood = None
     if config.PERSONA_ENABLED:
@@ -522,7 +524,8 @@ def main():
                   registry=build_default_registry(AssistantActions(), scheduler=scheduler,
                                                    browser=browser, screen=screen,
                                                    profile=profile, tasks=tasks,
-                                                   routines=routines, mcp=mcp),
+                                                   routines=routines, contacts=contacts,
+                                                   mcp=mcp),
                   max_history_turns=config.MAX_HISTORY_TURNS,
                   memory_path=config.MEMORY_PATH or None, router=router, profile=profile,
                   auto_extract=config.LTM_AUTO_EXTRACT,

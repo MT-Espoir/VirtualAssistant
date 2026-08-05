@@ -171,6 +171,8 @@ class Config:
     # Rỗng = dùng file mặc định trong src/services/ (đã gitignore, dữ liệu cá nhân).
     TASKS_PATH = _get("TASKS_PATH", "")
     ROUTINES_PATH = _get("ROUTINES_PATH", "")
+    # Sổ danh bạ cục bộ (tên -> email) để soạn/gửi mail theo tên. Rỗng = file mặc định.
+    CONTACTS_PATH = _get("CONTACTS_PATH", "")
 
     # --- Hồ sơ NGƯỜI DÙNG bền vững (tên, xưng hô, địa điểm mặc định...) ---
     # Rỗng = dùng vị trí mặc định components/user/user_data/profile.json. Đây là DỮ LIỆU

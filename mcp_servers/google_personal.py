@@ -1,7 +1,10 @@
-"""MCP server CÁ NHÂN cho Google Calendar + Gmail — CHỈ ĐỌC (read-only), chạy LOCAL.
+"""MCP server CÁ NHÂN cho Google Calendar + Gmail, chạy LOCAL.
+Calendar CHỈ ĐỌC; Gmail ĐỌC + SOẠN NHÁP + GỬI (không xoá thư).
 
 Ưu tiên BẢO MẬT:
-- Scope TỐI THIỂU + READ-ONLY (không tạo/gửi/xoá gì) — xem SCOPES.
+- Scope TỐI THIỂU: calendar.readonly + gmail.readonly + gmail.compose (soạn nháp/gửi) — xem SCOPES.
+- GỬI mail đi qua CỔNG XÁC NHẬN của trợ lý (tên tool chứa 'send' -> destructive).
+- LƯU NHÁP (gws_gmail_draft) KHÔNG gửi ra ngoài -> không cần xác nhận (xem lại/sửa trên Gmail).
 - OAuth client của CHÍNH bạn (credentials.json bạn tự tạo trong Google Cloud).
 - Token lưu LOCAL cạnh file này (token.json) — ĐÃ gitignore, không rời máy.
 - Server chạy stdio, không mở cổng mạng; dữ liệu chỉ đi giữa máy bạn và Google API.
@@ -19,7 +22,9 @@ Cần: pip install -U mcp google-api-python-client google-auth-oauthlib
 import base64
 import os
 import re
+import unicodedata
 from datetime import datetime, timedelta, timezone
+from email.message import EmailMessage
 
 from fastmcp import FastMCP
 
@@ -28,10 +33,14 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 
-# CHỈ ĐỌC — muốn cho phép GHI (tạo sự kiện/gửi mail) sau này thì mới đổi scope + thêm tool.
+# Calendar CHỈ ĐỌC; Gmail đọc + soạn/gửi. gmail.compose = tạo nháp + GỬI (không đọc/xoá
+# thư đến — việc đọc do gmail.readonly lo). Đổi SCOPES thì PHẢI cấp lại OAuth:
+# `python google_personal.py --setup` (tự xoá token cũ).
 SCOPES = [
     "https://www.googleapis.com/auth/calendar.readonly",
     "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/gmail.compose",
+    "https://www.googleapis.com/auth/contacts.readonly",
 ]
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -90,6 +99,16 @@ def _calendar(user_email=None):
 
 def _gmail(user_email=None):
     return build("gmail", "v1", credentials=_creds(user_email), cache_discovery=False)
+
+
+def _people(user_email=None):
+    return build("people", "v1", credentials=_creds(user_email), cache_discovery=False)
+
+
+def _strip_accents(s):
+    """Bỏ dấu tiếng Việt để khớp tên không phân biệt dấu (server độc lập, không import src)."""
+    return "".join(c for c in unicodedata.normalize("NFD", s or "")
+                   if unicodedata.category(c) != "Mn").lower()
 
 
 def _fmt_event(e):
@@ -176,6 +195,70 @@ def gws_gmail_read(message_id: str, user_email: str = "") -> str:
     return f"Từ: {frm}\nTiêu đề: {subj}\n\n{body[:4000]}"
 
 
+# --------------------------- Gmail (soạn/gửi) --------------------------- #
+
+def _build_raw(to, subject, body):
+    """Dựng email văn bản thuần -> chuỗi base64url cho Gmail API. Trả (raw, tiêu_đề_đã_chuẩn)."""
+    mail = EmailMessage()
+    mail["To"] = to
+    mail["Subject"] = subject or "(không tiêu đề)"
+    mail.set_content(body or "")
+    return base64.urlsafe_b64encode(mail.as_bytes()).decode(), mail["Subject"]
+
+
+@mcp.tool()
+def gws_gmail_send(to: str, subject: str, body: str, user_email: str = "") -> str:
+    """GỬI một email (đi ra ngoài NGAY). `to` = người nhận (nhiều người ngăn bằng dấu phẩy),
+    `subject` = tiêu đề, `body` = nội dung văn bản thuần. user_email: tài khoản gửi (rỗng =
+    mặc định). Trợ lý sẽ đọc lại nội dung và HỎI XÁC NHẬN trước khi gọi công cụ này. Nếu người
+    dùng muốn xem/sửa lại trước khi gửi thì dùng gws_gmail_draft (lưu nháp) thay vì gửi ngay."""
+    to = (to or "").strip()
+    if not to:
+        return "Chưa có người nhận — cần địa chỉ email của người nhận."
+    raw, subj = _build_raw(to, subject, body)
+    sent = _gmail(user_email or None).users().messages().send(
+        userId="me", body={"raw": raw}).execute()
+    return f"Đã gửi email tới {to} (tiêu đề: {subj}, mã: {sent.get('id', '?')})."
+
+
+@mcp.tool()
+def gws_gmail_draft(to: str, subject: str, body: str, user_email: str = "") -> str:
+    """SOẠN & LƯU NHÁP một email vào mục Nháp của Gmail — KHÔNG gửi đi. Dùng khi người dùng
+    muốn tự xem lại/chỉnh sửa rồi mới gửi bằng tay trên Gmail. Tham số như gws_gmail_send;
+    `to` có thể để trống nếu chưa rõ người nhận. user_email: tài khoản (rỗng = mặc định)."""
+    raw, subj = _build_raw((to or "").strip(), subject, body)
+    draft = _gmail(user_email or None).users().drafts().create(
+        userId="me", body={"message": {"raw": raw}}).execute()
+    dest = f" cho {to}" if to else ""
+    return (f"Đã lưu nháp email{dest} (tiêu đề: {subj}, mã nháp: {draft.get('id', '?')}). "
+            f"Bạn mở mục Nháp trong Gmail để xem lại, chỉnh sửa rồi gửi.")
+
+
+# --------------------------- Contacts (read-only) --------------------------- #
+
+@mcp.tool()
+def gws_contacts_search(query: str, user_email: str = "") -> str:
+    """Tìm LIÊN HỆ trong Google Contacts theo tên (trả tên + (các) email). Dùng để lấy địa
+    chỉ email khi người dùng chỉ nói TÊN người nhận. `query` = tên/chuỗi cần tìm (rỗng = liệt
+    kê tất cả). user_email: tài khoản (rỗng = mặc định)."""
+    q = _strip_accents(query).strip()
+    conns = _people(user_email or None).people().connections().list(
+        resourceName="people/me", personFields="names,emailAddresses",
+        pageSize=1000, sortOrder="FIRST_NAME_ASCENDING").execute().get("connections", [])
+    lines = []
+    for p in conns:
+        names = p.get("names", [])
+        name = names[0].get("displayName", "") if names else ""
+        emails = [e.get("value", "") for e in p.get("emailAddresses", []) if e.get("value")]
+        if not emails:
+            continue
+        if not q or q in _strip_accents(name):
+            lines.append(f"- {name or '(không tên)'}: {', '.join(emails)}")
+    if not lines:
+        return f"Không thấy liên hệ nào khớp '{query}' trong Google Contacts."
+    return f"Tìm thấy {len(lines)} liên hệ:\n" + "\n".join(lines[:15])
+
+
 if __name__ == "__main__":
     import sys
     # Cấp OAuth cho MỘT tài khoản (mở browser) — làm TRƯỚC khi chạy server:
@@ -183,6 +266,11 @@ if __name__ == "__main__":
     #   python google_personal.py --setup work@gmail.com   # tài khoản khác (token_work_gmail_com.json)
     if len(sys.argv) >= 2 and sys.argv[1] == "--setup":
         acct = sys.argv[2] if len(sys.argv) > 2 else None
+        # Xoá token cũ để LUÔN đồng ý lại — cần khi SCOPES đổi (vd vừa thêm gmail.send),
+        # nếu không token cũ vẫn "valid" nhưng thiếu quyền -> API 403 khó hiểu.
+        old = _token_path(acct)
+        if os.path.exists(old):
+            os.remove(old)
         _creds(user_email=acct, allow_interactive=True)
         print(f"Đã cấp OAuth cho '{acct or 'mặc định'}'. Token lưu: {_token_path(acct)}")
     else:

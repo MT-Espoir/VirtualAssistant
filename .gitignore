@@ -22,6 +22,7 @@ Thumbs.db
 src/services/reminders.json
 src/services/tasks.json
 src/services/routines.json
+src/services/contacts.json
 
 # Hồ sơ người dùng (dữ liệu cá nhân: tên, địa điểm...) — local, không commit
 src/components/user/user_data/

@@ -34,9 +34,10 @@ CASE_TOOLS = {
     "task": ["add_task", "list_tasks", "complete_task", "remove_task",
              "create_routine", "list_routines", "delete_routine"],
     "profile": ["remember_about_user"],
-    # pim (lịch/email qua MCP): thu hẹp theo TIỀN TỐ tên tool (tool MCP động, không liệt kê
-    # cứng được) -> xem Router.mcp_prefix. Rỗng = dùng toàn bộ tool.
-    "pim": [],
+    # pim (lịch/email/danh bạ qua MCP): thu hẹp theo TIỀN TỐ tên tool MCP (tool động, không
+    # liệt kê cứng được) -> xem Router.mcp_prefix. NGOÀI RA cho phép các tool danh bạ CỤC BỘ
+    # dưới đây (không phải MCP) để soạn/gửi mail theo tên mà không cần đọc cả địa chỉ.
+    "pim": ["save_contact", "find_contact", "list_contacts", "remove_contact"],
     "general": None,
 }
 
@@ -78,8 +79,11 @@ class Router:
 
         specs = registry.specs()
         names = self.case_tools.get(case)
-        if case == "pim":                          # thu hẹp theo TIỀN TỐ tool MCP
-            narrowed = [s for s in specs if self.mcp_prefix and s["name"].startswith(self.mcp_prefix)]
+        if case == "pim":                          # tool MCP (theo tiền tố) + tool danh bạ cục bộ
+            extra = names or []
+            narrowed = [s for s in specs
+                        if (self.mcp_prefix and s["name"].startswith(self.mcp_prefix))
+                        or s["name"] in extra]
         elif names:
             narrowed = [s for s in specs if s["name"] in names]
         else:
