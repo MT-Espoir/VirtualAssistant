@@ -79,6 +79,21 @@ def test_summary_unknown():
     assert "Không hiểu" in out
 
 
+def test_system_info_tool_calls_correct_path():
+    """Hồi quy bug: tool gọi actions.system_info (KHÔNG phải actions.system.system_info).
+    Dùng stub CHỈ có system_info nên nếu gọi sai đường sẽ ném AttributeError."""
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+    from agent.tools import build_default_registry
+
+    class ActionsStub:
+        def system_info(self, what="all"):
+            return f"info:{what}"
+
+    reg = build_default_registry(ActionsStub())
+    assert reg.run("system_info", {"what": "cpu"}) == "info:cpu"
+
+
 if __name__ == "__main__":
     if pytest is not None:
         raise SystemExit(pytest.main([__file__, "-v"]))

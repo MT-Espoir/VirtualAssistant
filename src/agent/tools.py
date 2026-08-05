@@ -224,7 +224,7 @@ def build_default_registry(actions, scheduler=None, browser=None, screen=None,
                          "description": "Mục cần xem (mặc định all)"},
             },
         },
-        handler=lambda what="all": actions.system.system_info(what),
+        handler=lambda what="all": actions.system_info(what),
     ))
 
     reg.register(Tool(
@@ -783,17 +783,19 @@ def _register_browser_tools(reg: ToolRegistry, browser):
             "Điều khiển trình phát media (video/nhạc) trên tab Chrome đang mở, ví dụ "
             "YouTube. Dùng khi người dùng nói 'tạm dừng/phát tiếp nhạc', 'tua', 'chỉnh "
             "âm lượng video', 'bài kế/trước'. 'action': play, pause, toggle (đảo phát/dừng), "
-            "next, prev (trong playlist), set_volume (cần 'value' 0-100), seek (cần 'value' "
+            "next, prev (trong playlist), set_volume (cần 'value' 0-100), adjust_volume (cần "
+            "'value' = mức thay đổi tương đối, vd +10/-10 để to/nhỏ hơn), seek (cần 'value' "
             "= số giây tua tới; số âm để tua lùi)."),
         input_schema={
             "type": "object",
             "properties": {
                 "action": {"type": "string",
                            "enum": ["play", "pause", "toggle", "next", "prev",
-                                    "set_volume", "seek"],
+                                    "set_volume", "adjust_volume", "seek"],
                            "description": "Hành động điều khiển media"},
                 "value": {"type": "number",
-                          "description": "Tham số cho set_volume (0-100) hoặc seek (giây)"},
+                          "description": "set_volume (0-100), adjust_volume (±, vd 10/-10), "
+                                         "hoặc seek (giây)"},
             },
             "required": ["action"],
         },

@@ -190,14 +190,17 @@ def _dispatch(agent, text, bus):
     routine + lịch 'do' tái dùng ĐÚNG pipeline này.
     """
     bus.emit(state="thinking", text="")
-    ui_cmd = match_avatar_command(text) if config.FAST_COMMANDS else None
-    fast = match_fast_command(text) if (config.FAST_COMMANDS and ui_cmd is None) else None
+    # Lệnh TOOL tất định (âm lượng/media/cuộn/chụp) ưu tiên TRƯỚC lệnh giao diện avatar:
+    # cụm cỡ chữ chung ("to lên/nhỏ hơn") vừa là chỉnh avatar vừa xuất hiện trong "âm lượng
+    # video to lên" -> phải để fast_command (đòi từ khoá đặc thù 'âm lượng') giành trước.
+    fast = match_fast_command(text) if config.FAST_COMMANDS else None
+    ui_cmd = match_avatar_command(text) if (config.FAST_COMMANDS and fast is None) else None
+    if fast is not None and agent.registry.has(fast[0]):
+        return _run_fast(agent, fast), "happy"
     if ui_cmd is not None:
         bus.emit_ui(**ui_cmd)
         print(f"⚡ (giao diện, không qua LLM) {ui_cmd}")
         return _ui_ack(ui_cmd), "happy"
-    if fast is not None and agent.registry.has(fast[0]):
-        return _run_fast(agent, fast), "happy"
     try:
         with _AGENT_LOCK:                       # chống 2 agent.run song song
             reply = agent.run(text)

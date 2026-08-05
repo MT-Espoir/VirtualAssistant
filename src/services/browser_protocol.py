@@ -16,11 +16,12 @@ MEDIA_ACTIONS = {
     "next": "NEXT",
     "prev": "PREV",
     "set_volume": "SET_VOLUME",
+    "adjust_volume": "ADJUST_VOLUME",
     "seek": "SEEK",
 }
 
 # Các hành động cần tham số 'value'.
-_NEEDS_VALUE = {"set_volume", "seek"}
+_NEEDS_VALUE = {"set_volume", "adjust_volume", "seek"}
 
 
 def normalize_media_action(action):
@@ -52,6 +53,8 @@ def build_media_command(action, value=None):
             raise ValueError(f"'value' phải là số, nhận: {value!r}.")
         if key == "set_volume":
             num = max(0.0, min(100.0, num))
+        elif key == "adjust_volume":
+            num = max(-100.0, min(100.0, num))
         cmd["value"] = num
 
     return cmd
@@ -81,6 +84,8 @@ def summarize_media_response(resp, action, value=None):
             "prev": "Đã quay về bài/video trước",
             "set_volume": f"Đã đặt âm lượng trình phát {int(value)}%" if value is not None
                           else "Đã đặt âm lượng trình phát",
+            "adjust_volume": ("Đã tăng" if (value or 0) >= 0 else "Đã giảm")
+                             + " âm lượng trình phát",
             "seek": f"Đã tua {'+' if (value or 0) >= 0 else ''}{value} giây" if value is not None
                     else "Đã tua",
         }

@@ -1,6 +1,7 @@
 import pyttsx3
 import threading
 import os
+import re
 from gtts import gTTS
 import tempfile
 import pygame
@@ -10,6 +11,52 @@ import queue
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def _hard_split(s, max_len):
+    """Cắt một câu quá dài thành các mẩu <= max_len theo ranh giới TỪ. Thuần."""
+    out, cur = [], ""
+    for word in s.split():
+        if cur and len(cur) + 1 + len(word) > max_len:
+            out.append(cur)
+            cur = word
+        else:
+            cur = f"{cur} {word}".strip()
+    if cur:
+        out.append(cur)
+    return out
+
+
+def split_text_for_tts(text, max_len=200):
+    """Chia text dài thành các đoạn <= max_len ở ranh giới CÂU (hoặc từ nếu câu quá dài).
+
+    gTTS hay lỗi '200 (OK) Probable cause: Unknown' khi text quá dài (nhiều request nối
+    tiếp bị chặn); chia nhỏ + phát dần vừa tránh lỗi, vừa cho phép phát được phần đầu dù
+    một đoạn sau có hỏng, vừa giúp barge-in phản hồi nhanh. Hàm THUẦN, test được.
+    """
+    text = (text or "").strip()
+    if not text:
+        return []
+    pieces = re.split(r"(?<=[.!?…])\s+|\n+", text)
+    chunks, cur = [], ""
+    for p in pieces:
+        p = p.strip()
+        if not p:
+            continue
+        if len(p) > max_len:
+            if cur:
+                chunks.append(cur)
+                cur = ""
+            chunks.extend(_hard_split(p, max_len))
+            continue
+        if cur and len(cur) + 1 + len(p) > max_len:
+            chunks.append(cur)
+            cur = p
+        else:
+            cur = f"{cur} {p}".strip()
+    if cur:
+        chunks.append(cur)
+    return chunks
 
 class SpeechSynthesizer:
     """
@@ -42,6 +89,9 @@ class SpeechSynthesizer:
         self.voice_queue = queue.Queue()
         self.is_speaking = False
         self.stop_requested = False
+        # Token thế hệ phát: stop() tăng lên -> đoạn (chunk) đang phát tự huỷ, không phát
+        # nốt các đoạn còn lại (giữ barge-in hoạt động khi câu dài bị chia nhiều đoạn).
+        self._speak_gen = 0
 
         # Initialize the appropriate TTS engine
         if self.engine_type == "pyttsx3":
@@ -131,27 +181,49 @@ class SpeechSynthesizer:
             return False
 
     def _speak_with_gtts(self, text):
-        try:
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as temp_file:
-                temp_filename = temp_file.name
+        """Phát text (có thể DÀI) qua gTTS: chia đoạn ở ranh giới câu rồi phát tuần tự.
+        Mỗi đoạn tự retry 1 lần; một đoạn hỏng KHÔNG chặn các đoạn còn lại. Dừng ngay nếu
+        stop() được gọi giữa chừng (barge-in) nhờ đối chiếu token thế hệ phát."""
+        gen = self._speak_gen
+        for chunk in split_text_for_tts(text):
+            if self._speak_gen != gen:        # đã bị stop() -> huỷ phần còn lại
+                break
+            self._gtts_synth_play(chunk, gen)
 
-            tts = gTTS(text=text, lang=self.language, slow=False)
-            tts.save(temp_filename)
-
-            needs_processing = self.robot or self.speed != 1.0
-            if not (needs_processing and self._play_processed(temp_filename)):
-                pygame.mixer.music.load(temp_filename)
-                pygame.mixer.music.play()
-                while pygame.mixer.music.get_busy():
-                    time.sleep(0.1)
-
+    def _gtts_synth_play(self, text, gen):
+        """Tổng hợp + phát MỘT đoạn ngắn. Trả True nếu phát xong, False nếu lỗi cả 2 lần."""
+        for attempt in (1, 2):
+            temp_filename = None
             try:
-                os.unlink(temp_filename)
-            except OSError:
-                pass
-                
-        except Exception as e:
-            logger.error("Lỗi gTTS (kiểm tra mạng): %s", e)
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as temp_file:
+                    temp_filename = temp_file.name
+
+                tts = gTTS(text=text, lang=self.language, slow=False)
+                tts.save(temp_filename)
+
+                needs_processing = self.robot or self.speed != 1.0
+                if not (needs_processing and self._play_processed(temp_filename)):
+                    pygame.mixer.music.load(temp_filename)
+                    pygame.mixer.music.play()
+                    while pygame.mixer.music.get_busy():
+                        if self._speak_gen != gen:      # barge-in giữa lúc phát đoạn này
+                            pygame.mixer.music.stop()
+                            break
+                        time.sleep(0.1)
+                return True
+            except Exception as e:
+                logger.warning("gTTS lỗi một đoạn (thử %d/2): %s", attempt, e)
+                if self._speak_gen != gen:
+                    return False
+                time.sleep(0.4)
+            finally:
+                if temp_filename:
+                    try:
+                        os.unlink(temp_filename)
+                    except OSError:
+                        pass
+        logger.error("Lỗi gTTS (kiểm tra mạng) — bỏ qua một đoạn.")
+        return False
     
     def speak(self, text):
         """
@@ -190,7 +262,8 @@ class SpeechSynthesizer:
     def stop(self):
         """Stop ongoing speech and clear the queue"""
         self.stop_requested = True
-        
+        self._speak_gen += 1        # huỷ mọi đoạn đang/sắp phát của lượt nói hiện tại
+
         # Clear the queue
         while not self.voice_queue.empty():
             try:

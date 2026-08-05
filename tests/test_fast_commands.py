@@ -56,9 +56,21 @@ def test_volume_video_routes_to_browser():
         ("browser_media_control", {"action": "set_volume", "value": 50})
 
 
-def test_volume_video_without_number_defers_to_llm():
-    # media không kèm số -> None (để LLM xử tăng/giảm tương đối phức tạp)
-    assert match_fast_command("tăng âm lượng video") is None
+def test_volume_video_relative_up_down():
+    # âm lượng video tăng/giảm (không số) -> adjust_volume ±10 trên trình phát Chrome
+    assert match_fast_command("tăng âm lượng video") == \
+        ("browser_media_control", {"action": "adjust_volume", "value": 10})
+    assert match_fast_command("âm lượng video to lên") == \
+        ("browser_media_control", {"action": "adjust_volume", "value": 10})
+    assert match_fast_command("giảm âm lượng video") == \
+        ("browser_media_control", {"action": "adjust_volume", "value": -10})
+
+
+def test_volume_video_vs_avatar_scale():
+    # "âm lượng video to lên" KHÔNG được rơi thành lệnh phóng to avatar
+    assert match_avatar_command("âm lượng video to lên") is not None  # chứa 'to len'
+    # nhưng fast_command (âm lượng) phải giành trước -> đây là lý do app.py ưu tiên fast
+    assert match_fast_command("âm lượng video to lên")[0] == "browser_media_control"
 
 
 def test_non_volume_sentence_not_matched():

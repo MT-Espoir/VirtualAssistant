@@ -30,24 +30,34 @@ _RULES = [
 ]
 
 
+_VOL_UP = ("tang", "len", "to hon", "cao hon", "to len", "to ra", "lon hon")
+_VOL_DOWN = ("giam", "xuong", "nho hon", "nho di", "bot", "thap hon", "nho lai")
+
+
 def _match_volume(text):
     """Lệnh chỉnh âm lượng -> (tool, args). Có số -> mức tuyệt đối; không -> ±10.
 
     Chạy thẳng tool (không qua LLM) để đảm bảo đổi mọi lần — model 3B hay ngừng gọi
-    tool sau lần đầu. Có từ 'video/youtube/nhạc' -> âm lượng trình phát (Chrome).
+    tool sau lần đầu. Có từ 'video/youtube/nhạc' -> âm lượng TRÌNH PHÁT (Chrome): số ->
+    đặt mức, tăng/giảm -> adjust_volume ±10 (extension tự đọc mức hiện tại rồi cộng/trừ).
     """
     t = _norm(text)
     if "am luong" not in t and "volume" not in t:
         return None
     num = re.search(r"\d+", t)
     if any(w in t for w in ("video", "youtube", "clip", "nhac", "phim")):
-        return ("browser_media_control", {"action": "set_volume", "value": int(num.group())}) \
-            if num else None
+        if num:
+            return "browser_media_control", {"action": "set_volume", "value": int(num.group())}
+        if any(w in t for w in _VOL_UP):
+            return "browser_media_control", {"action": "adjust_volume", "value": 10}
+        if any(w in t for w in _VOL_DOWN):
+            return "browser_media_control", {"action": "adjust_volume", "value": -10}
+        return None
     if num:
         return "set_volume", {"level": int(num.group())}
-    if any(w in t for w in ("tang", "len", "to hon", "cao hon", "to len")):
+    if any(w in t for w in _VOL_UP):
         return "set_volume", {"change": 10}
-    if any(w in t for w in ("giam", "xuong", "nho hon", "nho di", "bot", "thap hon")):
+    if any(w in t for w in _VOL_DOWN):
         return "set_volume", {"change": -10}
     return None
 
