@@ -10,7 +10,7 @@ except ImportError:
 from llm.client import AssistantTurn, ToolCall
 from agent.tools import build_default_registry
 from evals.harness import (
-    RecordingRegistry, RecordingRouter, score_case, run_case, summarize)
+    RecordingRegistry, RecordingRouter, score_case, run_case, summarize, CountingLLM)
 
 
 class _FakeLLM:
@@ -130,7 +130,120 @@ def test_run_case_records_router_case():
     assert r["got_case"] == "general" and r["case_ok"] is True and r["tool_ok"] is True
 
 
+# --------------------------- CountingLLM (đo chi phí) --------------------------- #
+
+def test_counting_llm_counts_and_passes_through():
+    inner = _FakeLLM([AssistantTurn(text="a"), AssistantTurn(text="b")])
+    c = CountingLLM(inner)
+    assert c.generate(system="s", messages=[], tools=[]).text == "a"
+    assert c.generate(system="s", messages=[], tools=[]).text == "b"
+    assert c.calls == 2 and c.seconds >= 0.0
+
+
+def test_counting_llm_reset():
+    c = CountingLLM(_FakeLLM([AssistantTurn(text="a")]))
+    c.generate(system="s", messages=[], tools=[])
+    c.reset()
+    assert c.calls == 0 and c.seconds == 0.0
+
+
+def test_counting_llm_counts_even_on_error():
+    class _Boom:
+        def generate(self, **kw):
+            raise RuntimeError("hỏng")
+
+    c = CountingLLM(_Boom())
+    try:
+        c.generate(system="s", messages=[], tools=[])
+    except RuntimeError:
+        pass
+    assert c.calls == 1          # lượt lỗi vẫn tốn quota -> phải đếm
+
+
+def test_run_case_reports_llm_calls():
+    # 1 tool -> agent gọi LLM 2 lần (decide + respond); không router.
+    llm = _FakeLLM([
+        AssistantTurn(tool_calls=[ToolCall("t1", "open_app", {"app_name": "chrome"})]),
+        AssistantTurn(text="Đã mở."),
+    ])
+    r = run_case(llm, build_default_registry(MagicMock()), router=None,
+                 case={"id": "x", "text": "mở chrome", "expect": ["open_app"]})
+    assert r["calls"] == 2 and r["seconds"] is not None
+
+
+def test_run_case_shared_counter_includes_router_classify():
+    # Counter dùng CHUNG cho router + agent -> đếm đủ 3 lượt (classify + decide + respond).
+    shared = CountingLLM(_FakeLLM([
+        AssistantTurn(text="system"),                                    # classify
+        AssistantTurn(tool_calls=[ToolCall("t1", "open_app", {"app_name": "chrome"})]),
+        AssistantTurn(text="Đã mở."),
+    ]))
+
+    class _RouterUsingSharedLLM:
+        def classify(self, text):
+            shared.generate(system="r", messages=[], tools=[])
+            return "system"
+        def select_for_case(self, case, registry):
+            return "sys", registry.specs()
+
+    r = run_case(shared, build_default_registry(MagicMock()),
+                 router=_RouterUsingSharedLLM(),
+                 case={"id": "x", "text": "mở chrome", "expect": ["open_app"],
+                       "case": "system"})
+    assert r["calls"] == 3       # đây là con số Phase 1 nhắm giảm còn 2
+
+
+# --------------------------- tham số dòng lệnh của run_eval --------------------------- #
+
+def _parse_args():
+    """Import lười: run_eval kéo theo config/actions — thiếu deps thì bỏ qua test."""
+    try:
+        from evals.run_eval import _parse_args as fn
+    except Exception:                       # noqa: BLE001
+        if pytest is not None:
+            pytest.skip("Thiếu phụ thuộc để import run_eval")
+        return None
+    return fn
+
+
+def test_parse_args_splits_gap_and_prefixes():
+    fn = _parse_args()
+    assert fn(["--gap=9", "web", "sys"]) == (9.0, ["web", "sys"])
+
+
+def test_parse_args_defaults_to_no_gap():
+    fn = _parse_args()
+    assert fn([]) == (0.0, [])
+    assert fn(["web"]) == (0.0, ["web"])
+
+
+def test_parse_args_ignores_bad_gap():
+    """--gap hỏng KHÔNG được nuốt mất tiền tố id ca (dễ chạy nhầm toàn bộ)."""
+    fn = _parse_args()
+    assert fn(["--gap=abc", "web"]) == (0.0, ["web"])
+
+
+def test_parse_args_gap_never_negative():
+    fn = _parse_args()
+    assert fn(["--gap=-5"]) == (0.0, [])
+
+
 # --------------------------- summarize --------------------------- #
+
+def test_summarize_cost_metrics():
+    results = [
+        {"tool_ok": True, "case_ok": None, "calls": 3, "seconds": 3.0},
+        {"tool_ok": True, "case_ok": None, "calls": 1, "seconds": 1.0},
+    ]
+    s = summarize(results)
+    assert s["total_calls"] == 4 and s["avg_calls"] == 2.0 and s["avg_seconds"] == 2.0
+
+
+def test_summarize_without_cost_metrics_stays_none():
+    # Tương thích ngược: kết quả cũ không có 'calls' -> không vỡ, trả None.
+    s = summarize([{"tool_ok": True, "case_ok": None}])
+    assert s["avg_calls"] is None and s["avg_seconds"] is None
+
 
 def test_summarize_accuracy():
     results = [

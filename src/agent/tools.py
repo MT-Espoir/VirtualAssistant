@@ -81,6 +81,12 @@ class Tool:
     handler: Callable[..., str]  # nhận **kwargs theo schema, trả về chuỗi
     destructive: bool = False    # True = khó hoàn tác -> Agent hỏi xác nhận trước khi chạy
     confirm_message: Callable[..., str] = None  # (**args) -> cụm mô tả việc sẽ làm, để hỏi
+    # True = kết quả trả về ĐÃ là câu tiếng Việt hoàn chỉnh, đọc thẳng cho người dùng được.
+    # Agent dùng cờ này để BỎ lượt LLM soạn lời (tiết kiệm 1 call) — chỉ khi model gọi đúng
+    # MỘT tool này và không làm gì thêm. Đánh đổi: câu trả lời không mang giọng persona,
+    # nên chỉ bật cho tool mà output vốn đã tự nhiên. KHÔNG bật cho tool cần diễn giải
+    # (tìm web, đọc mail, tóm tắt trang).
+    speakable: bool = False
 
     def spec(self) -> dict:
         """Định nghĩa tool gửi cho LLM (định dạng Anthropic tool-use)."""
@@ -140,6 +146,7 @@ def build_default_registry(actions, scheduler=None, browser=None, screen=None,
             "required": ["app_name"],
         },
         handler=lambda app_name: actions.open_application(app_name),
+        speakable=True,      # "Đã mở Chrome."
     ))
 
     reg.register(Tool(
@@ -194,6 +201,7 @@ def build_default_registry(actions, scheduler=None, browser=None, screen=None,
             },
         },
         handler=lambda level=None, change=None: actions.control_volume(level=level, change=change),
+        speakable=True,      # câu xác nhận ngắn
     ))
 
     reg.register(Tool(
@@ -208,6 +216,7 @@ def build_default_registry(actions, scheduler=None, browser=None, screen=None,
             },
         },
         handler=lambda level=None, change=None: actions.control_brightness(level=level, change=change),
+        speakable=True,
     ))
 
     # (Đã gỡ tool 'shutdown'/'restart' — tắt/khởi động lại máy quá rủi ro khi STT
@@ -225,6 +234,7 @@ def build_default_registry(actions, scheduler=None, browser=None, screen=None,
             },
         },
         handler=lambda what="all": actions.system_info(what),
+        speakable=True,      # "RAM: đã dùng 9.8 GB/15.4 GB (64%)..."
     ))
 
     reg.register(Tool(
@@ -272,6 +282,7 @@ def build_default_registry(actions, scheduler=None, browser=None, screen=None,
         handler=lambda location=None: actions.get_weather(
             location or (profile.get_default_location() if profile else None)
             or config.WEATHER_DEFAULT_LOCATION),
+        speakable=True,      # đã gồm mô tả trời + khuyến nghị + ghi nguồn
     ))
 
     reg.register(Tool(
@@ -507,6 +518,7 @@ def _register_task_tools(reg: ToolRegistry, tasks):
             },
         },
         handler=list_tasks,
+        speakable=True,      # danh sách đã định dạng sẵn
     ))
 
     reg.register(Tool(
@@ -611,6 +623,7 @@ def _register_contact_tools(reg: ToolRegistry, contacts):
                     "hỏi 'danh bạ có ai', 'tôi lưu những liên hệ nào'.",
         input_schema={"type": "object", "properties": {}},
         handler=list_contacts,
+        speakable=True,
     ))
 
     reg.register(Tool(
@@ -945,6 +958,7 @@ def _register_schedule_tools(reg: ToolRegistry, scheduler):
         description="Liệt kê các lịch nhắc đang có.",
         input_schema={"type": "object", "properties": {}},
         handler=list_reminders,
+        speakable=True,
     ))
 
     reg.register(Tool(

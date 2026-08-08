@@ -45,6 +45,11 @@ def _get_float(name: str, default: float) -> float:
         return default
 
 
+# Provider đủ mạnh để tự chọn tool giữa TOÀN BỘ tool mà không cần router thu hẹp.
+# Đo được: gemini giữ 100% chọn đúng tool khi bỏ router. Model local KHÔNG thuộc nhóm này.
+STRONG_PROVIDERS = ("gemini", "claude")
+
+
 def _get_bool(name: str, default: bool) -> bool:
     val = os.getenv(name)
     if val is None:
@@ -106,10 +111,20 @@ class Config:
     # Fast-path: lệnh trực tiếp (cuộn, chụp màn hình) chạy thẳng tool, không qua LLM
     # -> phản hồi tức thì, đỡ độ trễ "suy nghĩ" của model local.
     FAST_COMMANDS = _get_bool("FAST_COMMANDS", True)
-    # Router: dùng 1 lượt LLM phân loại yêu cầu -> thu hẹp prompt+tool cho model chọn
-    # đúng hơn. Tắt (=false) nếu muốn nhanh hơn (đưa toàn bộ tool cho LLM như cũ) —
-    # KHÔNG khuyến khích: đã thử, model nhỏ chọn sai/không gọi tool khi thấy nhiều tool.
-    USE_ROUTER = _get_bool("USE_ROUTER", True)
+    # Router: 1 lượt LLM phân loại yêu cầu -> thu hẹp prompt+tool trước khi model chọn.
+    # ROUTER_MODE: "auto" (mặc định) | "on" (luôn bật) | "off" (luôn tắt).
+    #   auto = TẮT với provider mạnh, BẬT với model local. Căn cứ đo 2026-08-08 (29 ca,
+    #   gemini-3.1-flash-lite): tắt router vẫn 100% chọn đúng tool mà giảm 35% số call
+    #   (2.86 -> 1.86 call/lượt). Ngược lại qwen 7B từng bỏ router và HỎNG (không gọi
+    #   tool) -> model local luôn giữ router. Xem docs/latency_optimization_spec.md.
+    ROUTER_MODE = _get("ROUTER_MODE", "auto").strip().lower()
+    # Đọc THẲNG kết quả tool khi tool đó đã trả câu hoàn chỉnh (thời tiết, thông tin máy,
+    # "Đã mở Chrome") -> bớt 1 lượt LLM soạn lời.
+    # MẶC ĐỊNH TẮT vì 2 đánh đổi: (1) câu trả lời mất giọng persona (nghe khô hơn);
+    # (2) chỉ an toàn với model phát HẾT tool trong CÙNG một lượt (Gemini làm vậy) — model
+    # gọi tool TUẦN TỰ sẽ bị cắt mất bước sau, đúng lỗi đa bước từng phải gỡ lối tắt cũ.
+    # Bật khi bạn đã tự kiểm câu đa bước bằng mic và chấp nhận giọng khô.
+    SKIP_RESPOND_FOR_SPEAKABLE = _get_bool("SKIP_RESPOND_FOR_SPEAKABLE", False)
 
     # --- Avatar (cửa sổ khuôn mặt) ---
     AVATAR_SCALE = _get_float("AVATAR_SCALE", 0.7)     # kích thước (0.4–1.5), nhỏ hơn = gọn
@@ -212,6 +227,14 @@ class Config:
     # --- Logging ---
     LOG_LEVEL = _get("LOG_LEVEL", "INFO")
     LOG_FILE = _get("LOG_FILE", "")   # rỗng = chỉ log ra console
+
+    def use_router(self) -> bool:
+        """Lượt này có chạy router không. Tính lúc gọi vì 'auto' phụ thuộc LLM_PROVIDER."""
+        if self.ROUTER_MODE == "on":
+            return True
+        if self.ROUTER_MODE == "off":
+            return False
+        return (self.LLM_PROVIDER or "").strip().lower() not in STRONG_PROVIDERS
 
 
 # Instance dùng chung toàn dự án

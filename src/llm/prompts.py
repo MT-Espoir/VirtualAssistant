@@ -1,41 +1,37 @@
-"""
-Nạp system prompt theo case từ components/data/system_prompt.json (DRY: một nguồn).
+"""Truy cập system prompt (DRY: một nguồn duy nhất là llm/prompt_texts.py).
+
+Nội dung prompt trước đây nằm trong components/data/system_prompt.json; đã chuyển sang
+module Python để git diff đọc được từng dòng và ghi chú được ngay cạnh nội dung — xem
+`prompt_texts.py`. Lớp này giữ nguyên chữ ký `load()/base()` nên nơi gọi không đổi.
 
 Cấu trúc: {"base": ..., "router": ..., "cases": {tên_case: prompt_bổ_sung}}.
-Thiếu file -> fallback tối thiểu để app vẫn chạy.
 """
 
-import json
-import os
-
-from utils.logger import get_logger
-
-logger = get_logger(__name__)
-
-_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                     "components", "data", "system_prompt.json")
-
-_FALLBACK = {
-    "base": ("Bạn là trợ lý điều khiển máy tính bằng tiếng Việt. Với mọi yêu cầu hành "
-             "động, gọi ngay công cụ phù hợp. Trả lời ngắn gọn, CHỈ bằng tiếng Việt. "
-             "Kết thúc bằng '#emotion: neutral'."),
-    "router": "",
-    "cases": {},
-}
+from llm import prompt_texts
 
 
-def load(path=_FILE):
-    """Trả dict {base, router, cases}. Lỗi/thiếu file -> fallback."""
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return {"base": data.get("base", _FALLBACK["base"]),
-                "router": data.get("router", ""),
-                "cases": data.get("cases", {})}
-    except (OSError, ValueError) as e:
-        logger.warning("Không đọc được system_prompt.json (%s) — dùng prompt tối thiểu.", e)
-        return dict(_FALLBACK)
+def load():
+    """Trả dict {base, router, cases}. Trả BẢN SAO của `cases` để nơi gọi (vd Router giữ
+    `self.data`) không sửa nhầm hằng dùng chung."""
+    return {"base": prompt_texts.BASE,
+            "router": prompt_texts.ROUTER,
+            "cases": dict(prompt_texts.CASES)}
 
 
 def base():
-    return load()["base"]
+    return prompt_texts.BASE
+
+
+def merged():
+    """Prompt GỘP cho chế độ chạy KHÔNG router: base + mọi fragment case, có nhãn nhóm.
+
+    Không router thì không ai chọn fragment theo case nữa; nếu chỉ dùng base trần thì mất
+    sạch chỉ dẫn riêng (đọc nguyên văn kết quả tìm web, tra danh bạ trước khi soạn mail,
+    phân biệt nhắc-giờ vs tự-làm...). Gộp hết vào một prompt: dài hơn nhưng CỐ ĐỊNH nên
+    đổi lại được một round-trip LLM mỗi lượt.
+    """
+    parts = [prompt_texts.BASE, "", "## Hướng dẫn theo từng nhóm yêu cầu"]
+    for name, fragment in prompt_texts.CASES.items():
+        if fragment.strip():
+            parts.append(f"[{name}] {fragment}")
+    return "\n".join(parts)

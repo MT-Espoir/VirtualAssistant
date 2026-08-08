@@ -73,7 +73,8 @@ class Agent:
                  max_history_turns: int = 10, memory_path: str = None, router=None,
                  profile=None, auto_extract: bool = False, consolidate_every: int = 6,
                  extractor=None, persona=None, mood=None,
-                 auto_tune: bool = False, persona_tuner=None):
+                 auto_tune: bool = False, persona_tuner=None,
+                 skip_respond_for_speakable: bool = False):
         self.llm = llm
         self.registry = registry
         self.system = system
@@ -83,6 +84,8 @@ class Agent:
         self.persona = persona       # PersonaState: nhân cách (card) -> bơm vào prompt
         self.mood = mood             # MoodState: tâm trạng phiên -> bơm vào prompt + dẫn avatar
         self.pending = None          # hành động khó hoàn tác đang CHỜ người dùng xác nhận
+        # Bỏ lượt LLM soạn lời khi tool đã trả câu hoàn chỉnh (xem _speakable_shortcut).
+        self.skip_respond_for_speakable = skip_respond_for_speakable
         # Trí nhớ NGẮN HẠN: vài lượt gần đây (session-only nếu memory_path rỗng).
         self.stm = ShortTermMemory(max_turns=max_history_turns, path=memory_path or None)
         # Củng cố STM -> LTM: gom lượt bị đẩy ra, thỉnh thoảng trích sự thật bền vững.
@@ -132,7 +135,8 @@ class Agent:
         messages = list(self.stm.messages()) + [Message(role="user", text=user_text)]
 
         final_text = ""
-        for _ in range(self.max_iterations):
+        spoke_tool_output = False        # đã cắt lượt soạn lời? (dùng để chấm tâm trạng)
+        for iteration in range(self.max_iterations):
             turn = self.llm.generate(system=system, messages=messages, tools=tools)
             messages.append(Message(role="assistant", text=turn.text,
                                     tool_calls=turn.tool_calls))
@@ -156,6 +160,13 @@ class Agent:
                 break
 
             results = [self._run_tool(c) for c in turn.tool_calls]
+
+            # Kết quả tool đã là câu hoàn chỉnh -> đọc thẳng, khỏi tốn 1 lượt LLM soạn lời.
+            shortcut = self._speakable_shortcut(iteration, turn.tool_calls, results)
+            if shortcut is not None:
+                final_text, spoke_tool_output = shortcut, True
+                break
+
             messages.append(Message(role="user", tool_results=results))
         else:
             logger.warning("Agent đạt giới hạn %d vòng công cụ", self.max_iterations)
@@ -167,7 +178,10 @@ class Agent:
         # Cập nhật TÂM TRẠNG (tất định) từ cảm xúc user + kết quả việc (thẻ #emotion) +
         # mức thân thiết; rồi để tâm trạng DẪN pose avatar thay cho thẻ tức thời.
         if self.mood is not None:
-            outcome = 1.0 if emotion == "happy" else -1.0 if emotion in ("sad", "cry") else 0.0
+            # Lối tắt đọc thẳng kết quả tool không có thẻ #emotion -> coi như việc XONG TỐT,
+            # để tâm trạng/avatar vẫn phản ứng đúng thay vì trơ ra trung tính.
+            outcome = (1.0 if (spoke_tool_output or emotion == "happy")
+                       else -1.0 if emotion in ("sad", "cry") else 0.0)
             fam = self.persona.familiarity() if self.persona is not None else 0.3
             self.mood.update(user_valence=score_user_valence(user_text),
                              outcome=outcome, familiarity=fam)
@@ -177,6 +191,39 @@ class Agent:
 
         self._remember(user_text, text)
         return AgentReply(text=text, emotion=emotion)
+
+    # ------------------------- lối tắt: đọc thẳng kết quả tool ------------------------- #
+    def _speakable_shortcut(self, iteration, tool_calls, results):
+        """Trả chuỗi để đọc thẳng (bỏ lượt LLM soạn lời), hoặc None nếu KHÔNG được cắt.
+
+        Điều kiện cố ý HẸP. Từng có lối tắt 'terminal' bị gỡ vì nó cắt dựa trên THUỘC TÍNH
+        TOOL nên làm rớt các bước sau ('mở A, B, C' chỉ chạy A). Ở đây chỉ cắt khi model
+        cho thấy nó chỉ định làm ĐÚNG MỘT việc rồi thôi:
+          1. đang ở vòng ĐẦU (chưa có kết quả tool nào trước đó -> không cắt giữa chuỗi);
+          2. lượt này gọi ĐÚNG 1 tool (>=2 tool = đang làm nhiều bước);
+          3. tool được đánh dấu `speakable` (output đã là câu hoàn chỉnh);
+          4. tool chạy KHÔNG lỗi (lỗi thì để LLM diễn đạt lại cho dễ nghe);
+          5. tool KHÔNG destructive (đường destructive đã rẽ nhánh xác nhận từ trước).
+        Thiếu bất kỳ điều nào -> None -> chạy y như cũ (mặc định an toàn).
+        """
+        if not self.skip_respond_for_speakable or iteration != 0:
+            return None
+        if len(tool_calls) != 1 or len(results) != 1:
+            return None
+        result = results[0]
+        if getattr(result, "is_error", False):
+            return None
+        name = tool_calls[0].name
+        if not self.registry.has(name):
+            return None
+        tool = self.registry.get(name)
+        if not getattr(tool, "speakable", False) or getattr(tool, "destructive", False):
+            return None
+        text = (result.content or "").strip()
+        if not text:
+            return None
+        logger.info("⚡ đọc thẳng kết quả %s (bỏ lượt soạn lời)", name)
+        return text
 
     # ------------------------- bộ nhớ hai tầng ------------------------- #
     def _remember(self, user_text, assistant_text):

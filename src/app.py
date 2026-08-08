@@ -507,10 +507,18 @@ def main():
             logger.warning("MCP không kết nối được — bỏ qua (kiểm tra MCP_COMMAND/server/OAuth).")
             mcp = None
 
-    router = None
-    if config.USE_ROUTER:
+    # Router thu hẹp prompt+tool bằng 1 lượt LLM phân loại. Provider mạnh không cần (đo
+    # được: bỏ router vẫn 100% chọn đúng tool, bớt 1 call/lượt) -> ROUTER_MODE=auto tắt.
+    # Khi TẮT phải dùng prompt GỘP: không có ai chọn fragment theo case nữa, dùng base
+    # trần sẽ mất sạch chỉ dẫn riêng (đọc nguyên văn kết quả web, tra danh bạ, ...).
+    router, system_prompt = None, None
+    if config.use_router():
         from agent.router import Router
         router = Router(llm, mcp_prefix=config.MCP_TOOL_PREFIX)
+    else:
+        from llm import prompts
+        system_prompt = prompts.merged()
+    logger.info("🧭 router: %s", "bật" if router else "tắt (prompt gộp)")
 
     profile = UserProfile(config.USER_PROFILE_PATH or None)
     tasks = TaskStore(config.TASKS_PATH or None)
@@ -529,11 +537,13 @@ def main():
                                                    profile=profile, tasks=tasks,
                                                    routines=routines, contacts=contacts,
                                                    mcp=mcp),
+                  **({"system": system_prompt} if system_prompt else {}),
                   max_history_turns=config.MAX_HISTORY_TURNS,
                   memory_path=config.MEMORY_PATH or None, router=router, profile=profile,
                   auto_extract=config.LTM_AUTO_EXTRACT,
                   consolidate_every=config.LTM_CONSOLIDATE_EVERY,
-                  persona=persona, mood=mood, auto_tune=config.PERSONA_AUTO_TUNE)
+                  persona=persona, mood=mood, auto_tune=config.PERSONA_AUTO_TUNE,
+                  skip_respond_for_speakable=config.SKIP_RESPOND_FOR_SPEAKABLE)
 
     # Giờ đã có agent -> nối callback lịch (remind đọc / do thực thi) rồi chạy scheduler.
     scheduler.notify = lambda msg, kind="remind": _run_scheduled(bus, synth, agent, msg, kind)
