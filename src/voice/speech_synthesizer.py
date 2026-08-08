@@ -13,6 +13,37 @@ from utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+# Dọn markdown trước khi đọc: TTS phát âm cả '*' hoặc khựng lại ở chúng, nghe rất kỳ.
+# CỐ Ý GIỮ danh sách ĐÁNH SỐ ("1. ...") vì người dùng cần nghe số để chọn kết quả tìm web.
+_MD_RULES = [
+    (re.compile(r"```.*?```", re.S), " "),          # khối code
+    (re.compile(r"`([^`]*)`"), r"\1"),              # `code`
+    (re.compile(r"!?\[([^\]]*)\]\([^)]*\)"), r"\1"),  # [chữ](link) -> chữ
+    (re.compile(r"\*\*\*([^*]+)\*\*\*"), r"\1"),    # ***đậm nghiêng***
+    (re.compile(r"\*\*([^*]+)\*\*"), r"\1"),        # **đậm**
+    (re.compile(r"(?<!\w)\*([^*\n]+)\*(?!\w)"), r"\1"),   # *nghiêng*
+    (re.compile(r"(?<!\w)__([^_\n]+)__(?!\w)"), r"\1"),   # __đậm__
+    (re.compile(r"^\s{0,3}#{1,6}\s*", re.M), ""),   # # tiêu đề
+    (re.compile(r"^\s*[-*+]\s+", re.M), ""),        # gạch đầu dòng (KHÔNG đụng '1.')
+    (re.compile(r"^\s*>\s?", re.M), ""),            # trích dẫn
+    (re.compile(r"^\s*[-*_]{3,}\s*$", re.M), ""),   # đường kẻ ---
+]
+
+
+def clean_for_speech(text):
+    """Bỏ ký hiệu markdown để TTS không đọc/khựng ở chúng. Hàm THUẦN.
+
+    Cũng gộp dòng trống liên tiếp: mỗi lần xuống dòng là một ranh giới đoạn -> thêm một
+    lần gọi mạng -> nghe thành khoảng lặng. Ít ranh giới = câu trả lời liền mạch hơn.
+    """
+    t = text or ""
+    for pattern, repl in _MD_RULES:
+        t = pattern.sub(repl, t)
+    t = re.sub(r"[ \t]+", " ", t)
+    t = re.sub(r"\n\s*\n+", "\n", t)               # bỏ dòng trống
+    return "\n".join(line.strip() for line in t.splitlines() if line.strip()).strip()
+
+
 def _hard_split(s, max_len):
     """Cắt một câu quá dài thành các mẩu <= max_len theo ranh giới TỪ. Thuần."""
     out, cur = [], ""
@@ -181,49 +212,81 @@ class SpeechSynthesizer:
             return False
 
     def _speak_with_gtts(self, text):
-        """Phát text (có thể DÀI) qua gTTS: chia đoạn ở ranh giới câu rồi phát tuần tự.
-        Mỗi đoạn tự retry 1 lần; một đoạn hỏng KHÔNG chặn các đoạn còn lại. Dừng ngay nếu
-        stop() được gọi giữa chừng (barge-in) nhờ đối chiếu token thế hệ phát."""
-        gen = self._speak_gen
-        for chunk in split_text_for_tts(text):
-            if self._speak_gen != gen:        # đã bị stop() -> huỷ phần còn lại
-                break
-            self._gtts_synth_play(chunk, gen)
+        """Phát text (có thể DÀI) qua gTTS: dọn markdown, chia đoạn, phát nối nhau.
 
-    def _gtts_synth_play(self, text, gen):
-        """Tổng hợp + phát MỘT đoạn ngắn. Trả True nếu phát xong, False nếu lỗi cả 2 lần."""
+        Đoạn KẾ được tổng hợp SONG SONG trong lúc đoạn hiện tại đang phát — nếu chờ tuần
+        tự thì giữa hai đoạn có một vòng gọi mạng, nghe thành khoảng lặng dài giữa câu.
+        Mỗi đoạn tự retry 1 lần; một đoạn hỏng KHÔNG chặn các đoạn còn lại. stop() giữa
+        chừng (barge-in) huỷ cả phần còn lại nhờ đối chiếu token thế hệ phát.
+        """
+        gen = self._speak_gen
+        chunks = split_text_for_tts(clean_for_speech(text))
+        if not chunks:
+            return
+
+        path = self._gtts_synth(chunks[0], gen)
+        for i in range(len(chunks)):
+            if self._speak_gen != gen:            # đã bị stop() -> bỏ phần còn lại
+                self._discard(path)
+                return
+
+            ahead = {}
+            worker = None
+            if i + 1 < len(chunks):               # dựng sẵn đoạn kế trong lúc phát đoạn này
+                nxt = chunks[i + 1]
+                worker = threading.Thread(
+                    target=lambda: ahead.update(path=self._gtts_synth(nxt, gen)),
+                    daemon=True)
+                worker.start()
+
+            if path:
+                self._play_mp3(path, gen)
+            if worker is not None:
+                worker.join()
+                path = ahead.get("path")
+
+    def _gtts_synth(self, text, gen):
+        """Tổng hợp MỘT đoạn thành file mp3 tạm. Trả đường dẫn, hoặc None nếu lỗi cả 2 lần."""
         for attempt in (1, 2):
+            if self._speak_gen != gen:            # đã bị cắt lời -> khỏi tốn thêm request
+                return None
             temp_filename = None
             try:
                 with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as temp_file:
                     temp_filename = temp_file.name
-
-                tts = gTTS(text=text, lang=self.language, slow=False)
-                tts.save(temp_filename)
-
-                needs_processing = self.robot or self.speed != 1.0
-                if not (needs_processing and self._play_processed(temp_filename)):
-                    pygame.mixer.music.load(temp_filename)
-                    pygame.mixer.music.play()
-                    while pygame.mixer.music.get_busy():
-                        if self._speak_gen != gen:      # barge-in giữa lúc phát đoạn này
-                            pygame.mixer.music.stop()
-                            break
-                        time.sleep(0.1)
-                return True
+                gTTS(text=text, lang=self.language, slow=False).save(temp_filename)
+                return temp_filename
             except Exception as e:
                 logger.warning("gTTS lỗi một đoạn (thử %d/2): %s", attempt, e)
-                if self._speak_gen != gen:
-                    return False
+                self._discard(temp_filename)
                 time.sleep(0.4)
-            finally:
-                if temp_filename:
-                    try:
-                        os.unlink(temp_filename)
-                    except OSError:
-                        pass
         logger.error("Lỗi gTTS (kiểm tra mạng) — bỏ qua một đoạn.")
-        return False
+        return None
+
+    def _play_mp3(self, path, gen):
+        """Phát một file mp3 rồi xoá. Dừng ngay giữa chừng nếu bị cắt lời."""
+        try:
+            needs_processing = self.robot or self.speed != 1.0
+            if not (needs_processing and self._play_processed(path)):
+                pygame.mixer.music.load(path)
+                pygame.mixer.music.play()
+                while pygame.mixer.music.get_busy():
+                    if self._speak_gen != gen:            # barge-in giữa lúc phát
+                        pygame.mixer.music.stop()
+                        break
+                    time.sleep(0.1)
+        except Exception as e:
+            logger.warning("Không phát được một đoạn: %s", e)
+        finally:
+            self._discard(path)
+
+    @staticmethod
+    def _discard(path):
+        if path:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
     
     def speak(self, text):
         """

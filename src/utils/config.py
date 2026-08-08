@@ -65,6 +65,10 @@ class Config:
     SAMPLE_RATE = _get_int("SAMPLE_RATE", 16000)   # 16kHz chuẩn cho nhận dạng giọng nói
     CHUNK_SIZE = _get_int("CHUNK_SIZE", 1024)
     CHANNELS = _get_int("CHANNELS", 1)
+    # Im lặng bao nhiêu GIÂY thì coi là người dùng đã nói xong. Tăng nếu hay bị CẮT NGANG
+    # lúc đang nghĩ giữa câu; giảm nếu muốn trợ lý đáp nhanh hơn.
+    SILENCE_DURATION = _get_float("SILENCE_DURATION", 1.5)
+    MAX_UTTERANCE_SECONDS = _get_float("MAX_UTTERANCE_SECONDS", 15.0)  # dài nhất một lượt nói
     SPEECH_THRESHOLD_RATIO = _get_float("SPEECH_THRESHOLD_RATIO", 1.2)
 
     # --- Nhận dạng giọng nói (STT) ---

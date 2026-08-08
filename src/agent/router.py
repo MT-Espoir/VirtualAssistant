@@ -33,7 +33,7 @@ CASE_TOOLS = {
     "schedule": ["schedule_reminder", "schedule_action", "list_reminders", "cancel_reminder"],
     "task": ["add_task", "list_tasks", "complete_task", "remove_task",
              "create_routine", "list_routines", "delete_routine"],
-    "profile": ["remember_about_user"],
+    "profile": ["remember_about_user", "forget_about_user"],
     # pim (lịch/email/danh bạ qua MCP): thu hẹp theo TIỀN TỐ tên tool MCP (tool động, không
     # liệt kê cứng được) -> xem Router.mcp_prefix. NGOÀI RA cho phép các tool danh bạ CỤC BỘ
     # dưới đây (không phải MCP) để soạn/gửi mail theo tên mà không cần đọc cả địa chỉ.

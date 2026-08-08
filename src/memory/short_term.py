@@ -1,19 +1,14 @@
-"""Bộ nhớ HAI TẦNG cho trợ lý.
+"""Bộ nhớ NGẮN HẠN — "working memory": vài lượt hội thoại GẦN ĐÂY trong phiên.
 
-NGẮN HẠN (ShortTermMemory) — "working memory": vài lượt hội thoại GẦN ĐÂY trong phiên,
-giúp LLM hiểu ngữ cảnh liền trước. Giới hạn số lượt (lượt cũ RƠI ra). Mặc định session-only
+Giúp LLM hiểu ngữ cảnh liền trước. Giới hạn số lượt (lượt cũ RƠI ra). Mặc định session-only
 (quên khi tắt app); tuỳ chọn lưu file (path) để nối tiếp qua restart nếu người dùng muốn.
 
-DÀI HẠN (long-term) — sự thật BỀN VỮNG về người dùng, sống qua mọi phiên: do
-`components/user/user_profile.UserProfile` đảm nhiệm (tên, xưng hô, địa điểm, ghi chú
-tường minh + auto_facts tự trích). Cầu nối hai tầng: khi STM đẩy lượt cũ sắp quên ra,
-Agent có thể "củng cố" (consolidate) — gọi LLM rút sự thật đáng nhớ rồi lưu sang tầng dài
-hạn (`parse_extracted_facts` + `EXTRACT_SYSTEM` ở đây; Agent điều phối lượt gọi LLM).
+Vị trí trong gói `memory/` (xem memory/__init__.py cho bản đồ tổng thể):
+tầng DÀI HẠN ở `memory/profile.py`, cầu nối hai tầng ở `memory/consolidation.py`.
 """
 
 import json
 import os
-import re
 
 from llm.client import Message
 from utils.logger import get_logger
@@ -73,29 +68,3 @@ class ShortTermMemory:
                           f, ensure_ascii=False, indent=2)
         except OSError as e:
             logger.error("Không lưu được bộ nhớ ngắn hạn: %s", e)
-
-
-# --------------------- Củng cố STM -> LTM (trích sự thật bền vững) --------------------- #
-
-EXTRACT_SYSTEM = (
-    "Bạn là bộ trích xuất trí nhớ. Từ đoạn hội thoại dưới đây, rút ra các SỰ THẬT BỀN VỮNG "
-    "đáng nhớ lâu dài về NGƯỜI DÙNG (sở thích, thói quen, thông tin cá nhân, mục tiêu). "
-    "Mỗi sự thật MỘT DÒNG, ngắn gọn, khách quan. TUYỆT ĐỐI không bịa điều không có trong "
-    "hội thoại; bỏ qua chuyện vặt nhất thời. Nếu không có gì đáng nhớ, chỉ trả đúng: NONE."
-)
-
-
-def parse_extracted_facts(text, max_facts=3, max_len=120):
-    """Tách văn bản model thành danh sách sự thật đã dọn. [] nếu 'NONE'/rỗng.
-
-    Bỏ bullet/số thứ tự đầu dòng, cắt độ dài, giới hạn số lượng.
-    """
-    facts = []
-    for line in (text or "").splitlines():
-        s = re.sub(r"^\s*[-*•]?\s*\d*[.)]?\s*", "", line).strip()
-        if not s or s.upper() == "NONE":
-            continue
-        facts.append(s[:max_len])
-        if len(facts) >= max_facts:
-            break
-    return facts

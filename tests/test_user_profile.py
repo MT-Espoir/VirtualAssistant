@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from components.user.user_profile import (UserProfile, apply_update, summarize,
+from memory.profile import (UserProfile, apply_update, summarize,
                                           _relevant_facts)
 from agent.tools import build_default_registry
 

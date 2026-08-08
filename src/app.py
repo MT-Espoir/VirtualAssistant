@@ -13,7 +13,7 @@ import time
 from agent.agent import Agent
 from agent.actions_facade import AssistantActions
 from agent.tools import build_default_registry
-from components.user.user_profile import UserProfile
+from memory.profile import UserProfile
 from agent.persona import PersonaState, MoodState
 from services.tasks import TaskStore
 from services.routines import RoutineStore
@@ -63,7 +63,9 @@ def _make_voice_input():
         from voice.speech_recognizer import SpeechRecognizer
         recorder = Recorder(
             channels=config.CHANNELS, rate=config.SAMPLE_RATE,
-            chunk=config.CHUNK_SIZE, speech_threshold_ratio=config.SPEECH_THRESHOLD_RATIO)
+            chunk=config.CHUNK_SIZE, speech_threshold_ratio=config.SPEECH_THRESHOLD_RATIO,
+            silence_duration=config.SILENCE_DURATION,
+            max_utterance_s=config.MAX_UTTERANCE_SECONDS)
         recognizer = SpeechRecognizer(language=config.STT_LANGUAGE, engine=config.STT_ENGINE)
         return recorder, recognizer
     except Exception as e:
@@ -95,8 +97,9 @@ def _flush_mic_after_speaking(recorder):
     recorder.reset()
 
 
-# Số chunk mỗi lượt nghe khi đang nói (ngắn để re-check TTS thường xuyên, ~1.6s).
-BARGE_IN_LISTEN_CHUNKS = 25
+# Mỗi lượt nghe khi AI đang nói chỉ kéo dài ngần này (giây) rồi kiểm lại xem TTS còn chạy
+# không. Khai báo bằng GIÂY chứ không phải số chunk vì số chunk đổi nghĩa theo sample rate.
+BARGE_IN_LISTEN_SECONDS = 1.6
 
 
 def _tts_active(synth):
@@ -122,7 +125,7 @@ def _speak_and_watch(synth, bus, text, emotion, voice_io, wake_words):
 
     try:
         while _tts_active(synth):
-            audio = recorder.listen_once(max_chunks=BARGE_IN_LISTEN_CHUNKS)
+            audio = recorder.listen_once(max_seconds=BARGE_IN_LISTEN_SECONDS)
             recorder.reset()
             if not _tts_active(synth):
                 break                                    # TTS vừa xong -> thôi nghe

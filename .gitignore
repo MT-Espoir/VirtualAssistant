@@ -26,6 +26,8 @@ src/services/contacts.json
 
 # Hồ sơ người dùng (dữ liệu cá nhân: tên, địa điểm...) — local, không commit
 src/components/user/user_data/
+# Dữ liệu bộ nhớ của trợ lý (hồ sơ người dùng, nhân cách) — RIÊNG TƯ, không đưa lên repo
+src/memory/data/
 
 # Log runtime khi chạy qua launcher (launch_assistant.vbs)
 assistant.log

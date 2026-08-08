@@ -7,10 +7,21 @@ from utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+def chunks_for_seconds(seconds, rate, chunk):
+    """Đổi GIÂY -> số chunk audio. Hàm thuần.
+
+    Mọi ngưỡng thời gian phải khai báo bằng giây rồi quy đổi ở đây: một "số chunk" cố định
+    mang ý nghĩa KHÁC NHAU tuỳ rate (1024 chunk @44.1kHz = 23ms, @16kHz = 64ms) nên đặt
+    thẳng số chunk rất dễ sai âm thầm khi đổi rate.
+    """
+    return max(1, int(float(seconds) * rate / chunk))
+
+
 class Recorder:
-    def __init__(self, channels=1, rate=44100, chunk=1024, format=pyaudio.paInt16, 
+    def __init__(self, channels=1, rate=44100, chunk=1024, format=pyaudio.paInt16,
                  speech_threshold_ratio=1.2, calibration_duration=1.0,
-                 recalibration_interval=60):  # Thêm tham số recalibration_interval - giây
+                 recalibration_interval=60,  # Thêm tham số recalibration_interval - giây
+                 silence_duration=1.5, max_utterance_s=15.0):
         """
         Initialize recorder with audio settings
         
@@ -22,6 +33,10 @@ class Recorder:
             speech_threshold_ratio: Multiplier for noise level to determine speech
             calibration_duration: Duration in seconds to calibrate noise levels
             recalibration_interval: How often to recalibrate noise (in seconds)
+            silence_duration: Im lặng bao nhiêu GIÂY thì coi là người dùng đã nói xong.
+                Quá ngắn -> cắt ngang lúc người ta ngắt hơi/nghĩ giữa câu; quá dài ->
+                trợ lý đáp chậm. 1.5s đủ cho khoảng ngắt tự nhiên trong tiếng Việt.
+            max_utterance_s: Độ dài TỐI ĐA một lượt nói (giây) — chặn treo nếu VAD kẹt.
         """
         self.channels = channels
         self.rate = rate
@@ -37,6 +52,8 @@ class Recorder:
         self.calibration_duration = calibration_duration  # Time to calibrate in seconds
         self.noise_level = 200  # Default noise level if calibration fails
         self.silence_threshold = 1000  # Default threshold
+        self.silence_duration = silence_duration      # giây im lặng = hết câu
+        self.max_utterance_s = max_utterance_s        # giây tối đa một lượt nói
         
         # Recalibration tracking
         self.last_calibration_time = 0
@@ -151,12 +168,21 @@ class Recorder:
             self.stream = None
             self.is_recording = False
 
-    def listen_once(self, max_chunks=150, silence_limit=15):
+    def listen_once(self, max_chunks=None, silence_limit=None, max_seconds=None):
         """Ghi một lượt nói: chờ có tiếng, dừng khi im lặng đủ lâu.
+
+        Mặc định lấy theo `silence_duration`/`max_utterance_s` (giây) đã cấu hình. Nơi gọi
+        có thể ép bằng `max_seconds` (giây, nên dùng) hoặc `max_chunks` (số chunk, thô).
 
         Trả về audio bytes nếu phát hiện giọng nói, ngược lại None.
         (stream.read() đã tự chặn theo nhịp chunk nên không cần sleep.)
         """
+        if max_chunks is None:
+            secs = max_seconds if max_seconds is not None else self.max_utterance_s
+            max_chunks = chunks_for_seconds(secs, self.rate, self.chunk)
+        if silence_limit is None:
+            silence_limit = chunks_for_seconds(self.silence_duration, self.rate, self.chunk)
+
         self.start_recording()
         if not self.stream:
             return None

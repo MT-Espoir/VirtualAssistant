@@ -51,7 +51,7 @@ def parse_trait_nudges(text, step=_NUDGE_STEP):
     return out
 
 _DEFAULT_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)),
-                             "components", "user", "user_data", "persona.json")
+                             "memory", "data", "persona.json")
 
 _STRONG_PROVIDERS = ("gemini", "claude")
 

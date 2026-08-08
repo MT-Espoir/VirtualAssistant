@@ -1,7 +1,7 @@
 """
 Agent — vòng lặp tool-calling, tách khỏi I/O và khỏi nhà cung cấp LLM.
 
-Bộ nhớ HAI TẦNG (agent/memory.py):
+Bộ nhớ HAI TẦNG (gói `memory/` — xem memory/__init__.py cho bản đồ):
   - NGẮN HẠN (ShortTermMemory): vài lượt hội thoại gần đây trong phiên -> ghép vào prompt.
   - DÀI HẠN (UserProfile, tiêm qua `profile`): sự thật bền vững -> bơm tóm tắt vào prompt.
   - Cầu nối: khi STM đẩy lượt cũ ra, tuỳ chọn "củng cố" — gọi LLM trích sự thật đáng nhớ
@@ -17,16 +17,18 @@ from dataclasses import dataclass
 
 from llm.client import LLMClient, Message, ToolResult
 from agent.tools import ToolRegistry
-from agent.memory import ShortTermMemory, parse_extracted_facts, EXTRACT_SYSTEM
+from memory.short_term import ShortTermMemory
+from memory.consolidation import parse_extracted_facts, EXTRACT_SYSTEM
 from agent.persona import score_user_valence, parse_trait_nudges, PERSONA_TUNE_SYSTEM
 from voice.fast_commands import match_confirmation
 from utils.logger import get_logger
+from memory.timefmt import format_now
 
 logger = get_logger(__name__)
 
 from llm import prompts
 
-# Prompt mặc định (khi KHÔNG dùng router) — nạp base từ components/data/system_prompt.json.
+# Prompt mặc định (khi KHÔNG dùng router) — nạp base từ llm/prompt_texts.py.
 DEFAULT_SYSTEM = prompts.base()
 
 _EMO_RE = re.compile(r"#\s*emotion\s*:\s*(happy|neutral|sad|cry)\b", re.IGNORECASE)
@@ -116,6 +118,10 @@ class Agent:
             system, tools = self.router.select(user_text, self.registry)
         else:
             system, tools = self.system, self.registry.specs()
+
+        # Mốc THỜI GIAN: thiếu nó thì model không có gì để so, nên không thể biết một việc
+        # đã qua hay sắp tới -> hay nhắc chuyện cũ như sắp diễn ra.
+        system = format_now() + "\n\n" + system
 
         # Bơm tóm tắt hồ sơ người dùng vào đầu system prompt -> trợ lý luôn "biết" người
         # dùng (tên, xưng hô, địa điểm mặc định) mà không tốn lượt hỏi lại.
@@ -262,9 +268,14 @@ class Agent:
             return
         facts = parse_extracted_facts(raw)
         for fact in facts:
-            self.profile.add_auto_fact(fact)
+            # Sự kiện có thời điểm đi vào kho SỰ KIỆN (tự hết hạn) thay vì kho sự thật bền
+            # vững — nếu không, "có phỏng vấn lúc 2h" sẽ được nhắc mãi như sắp diễn ra.
+            if fact.get("kind") == "event":
+                self.profile.add_event(fact["text"], when=fact.get("when"))
+            else:
+                self.profile.add_auto_fact(fact["text"])
         if facts:
-            logger.info("🧠 củng cố %d sự thật vào trí nhớ dài hạn", len(facts))
+            logger.info("🧠 củng cố %d điều vào trí nhớ dài hạn", len(facts))
 
     def _tune_persona(self, transcript):
         """Phase 2: LLM gợi ý nudge núm tính cách (có biên) từ hội thoại. Lỗi -> bỏ qua."""

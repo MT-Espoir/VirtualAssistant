@@ -14,6 +14,52 @@ except Exception:                      # thiếu pyttsx3/pygame/gtts -> bỏ qua
     pytest.skip("Thiếu phụ thuộc TTS (pyttsx3/gtts/pygame)", allow_module_level=True)
 
 split = ss.split_text_for_tts
+clean = ss.clean_for_speech
+
+
+# --------------------------- dọn markdown trước khi đọc --------------------------- #
+
+def test_strips_bold_and_italic():
+    assert clean("Đây là **quan trọng** và *nghiêng*") == "Đây là quan trọng và nghiêng"
+
+
+def test_strips_bullet_markers():
+    out = clean("* Quản lý lịch\n* Hỗ trợ công việc")
+    assert "*" not in out
+    assert "Quản lý lịch" in out and "Hỗ trợ công việc" in out
+
+
+def test_keeps_numbered_list():
+    """Fix 7.1: người dùng phải NGHE được số để chọn kết quả tìm web."""
+    out = clean("1. Trạm vũ trụ Quốc tế\n2. Trạm ISS")
+    assert "1." in out and "2." in out
+
+
+def test_strips_headings_and_code():
+    assert clean("# Tiêu đề") == "Tiêu đề"
+    assert clean("chạy `lệnh này`") == "chạy lệnh này"
+
+
+def test_strips_links_keeping_text():
+    assert clean("xem [trang chủ](https://a.b/c) nhé") == "xem trang chủ nhé"
+
+
+def test_collapses_blank_lines():
+    """Dòng trống = thêm ranh giới đoạn = thêm khoảng lặng khi đọc."""
+    assert "\n\n" not in clean("Câu một.\n\n\nCâu hai.")
+
+
+def test_keeps_plain_text_unchanged():
+    assert clean("Chào anh Nam, hôm nay trời đẹp.") == "Chào anh Nam, hôm nay trời đẹp."
+
+
+def test_handles_empty():
+    assert clean("") == "" and clean(None) == ""
+
+
+def test_asterisk_inside_word_is_kept():
+    """Không được ăn nhầm dấu * không phải markdown (vd biểu thức 2*3)."""
+    assert "2*3" in clean("kết quả 2*3 là 6")
 
 
 def test_empty_returns_empty_list():
