@@ -438,3 +438,65 @@ if __name__ == "__main__":
                 print("FAIL", _name, "->", repr(_e))
     print(f"\n{'ALL PASS' if not failures else str(failures) + ' FAILED'}")
     raise SystemExit(1 if failures else 0)
+
+
+# --------------------------- Thứ tự khối trong system prompt (KV cache) --------------------------- #
+#
+# Bài học đo được 2026-08-22: `prompt_eval` chiếm ~83% chi phí một lượt LLM, và runtime tái dùng
+# KV cache theo TIỀN TỐ CHUNG. Thứ gì đổi mỗi lượt mà nằm ở ĐẦU prompt sẽ phá cache của TOÀN BỘ
+# prompt lẫn lịch sử hội thoại phía sau (đo được: 23,6s so với 3,4s).
+#
+# Các test dưới đây KHOÁ thứ tự đó lại. Nếu ai đó bơm thời gian/hồ sơ lên đầu lần nữa, test phải đỏ.
+
+class _QueryProfile:
+    """Hồ sơ có tóm tắt PHỤ THUỘC câu hỏi — tái hiện `UserProfile.summary(query=...)` thật."""
+    def summary(self, query=None):
+        return f"Ngữ cảnh cho '{query}'."
+
+
+def _common_prefix_len(a, b):
+    n = 0
+    for x, y in zip(a, b):
+        if x != y:
+            break
+        n += 1
+    return n
+
+
+def test_system_prompt_starts_with_stable_block():
+    """BASE+CASE phải nằm NGAY ĐẦU — mọi khối biến động xếp sau."""
+    agent = Agent(FakeLLMClient([]), build_default_registry(make_actions()),
+                  profile=_QueryProfile())
+    system = agent._compose_system("BASE_VA_CASE_ON_DINH", "mở chrome")
+    assert system.startswith("BASE_VA_CASE_ON_DINH")
+
+
+def test_system_prompt_prefix_stable_across_turns():
+    """Đổi phút VÀ đổi câu hỏi -> tiền tố chung vẫn phải > 95% khối ổn định."""
+    from unittest.mock import patch
+    stable = "HUONG DAN CO DINH. " * 60          # ~1.100 ký tự, cỡ BASE+CASE thật
+    agent = Agent(FakeLLMClient([]), build_default_registry(make_actions()),
+                  profile=_QueryProfile())
+
+    with patch("agent.agent.format_now", return_value="Bây giờ là 21:45 thứ Sáu."):
+        a = agent._compose_system(stable, "tìm quán cà phê")
+    with patch("agent.agent.format_now", return_value="Bây giờ là 21:46 thứ Sáu."):
+        b = agent._compose_system(stable, "mở youtube")
+
+    assert a != b, "hai lượt phải khác nhau (thời gian + hồ sơ đều đổi)"
+    assert _common_prefix_len(a, b) >= len(stable) * 0.95, (
+        "Tiền tố chung ngắn hơn khối ổn định -> KV cache bị phá mỗi lượt. "
+        "Có ai đó vừa bơm nội dung biến động lên ĐẦU system prompt."
+    )
+
+
+def test_volatile_blocks_come_after_stable():
+    """Thời gian và hồ sơ phải nằm SAU khối ổn định, không phải trước."""
+    from unittest.mock import patch
+    stable = "KHOI_ON_DINH"
+    agent = Agent(FakeLLMClient([]), build_default_registry(make_actions()),
+                  profile=_QueryProfile())
+    with patch("agent.agent.format_now", return_value="MOC_THOI_GIAN"):
+        system = agent._compose_system(stable, "xin chào")
+    assert system.index(stable) < system.index("MOC_THOI_GIAN")
+    assert system.index("MOC_THOI_GIAN") < system.index("Ngữ cảnh cho")

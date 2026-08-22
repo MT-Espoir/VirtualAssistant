@@ -103,6 +103,45 @@ class Agent:
         """Tương thích ngược: các lượt trong bộ nhớ ngắn hạn (list Message sống)."""
         return self.stm.turns
 
+    # Thứ tự các khối trong system prompt xếp theo ĐỘ BIẾN ĐỘNG, ổn định nhất lên trước.
+    # KHÔNG phải sở thích trình bày — đây là điều kiện để KV cache của LLM dùng lại được.
+    #
+    # Ollama (và các runtime cùng loại) tái dùng KV cache theo TIỀN TỐ CHUNG với lượt trước.
+    # Đặt thứ đổi mỗi lượt lên đầu thì tiền tố lệch ngay từ token đầu tiên, và toàn bộ prompt
+    # — kể cả LỊCH SỬ HỘI THOẠI nằm sau nó — phải đọc lại từ đầu. Hội thoại càng dài càng chậm.
+    #
+    # Đo trên máy này 2026-08-22 (qwen2.5:3b, prefix 1.414 token, CPU):
+    #     đổi ở ĐẦU  -> 23,6s  (prompt_eval 21,0s @ 68 tok/s)
+    #     đổi ở CUỐI ->  3,4s  (prompt_eval  0,8s @ 1.847 tok/s)
+    # ~7 lần, và `prompt_eval` chiếm ~83% chi phí một lượt. Xem docs/latency_optimization_spec.md §1b.
+    #
+    # Nhân cách/tâm trạng trước ở TRÊN CÙNG để định hình giọng; đã chuyển xuống sau BASE+CASE
+    # vì nó đổi theo tâm trạng nên phá cache. Nếu giọng/thái độ tệ đi khi chạy thật, đưa nó về
+    # đầu lại — chỉ mất cache mỗi khi tâm trạng đổi, vẫn giữ được phần lớn lợi ích.
+    def _compose_system(self, base_system, user_text):
+        """Ghép system prompt: khối ổn định trước, khối biến động sau. Trả chuỗi."""
+        parts = [base_system]                       # BASE + CASE — ổn định giữa các lượt cùng case
+
+        if self.persona is not None:                # đổi khi tâm trạng đổi
+            preamble = self.persona.render()
+            if self.mood is not None:
+                preamble += "\nTâm trạng hiện tại của bạn: " + self.mood.label() + "."
+            if preamble:
+                parts.append(preamble)
+
+        # Mốc THỜI GIAN: thiếu nó thì model không có gì để so, nên không thể biết một việc
+        # đã qua hay sắp tới -> hay nhắc chuyện cũ như sắp diễn ra. Đổi mỗi phút.
+        parts.append(format_now())
+
+        # Hồ sơ người dùng (tên, xưng hô, địa điểm mặc định) -> khỏi tốn lượt hỏi lại.
+        # BIẾN ĐỘNG NHẤT: `summary` phụ thuộc chính câu người dùng vừa nói, nên đổi mỗi lượt.
+        if self.profile is not None:
+            summary = self.profile.summary(query=user_text)
+            if summary:
+                parts.append(summary)
+
+        return "\n\n".join(p for p in parts if p)
+
     def run(self, user_text: str) -> AgentReply:
         """Chạy một lượt qua vòng lặp tool-calling, có nhớ ngữ cảnh trước đó."""
         # Nếu lượt trước đã hỏi xác nhận một hành động khó hoàn tác: giải quyết trước.
@@ -119,24 +158,7 @@ class Agent:
         else:
             system, tools = self.system, self.registry.specs()
 
-        # Mốc THỜI GIAN: thiếu nó thì model không có gì để so, nên không thể biết một việc
-        # đã qua hay sắp tới -> hay nhắc chuyện cũ như sắp diễn ra.
-        system = format_now() + "\n\n" + system
-
-        # Bơm tóm tắt hồ sơ người dùng vào đầu system prompt -> trợ lý luôn "biết" người
-        # dùng (tên, xưng hô, địa điểm mặc định) mà không tốn lượt hỏi lại.
-        if self.profile is not None:
-            summary = self.profile.summary(query=user_text)
-            if summary:
-                system = summary + "\n\n" + system
-
-        # Bơm NHÂN CÁCH + TÂM TRẠNG lên trên cùng -> định hình giọng/thái độ câu trả lời.
-        if self.persona is not None:
-            preamble = self.persona.render()
-            if self.mood is not None:
-                preamble += "\nTâm trạng hiện tại của bạn: " + self.mood.label() + "."
-            if preamble:
-                system = preamble + "\n\n" + system
+        system = self._compose_system(system, user_text)
 
         messages = list(self.stm.messages()) + [Message(role="user", text=user_text)]
 
