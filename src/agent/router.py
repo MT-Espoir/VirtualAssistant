@@ -23,6 +23,10 @@ logger = get_logger(__name__)
 # -> phải đặt "weather" TRƯỚC "web" để "weather" không bị "web" nuốt nhầm.
 CASE_TOOLS = {
     "weather": ["get_weather"],
+    # 'place' đặt TRƯỚC 'web': classify() khớp case bằng SUBSTRING, và tra địa điểm rất dễ
+    # bị nuốt sang 'web' (cùng là "tìm ..."). Cùng lý do đã phải đặt 'weather' trước 'web'.
+    "place": ["find_nearby", "find_place", "research_places", "refine_places",
+              "open_place_result", "set_my_location"],
     "web": ["open_website", "web_search", "web_search_list", "open_search_result",
             "play_youtube", "search_on_site", "web_fetch", "wikipedia_lookup"],
     "system": ["open_app", "close_app", "list_windows", "switch_window",

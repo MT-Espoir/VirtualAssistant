@@ -40,11 +40,14 @@ BASE = (
 ROUTER = (
     'Nhiệm vụ: phân loại yêu cầu của người dùng vào ĐÚNG MỘT nhóm dưới đây. CHỈ trả về đúng '
     'một từ khoá tiếng Anh '
-    '(web/weather/system/screen/browser/schedule/task/profile/general), KHÔNG giải thích, '
+    '(web/weather/place/system/screen/browser/schedule/task/profile/general), KHÔNG giải thích, '
     'KHÔNG thêm gì khác.\n'
     '- web: MỞ MỚI trang web, tìm kiếm Google, tìm/PHÁT một video hoặc bài hát MỚI trên '
     'YouTube, tra cứu Wikipedia, đọc trang\n'
     '- weather: hỏi thời tiết, trời nắng/mưa, nhiệt độ, khả năng mưa, tia UV\n'
+    '- place: tìm ĐỊA ĐIỂM THẬT ngoài đời — quán ăn/cà phê/ATM/hiệu thuốc/cây xăng gần '
+    "đây, hoặc hỏi một chỗ cụ thể ở đâu ('nhà sách Fahasa Nguyễn Văn Cừ ở đâu'), hoặc "
+    'người dùng cho biết họ đang ở khu vực nào\n'
     '- system: mở/đóng ứng dụng, LIỆT KÊ cửa sổ đang mở, CHUYỂN sang một cửa sổ/ứng dụng '
     'đang chạy (đưa ra trước), chỉnh âm lượng, độ sáng, xem thông tin máy\n'
     '- screen: chụp màn hình, tìm chữ trên màn hình, cuộn màn hình\n'
@@ -71,7 +74,8 @@ ROUTER = (
     "dừng/phát tiếp/phát lại/tua video (đang xem)' = browser. Cửa sổ/ỨNG DỤNG đang chạy "
     '(Chrome, Word, Claude...) = system; còn TAB bên trong Chrome = browser. Việc cần làm '
     "KHÔNG có giờ cụ thể (mua sữa, nộp báo cáo) = task; còn có GIỜ để nhắc ('nhắc tôi 3h "
-    "chiều') = schedule."
+    "chiều') = schedule. Tìm ĐỊA ĐIỂM ngoài đời (quán xá, cửa hàng, chỗ nào đó ở đâu) = "
+    "place; còn tìm THÔNG TIN trên mạng ('tìm hiểu về X', 'X là gì') = web."
 )
 
 # --------------------------------------------------------------------------- #
@@ -87,7 +91,10 @@ CASE_WEB = (
     'TRỌNG khi web_search_list trả về danh sách kết quả: hãy ĐỌC LẠI NGUYÊN VĂN từng dòng '
     'kết quả có ĐÁNH SỐ (số thứ tự + tiêu đề) cho người dùng nghe, RỒI mới hỏi họ muốn mở '
     'số mấy. TUYỆT ĐỐI KHÔNG tóm tắt chung chung kiểu "mình tìm được mấy trang" mà bỏ mất '
-    'tiêu đề — người dùng cần nghe rõ TÊN từng kết quả để chọn.'
+    'tiêu đề — người dùng cần nghe rõ TÊN từng kết quả để chọn. '
+    'LƯU Ý: kết quả web_search_list là TIÊU ĐỀ BÀI VIẾT trên mạng, KHÔNG phải danh sách '
+    'địa điểm có thật. Không được trình bày chúng như thể là quán/cửa hàng quanh người '
+    'dùng; muốn tìm địa điểm ngoài đời thì phải dùng find_nearby/find_place.'
 )
 
 CASE_WEATHER = (
@@ -165,9 +172,42 @@ CASE_PIM = (
 CASE_GENERAL = ""
 
 # Bản đồ case -> fragment. Khoá phải khớp CASE_TOOLS trong agent/router.py.
+CASE_PLACE = (
+    "Tra địa điểm ngoài đời. CHỌN TOOL THEO RÀNG BUỘC người dùng nêu, KHÔNG theo việc câu "
+    "có tên riêng hay không:\n"
+    "- Câu có 'quanh đây/gần đây/gần tôi/ở gần' -> find_nearby (kể cả khi có tên thương "
+    "hiệu, ví dụ 'quán Highlands gần đây').\n"
+    "- Câu hỏi MỘT chỗ cụ thể theo tên, không kèm 'gần đây' -> find_place. Nếu người dùng "
+    "nêu khu vực ('ở quận 9', 'ở Đà Nẵng') thì đưa khu vực đó vào in_area; không nêu thì "
+    "để trống in_area (KHÔNG tự bịa khu vực).\n"
+    "- Câu mô tả CẢM GIÁC / PHONG CÁCH mà bản đồ không có trường dữ liệu ('nhiều cây "
+    "xanh', 'phong cách cổ', 'view đẹp', 'decor xinh', 'không gian chill') -> "
+    "research_places, đưa NGUYÊN VĂN mô tả vào need. Tool này đọc báo/blog (~5 giây) và "
+    "KHÔNG lọc theo khoảng cách: chỉ dùng khi yêu cầu KHÔNG diễn đạt được bằng loại địa "
+    "điểm + khoảng cách. 'Quán cà phê gần đây' vẫn là find_nearby.\n"
+    "- Người dùng nói họ đang ở đâu -> set_my_location.\n"
+    "- Sau khi đã đọc danh sách, người dùng chọn 'cái số 2' -> open_place_result.\n"
+    "- Người dùng muốn ĐỔI ĐIỀU KIỆN trên danh sách vừa đọc ('mở muộn hơn', 'gần hơn', "
+    "'rẻ hơn', 'yên tĩnh hơn', 'điểm cao hơn', 'tìm rộng ra') -> refine_places. Đây là "
+    "RÀNG BUỘC, KHÔNG phải từ khoá: tuyệt đối không đưa 'mở muộn' vào find_nearby như tên "
+    "quán — Maps sẽ tra chữ đó như văn bản và kết quả KHÔNG hề được lọc theo giờ.\n"
+    "Đọc NGUYÊN VĂN câu tool trả về, KHÔNG tự thêm địa điểm nào không có trong đó, và KHÔNG "
+    "tự suy ra 'không có' khi tool báo chưa tra được.\n"
+    "TUYỆT ĐỐI KHÔNG nói ngược lại tool: tool báo chưa lưu được / chưa xác định được thì "
+    "KHÔNG được trả lời là đã ghi nhớ, đã lưu, đã tìm thấy.\n"
+    "Câu bắt đầu bằng 'Mình ưu tiên...' là LÝ DO ĐÃ CÓ CĂN CỨ — đọc lại NGUYÊN VĂN, "
+    "không rút gọn, không bỏ phần trích dẫn review, và KHÔNG thêm nhận định của riêng "
+    "bạn (ví dụ 'chắc cũng sắp đóng', 'chắc đông lắm', 'quán này yên tĩnh'). Bạn chỉ "
+    "được nói những gì tool đã đưa ra.\n"
+    "Nếu tool báo CHƯA TRA ĐƯỢC hoặc không xác định được khu vực: HỎI LẠI người dùng "
+    "quận/thành phố cụ thể. TUYỆT ĐỐI KHÔNG dùng web_search_list để thay thế rồi đọc "
+    "tiêu đề bài viết như thể đó là danh sách quán — đó là bài blog, không phải địa điểm."
+)
+
 CASES = {
     "web": CASE_WEB,
     "weather": CASE_WEATHER,
+    "place": CASE_PLACE,
     "system": CASE_SYSTEM,
     "screen": CASE_SCREEN,
     "browser": CASE_BROWSER,

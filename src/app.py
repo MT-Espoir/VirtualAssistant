@@ -13,6 +13,8 @@ import time
 from agent.agent import Agent
 from agent.actions_facade import AssistantActions
 from agent.tools import build_default_registry
+from actions.places import PlacesService
+from services.location import LocationStore
 from memory.profile import UserProfile
 from agent.persona import PersonaState, MoodState
 from services.tasks import TaskStore
@@ -527,6 +529,16 @@ def main():
     tasks = TaskStore(config.TASKS_PATH or None)
     routines = RoutineStore(config.ROUTINES_PATH or None)
     contacts = ContactStore(config.CONTACTS_PATH or None)
+    # Vị trí: kho RUNTIME giữ toạ độ chính xác, tách khỏi hồ sơ (hồ sơ đi lên LLM).
+    location = LocationStore(config.LOCATION_PATH or None)
+    places = PlacesService(bridge=browser, source=config.PLACES_SOURCE,
+                           radius_km=config.PLACES_RADIUS_KM,
+                           area_radius_km=config.AREA_RADIUS_KM,
+                           limit=config.PLACES_KEEP,
+                           weights={"distance": config.PLACES_W_DISTANCE,
+                                    "quality": config.PLACES_W_QUALITY,
+                                    "open": config.PLACES_W_OPEN,
+                                    "evidence": config.PLACES_W_EVIDENCE})
 
     persona = mood = None
     if config.PERSONA_ENABLED:
@@ -539,7 +551,8 @@ def main():
                                                    browser=browser, screen=screen,
                                                    profile=profile, tasks=tasks,
                                                    routines=routines, contacts=contacts,
-                                                   mcp=mcp),
+                                                   mcp=mcp, places=places,
+                                                   location=location, bus=bus),
                   **({"system": system_prompt} if system_prompt else {}),
                   max_history_turns=config.MAX_HISTORY_TURNS,
                   memory_path=config.MEMORY_PATH or None, router=router, profile=profile,
@@ -581,8 +594,17 @@ def main():
     worker.start()
 
     # Persona bật -> tâm trạng dẫn khuôn mặt: tắt tự reset về neutral (emotion_hold_ms=0).
+    # Bấm một thẻ trên panel = gọi đúng tool `open_place_result`, không dựng đường mở
+    # thứ hai. Panel chỉ là bề mặt hiển thị, luật nằm ở tool.
+    def _open_place_from_panel(index):
+        try:
+            agent.registry.run("open_place_result", {"index": index})
+        except Exception as e:
+            print(f"(không mở được chỗ số {index}: {e})")
+
     win = AvatarWindow(bus=bus, title="Trợ lý AI",
-                       emotion_hold_ms=0 if config.PERSONA_ENABLED else None)
+                       emotion_hold_ms=0 if config.PERSONA_ENABLED else None,
+                       on_open_place=_open_place_from_panel)
     try:
         win.run()          # Tk mainloop (main thread) — chặn tới khi đóng cửa sổ
     finally:

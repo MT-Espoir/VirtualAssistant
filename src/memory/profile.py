@@ -66,12 +66,13 @@ def prune_events(events, now=None, keep_days=_EVENT_KEEP_DAYS):
     return kept[-_MAX_EVENTS:]
 
 
-def apply_update(data, name=None, address_form=None, location=None, note=None, when=None):
+def apply_update(data, name=None, address_form=None, location=None, note=None, when=None,
+                 now=None):
     """Cập nhật (thuần) hồ sơ từ các trường KHÔNG rỗng. Trả (data_mới, [mô tả thay đổi]).
 
     Không sửa `data` gốc (copy sâu). Ghi chú trùng thì không thêm lại.
     `when` kèm `note` -> ghi thành SỰ KIỆN (có thời điểm) thay vì ghi chú bền vững, để sau
-    khi qua giờ trợ lý biết là việc cũ.
+    khi qua giờ trợ lý biết là việc cũ. `now` cho phép chốt mốc "bây giờ" (test).
     """
     data = json.loads(json.dumps(data)) if data else _empty()
     data.setdefault("preferences", {})
@@ -90,9 +91,11 @@ def apply_update(data, name=None, address_form=None, location=None, note=None, w
         changes.append(f"địa điểm mặc định {location.strip()}")
     if note and note.strip():
         n = note.strip()
-        if when:                                   # có thời điểm -> là SỰ KIỆN, không phải
-            data["events"].append(make_event(n, when))   # sự thật bền vững
-            data["events"] = prune_events(data["events"])
+        if when:                    # có thời điểm -> là SỰ KIỆN, không phải sự thật bền vững
+            # Dọn kho CŨ trước rồi mới thêm, để sự kiện vừa ghi không bị chính lượt ghi đó
+            # xoá (khi người dùng kể lại việc đã qua lâu): không thể hứa "đã ghi" mà kho rỗng.
+            kept = prune_events(data["events"], now=now)[-(_MAX_EVENTS - 1):]
+            data["events"] = kept + [make_event(n, when, now=now)]
             changes.append(f'sự kiện "{n}"')
         else:
             if n not in data["notes"]:

@@ -17,6 +17,7 @@ class AssistantEvent:
     emotion: Optional[str] = None    # neutral | happy | sad
     text: Optional[str] = None       # câu trả lời / trạng thái để hiện
     ui: Optional[dict] = None        # lệnh giao diện avatar (scale_delta / opacity_delta...)
+    places: Optional[dict] = None    # {rows, need} -> panel kết quả địa điểm (L3-4)
 
 
 class AssistantBus:
@@ -29,6 +30,14 @@ class AssistantBus:
     def emit_ui(self, **ui):
         """Gửi lệnh điều chỉnh giao diện avatar (đổi kích thước / độ mờ) tới main thread."""
         self._q.put(AssistantEvent(ui=ui))
+
+    def emit_places(self, rows, need=None):
+        """Gửi danh sách địa điểm cho panel kết quả (L3-4).
+
+        Đi qua ĐÚNG kênh này thay vì gọi thẳng Tk: tool chạy ở thread nền, mà widget Tk
+        chỉ được đụng từ main thread. Danh sách rỗng = ẩn panel.
+        """
+        self._q.put(AssistantEvent(places={"rows": list(rows or []), "need": need}))
 
     def drain(self):
         """Lấy hết event đang chờ (không chặn)."""

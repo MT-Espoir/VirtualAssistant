@@ -228,6 +228,39 @@ class Config:
     # host_permissions cho miền tương ứng (xem chrome_extension/manifest.json).
     WEB_SEARCH_ENGINE = _get("WEB_SEARCH_ENGINE", "google")
 
+    # --- Tra địa điểm (PRD F1) ---
+    # Nguồn dữ liệu đổi được bằng cấu hình để việc TỪ BỎ Maps (§6 R1) là sửa một dòng,
+    # không phải viết lại tính năng: maps (mặc định) | osm | places.
+    PLACES_SOURCE = _get("PLACES_SOURCE", "maps")
+    # 1 km -> khung 17z. Đo thật: cùng tâm, khung 5 km (15z) trả 7 chỗ cách 0,96-1,41 km
+    # và KHÔNG chỗ nào dưới 500 m; khung 1 km trả 6 chỗ cách 0,20-0,63 km. Khung rộng
+    # KHÔNG cho nhiều lựa chọn hơn — nó chỉ giấu mất cụm quán ngay cạnh người dùng.
+    PLACES_RADIUS_KM = _get_float("PLACES_RADIUS_KM", 1.0)    # ràng buộc cho "quanh đây"
+    AREA_RADIUS_KM = _get_float("AREA_RADIUS_KM", 10.0)       # khi người dùng nêu khu vực
+    PLACES_LIMIT = _get_int("PLACES_LIMIT", 3)     # số chỗ ĐỌC LÊN qua TTS
+    PLACES_KEEP = _get_int("PLACES_KEEP", 8)       # số chỗ GIỮ trong phiên cho "mở cái thứ N"
+    # Trọng số xếp hạng (F1.5 §7). Đổi trọng số KHÔNG được đổi hành vi LỌC CỨNG.
+    PLACES_W_DISTANCE = _get_float("PLACES_W_DISTANCE", 0.35)
+    PLACES_W_QUALITY = _get_float("PLACES_W_QUALITY", 0.35)
+    PLACES_W_OPEN = _get_float("PLACES_W_OPEN", 0.20)
+    PLACES_W_EVIDENCE = _get_float("PLACES_W_EVIDENCE", 0.10)
+    LOCATION_PATH = _get("LOCATION_PATH", "")                 # rỗng = chỉ nhớ trong phiên
+
+    # --- Claim cache của Lane 3 (research đọc web) — spec §15 L3-6 ---
+    # Nhớ LỜI CỦA TỪNG NGUỒN theo câu hỏi, không nhớ câu trả lời. Ba tác dụng: bỏ hẳn
+    # phần đọc web khi hỏi lại trong cửa sổ tươi; GỘP nguồn giữa các lượt (tập kết quả
+    # tìm kiếm vốn không ổn định — spec §2.5); và còn cái để trả lời khi máy tìm kiếm
+    # chặn (spec §2.1), kèm lời nói rõ dữ liệu cũ bao lâu.
+    RESEARCH_CACHE_PATH = _get("RESEARCH_CACHE_PATH", "")     # rỗng = <src>/research/data/claims.json
+    RESEARCH_CACHE_ENABLED = _get_bool("RESEARCH_CACHE_ENABLED", True)
+    RESEARCH_CACHE_FRESH_H = _get_int("RESEARCH_CACHE_FRESH_H", 24)
+    # Hạn dùng lấy theo LỚP BIẾN ĐỘNG CHẬM NHẤT: thẩm mỹ của một quán đổi theo năm (§11).
+    # Giờ mở cửa/điểm số KHÔNG nằm trong này — chúng tra từ bản đồ lúc bấm vào thẻ.
+    RESEARCH_CACHE_TTL_DAYS = _get_int("RESEARCH_CACHE_TTL_DAYS", 90)
+    # Ngữ cảnh vị trí THÔ được phép bơm vào prompt: province | district | none.
+    # Mặc định 'none': tầng tool đã giải '@current' thành toạ độ nên LLM không cần biết.
+    LOCATION_LLM_GRANULARITY = _get("LOCATION_LLM_GRANULARITY", "none")
+
     # --- Logging ---
     LOG_LEVEL = _get("LOG_LEVEL", "INFO")
     LOG_FILE = _get("LOG_FILE", "")   # rỗng = chỉ log ra console

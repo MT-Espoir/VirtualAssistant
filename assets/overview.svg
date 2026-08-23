@@ -1,0 +1,116 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 560" width="1080" height="560"
+     role="img" aria-label="Vòng lặp một lượt trò chuyện: người dùng nói, trợ lý nghe và hiểu, suy nghĩ, thực thi công cụ, rồi trả lời bằng giọng nói; bộ nhớ, nhân cách, kết nối ngoài và dịch vụ nền cùng tham gia vào vòng lặp.">
+  <defs>
+    <marker id="ov-arrow" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+    <marker id="ov-arrow-up" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+  </defs>
+
+  <rect width="1080" height="560" fill="#ffffff"/>
+
+  <text x="540" y="40" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif"
+        font-size="24" font-weight="700" fill="#0f172a">Trợ lý ảo tiếng Việt — một lượt trò chuyện</text>
+  <text x="540" y="66" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif"
+        font-size="13" fill="#64748b">Nghe → Suy nghĩ → Thực thi → Trả lời, chạy hoàn toàn bằng giọng nói</text>
+
+  <!-- ================= Hàng chính: 5 chặng ================= -->
+  <!-- 1. Người dùng -->
+  <rect x="28" y="110" width="176" height="92" rx="10" fill="#f1f5f9" stroke="#475569" stroke-width="1.5"/>
+  <text x="116" y="146" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="15" font-weight="600" fill="#0f172a">Người dùng</text>
+  <text x="116" y="168" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="12" fill="#475569">nói vào micro</text>
+  <text x="116" y="185" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="12" fill="#475569">hoặc gõ phím</text>
+
+  <!-- 2. Nghe & hiểu -->
+  <rect x="240" y="110" width="176" height="92" rx="10" fill="#eff6ff" stroke="#2563eb" stroke-width="1.8"/>
+  <text x="328" y="140" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="15" font-weight="600" fill="#1e3a8a">Nghe &amp; Hiểu</text>
+  <text x="328" y="161" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="12" fill="#1e40af">dừng khi im 1,5s</text>
+  <text x="328" y="178" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="12" fill="#1e40af">STT → sửa lỗi</text>
+  <text x="328" y="195" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="12" fill="#1e40af">chờ từ đánh thức</text>
+
+  <!-- 3. Suy nghĩ -->
+  <rect x="452" y="110" width="176" height="92" rx="10" fill="#fff7ed" stroke="#ea580c" stroke-width="1.8"/>
+  <text x="540" y="140" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="15" font-weight="600" fill="#9a3412">Suy nghĩ</text>
+  <text x="540" y="161" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="12" fill="#c2410c">lệnh quen → chạy thẳng</text>
+  <text x="540" y="178" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="12" fill="#c2410c">còn lại → LLM tự</text>
+  <text x="540" y="195" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="12" fill="#c2410c">chọn công cụ</text>
+
+  <!-- 4. Thực thi -->
+  <rect x="664" y="110" width="176" height="92" rx="10" fill="#ecfdf5" stroke="#059669" stroke-width="1.8"/>
+  <text x="752" y="140" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="15" font-weight="600" fill="#065f46">Thực thi</text>
+  <text x="752" y="161" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="12" fill="#047857">47 công cụ</text>
+  <text x="752" y="178" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="12" fill="#047857">việc khó hoàn tác</text>
+  <text x="752" y="195" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="12" fill="#047857">phải hỏi trước</text>
+
+  <!-- 5. Trả lời -->
+  <rect x="876" y="110" width="176" height="92" rx="10" fill="#faf5ff" stroke="#7c3aed" stroke-width="1.8"/>
+  <text x="964" y="140" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="15" font-weight="600" fill="#5b21b6">Trả lời</text>
+  <text x="964" y="161" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="12" fill="#6d28d9">đọc thành tiếng</text>
+  <text x="964" y="178" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="12" fill="#6d28d9">avatar đổi cảm xúc</text>
+  <text x="964" y="195" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="12" fill="#6d28d9">ngắt lời được</text>
+
+  <!-- Mũi tên giữa các chặng -->
+  <line x1="204" y1="156" x2="238" y2="156" stroke="#475569" stroke-width="1.8" marker-end="url(#ov-arrow)"/>
+  <line x1="416" y1="156" x2="450" y2="156" stroke="#475569" stroke-width="1.8" marker-end="url(#ov-arrow)"/>
+  <line x1="628" y1="156" x2="662" y2="156" stroke="#475569" stroke-width="1.8" marker-end="url(#ov-arrow)"/>
+  <line x1="840" y1="156" x2="874" y2="156" stroke="#475569" stroke-width="1.8" marker-end="url(#ov-arrow)"/>
+
+  <text x="221" y="148" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="10" fill="#64748b">âm thanh</text>
+  <text x="433" y="148" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="10" fill="#64748b">câu lệnh</text>
+  <text x="645" y="148" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="10" fill="#64748b">gọi công cụ</text>
+  <text x="857" y="148" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="10" fill="#64748b">kết quả</text>
+
+  <!-- ================= Hàng hỗ trợ ================= -->
+  <!-- Dịch vụ nền -->
+  <rect x="240" y="300" width="176" height="96" rx="10" fill="#ffffff" stroke="#94a3b8" stroke-width="1.4" stroke-dasharray="5 3"/>
+  <text x="328" y="326" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="13" font-weight="600" fill="#334155">Dịch vụ nền</text>
+  <text x="328" y="348" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="11" fill="#475569">lịch nhắc &amp; hẹn giờ</text>
+  <text x="328" y="365" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="11" fill="#475569">bản tin sáng</text>
+  <text x="328" y="382" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="11" fill="#475569">cảnh báo pin yếu</text>
+
+  <!-- Bộ nhớ -->
+  <rect x="452" y="300" width="176" height="96" rx="10" fill="#ffffff" stroke="#94a3b8" stroke-width="1.4"/>
+  <text x="540" y="326" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="13" font-weight="600" fill="#334155">Bộ nhớ</text>
+  <text x="540" y="348" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="11" fill="#475569">lượt vừa nói</text>
+  <text x="540" y="365" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="11" fill="#475569">hồ sơ lâu dài</text>
+  <text x="540" y="382" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="11" fill="#475569">sự kiện tự hết hạn</text>
+
+  <!-- Kết nối ngoài -->
+  <rect x="664" y="300" width="176" height="96" rx="10" fill="#ffffff" stroke="#94a3b8" stroke-width="1.4"/>
+  <text x="752" y="326" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="13" font-weight="600" fill="#334155">Kết nối ngoài</text>
+  <text x="752" y="348" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="11" fill="#475569">Chrome (tiện ích)</text>
+  <text x="752" y="365" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="11" fill="#475569">Gmail &amp; Lịch Google</text>
+  <text x="752" y="382" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="11" fill="#475569">web &amp; thời tiết</text>
+
+  <!-- Nhân cách -->
+  <rect x="876" y="300" width="176" height="96" rx="10" fill="#ffffff" stroke="#94a3b8" stroke-width="1.4"/>
+  <text x="964" y="326" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="13" font-weight="600" fill="#334155">Nhân cách</text>
+  <text x="964" y="348" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="11" fill="#475569">tính cách chỉnh được</text>
+  <text x="964" y="365" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="11" fill="#475569">tâm trạng đổi dần</text>
+  <text x="964" y="382" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="11" fill="#475569">càng dùng càng thân</text>
+
+  <!-- Mũi tên hỗ trợ đi lên -->
+  <line x1="328" y1="298" x2="328" y2="206" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#ov-arrow-up)"/>
+  <line x1="540" y1="298" x2="540" y2="206" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#ov-arrow-up)"/>
+  <line x1="752" y1="298" x2="752" y2="206" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#ov-arrow-up)"/>
+  <line x1="964" y1="298" x2="964" y2="206" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#ov-arrow-up)"/>
+
+  <text x="334" y="262" font-family="Segoe UI,Arial,sans-serif" font-size="10" fill="#64748b">tự mở lượt mới</text>
+  <text x="546" y="262" font-family="Segoe UI,Arial,sans-serif" font-size="10" fill="#64748b">nạp vào ngữ cảnh</text>
+  <text x="758" y="262" font-family="Segoe UI,Arial,sans-serif" font-size="10" fill="#64748b">công cụ gọi ra</text>
+  <text x="970" y="262" font-family="Segoe UI,Arial,sans-serif" font-size="10" fill="#64748b">định giọng điệu</text>
+
+  <!-- ================= Vòng lặp ================= -->
+  <path d="M964,204 V470 H116 V204" fill="none" stroke="#475569" stroke-width="1.8"
+        stroke-dasharray="6 4" marker-end="url(#ov-arrow)"/>
+  <rect x="440" y="454" width="200" height="32" rx="6" fill="#ffffff"/>
+  <text x="540" y="475" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif"
+        font-size="12" fill="#334155">nghe tiếp lượt sau</text>
+
+  <text x="540" y="530" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif"
+        font-size="11.5" fill="#64748b">Lệnh quen thuộc chạy thẳng không cần LLM · Việc khó hoàn tác luôn hỏi lại · Đọc màn hình chỉ bật với LLM chạy máy</text>
+</svg>

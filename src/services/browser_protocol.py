@@ -8,6 +8,8 @@ Phần vận chuyển (WebSocket) nằm ở services/browser_bridge.py.
 
 import re
 
+from utils.units import format_km as _km, say_distance
+
 # Tên hành động cấp tool (LLM dùng) -> mã gửi cho extension (background.js).
 MEDIA_ACTIONS = {
     "play": "PLAY",
@@ -247,3 +249,173 @@ def summarize_open_or_reuse(resp, url):
     if resp.get("reused"):
         return f"Đã dùng lại tab {site} sẵn có và chuyển sang trang mới."
     return f"Đã mở tab mới trên {site}."
+
+
+# ============================ MAPS_READ (địa điểm) ============================
+# Bảng mã kết quả — xem PRD P0-1. Ý nghĩa của mã quyết định CÂU ĐƯỢC PHÉP NÓI, nên
+# mọi mã đều phải có mặt ở đúng một trong hai nhóm dưới đây.
+
+# Chỉ những mã này mới được diễn đạt thành "không có / không tìm thấy".
+SAYS_NOTHING_FOUND = ("NO_RESULTS", "OUT_OF_AREA", "APPROX_MATCH")
+# Mã báo HỆ THỐNG hỏng -> phải nói "tôi không tra được", TUYỆT ĐỐI không nói "không có".
+SAYS_CANNOT_LOOK_UP = ("TIMEOUT", "BLOCKED", "SCRAPE_FAILED", "PARSER_ERROR",
+                       "SOURCE_UNAVAILABLE")
+PLACE_OUTCOMES = ("OK",) + SAYS_NOTHING_FOUND + SAYS_CANNOT_LOOK_UP
+
+
+def zoom_for_radius(radius_km):
+    """Bán kính yêu cầu -> mức zoom của URL Maps.
+
+    Đo thật (2026-08-21): bảng kết quả Maps trả TỐI ĐA ~6 mục bất kể zoom hay cuộn, nhưng
+    zoom quyết định 6 mục NÀO — 17z cho các chỗ cách 0,25-0,63 km, còn 15z cho 0,4-1,26 km.
+    Vậy nên khớp khung nhìn với ràng buộc, thay vì cố định 15z.
+    """
+    try:
+        r = float(radius_km)
+    except (TypeError, ValueError):
+        return 15
+    if r <= 0:
+        return 13          # không ràng buộc (tìm đúng một chỗ) -> khung rộng cho dễ thấy
+    if r <= 1:
+        return 17
+    if r <= 2:
+        return 16
+    if r <= 5:
+        return 15
+    if r <= 10:
+        return 14
+    return 13
+
+
+def build_maps_read(query, lat, lng, limit=10, radius_km=None):
+    """Dựng payload MAPS_READ. Extension chỉ ĐỌC DOM và trả dữ liệu THÔ.
+
+    Tâm bản đồ là BẮT BUỘC: thiếu nó Maps rơi vào 'limited view' và chỉ trả 1 kết quả
+    (đo thật ở Phase 0). Lọc khoảng cách / khớp tên / quyết mã kết quả nằm ở
+    actions/places.py — thuần, test được, dùng chung cho cả nguồn OSM.
+    """
+    if not query or not str(query).strip():
+        raise ValueError("Cần nội dung để tìm địa điểm.")
+    try:
+        flat, flng = float(lat), float(lng)
+    except (TypeError, ValueError):
+        raise ValueError("Cần toạ độ (lat/lng) để tra địa điểm.")
+    try:
+        n = int(limit)
+    except (TypeError, ValueError):
+        n = 10
+    payload = {"action": "MAPS_READ", "query": str(query).strip(),
+               "lat": flat, "lng": flng, "limit": max(1, min(20, n))}
+    if radius_km is not None:
+        payload["zoom"] = zoom_for_radius(radius_km)
+    return payload
+
+
+# Mã cấp TRANG do extension trả về (chỉ thứ nó nhìn thấy được từ DOM).
+PAGE_OUTCOMES = ("RAW", "EMPTY", "BLOCKED", "SCRAPE_FAILED", "PARSER_ERROR",
+                 "SOURCE_UNAVAILABLE")
+
+
+def parse_maps_response(resp):
+    """Phản hồi MAPS_READ -> (page_outcome, [mục thô], diagnostics).
+
+    KHÔNG BAO GIỜ trả mảng trần: lỗi vận chuyển -> SOURCE_UNAVAILABLE, để tầng trên
+    phân biệt được 'không có quán' với 'tôi hỏng' (PRD P0-1).
+    """
+    if not isinstance(resp, dict) or resp.get("type") == "ERROR":
+        msg = resp.get("message", "") if isinstance(resp, dict) else ""
+        return "SOURCE_UNAVAILABLE", [], {"transportError": str(msg)}
+
+    page = resp.get("pageOutcome")
+    if page not in PAGE_OUTCOMES:
+        return "SCRAPE_FAILED", [], {"badOutcome": str(page)}
+
+    items = []
+    for r in resp.get("items") or []:
+        name = (r.get("name") or "").strip()
+        lat, lng = r.get("lat"), r.get("lng")
+        if not name or lat is None or lng is None:
+            continue          # thiếu tên hoặc toạ độ -> không kiểm chứng được -> bỏ
+        items.append({"name": name, "url": (r.get("url") or "").strip(),
+                      "lat": lat, "lng": lng,
+                      # dòng THÔ để tầng Python bóc đặc trưng (F1.5 §6)
+                      "lines": r.get("lines") or [], "aria": r.get("aria") or [],
+                      "rating": r.get("rating"), "address": r.get("address")})
+    return page, items, (resp.get("diagnostics") or {})
+
+
+def _place_line(i, p):
+    """Một dòng đọc: số thứ tự + tên + khoảng cách + cảnh báo sắp đóng cửa (nếu biết).
+
+    Chỉ nêu những gì CÓ dữ liệu thật; thiếu thì im lặng bỏ qua, không suy đoán.
+    """
+    bits = []
+    dist = say_distance(p.get("distance_km"))
+    if dist:
+        bits.append(dist)
+    opening = p.get("opening") or {}
+    if opening.get("state") == "closing_soon":
+        closes = opening.get("closes_at")
+        bits.append(f"sắp đóng cửa lúc {closes[0]}:{closes[1]:02d}" if closes else "sắp đóng cửa")
+    elif opening.get("state") == "closed":
+        bits.append("đang đóng cửa")
+    elif opening.get("state") == "open_24h":
+        bits.append("mở cả ngày")
+    return f"{i}. {p['name']}" + (f" ({', '.join(bits)})" if bits else "")
+
+
+def summarize_places(outcome, results, query, diagnostics=None, area=None, source=None,
+                     speak_limit=None, top_reason=None):
+    """Kết quả tra địa điểm -> câu tiếng Việt ĐỌC được.
+
+    Đây là nơi CHỐT quy tắc bất khả xâm phạm của P0-1: chỉ NO_RESULTS / OUT_OF_AREA /
+    APPROX_MATCH mới được nói 'không có'; mọi mã hỏng phải nói 'không tra được'.
+    Ghép câu ở đây (không giao LLM) để quy tắc là tất định và test được.
+    """
+    diagnostics = diagnostics or {}
+    where = f" ở {area}" if area else ""
+    src_note = " (tôi tra bằng dữ liệu bản đồ mở, có thể thiếu)" if source == "osm" else ""
+
+    if outcome == "OK" and results:
+        n = len(results)
+        shown = results if not speak_limit or n <= speak_limit else results[:speak_limit]
+        lines = [_place_line(i, p) for i, p in enumerate(shown, 1)]
+        if len(shown) < n:
+            # Đọc 6-8 cái tên qua TTS thì quá dài, nhưng vẫn phải nói THẬT là có bao nhiêu.
+            head = (f"Tôi tìm được {n} chỗ cho '{query}'{where}{src_note}, "
+                    f"đọc bạn nghe {len(shown)} chỗ gần nhất:")
+            tail = f"\nBạn muốn mở chỗ số mấy? (còn {n - len(shown)} chỗ nữa)"
+        else:
+            head = f"Tôi tìm được {n} chỗ cho '{query}'{where}{src_note}:"
+            tail = "\nBạn muốn mở chỗ số mấy?"
+        # Giải thích cho lựa chọn ĐẦU thôi: đọc lý do cho cả 3 chỗ thì câu quá dài
+        # khi TTS đọc, mà giá trị thêm không đáng.
+        reason = ("\n" + top_reason) if top_reason else ""
+        return head + "\n" + "\n".join(lines) + reason + tail
+
+    if outcome == "APPROX_MATCH":
+        # KHÔNG được trình bày như đã tìm thấy — phải nói rõ là khác cái được hỏi.
+        alt = "; ".join(p["name"] for p in results[:3]) or "một vài chỗ tên gần giống"
+        return (f"Tôi không thấy đúng '{query}'{where}. Gần giống thì có: {alt}. "
+                f"Có phải bạn muốn tìm một trong số này không?")
+
+    if outcome == "OUT_OF_AREA":
+        near = _km(diagnostics.get("nearest_km"))
+        base = (f"Không có '{query}'{where}." if area
+                else f"Quanh đây tôi không thấy '{query}' nào.")
+        if near:
+            base += f" Chỗ gần nhất cách khoảng {near}."
+        return base
+
+    if outcome == "NO_RESULTS":
+        return f"Tôi không tìm thấy '{query}'{where}."
+
+    # Mọi mã còn lại = HỆ THỐNG hỏng. Không được nói 'không có'.
+    if outcome == "SOURCE_UNAVAILABLE":
+        return (f"Tôi chưa tra được '{query}' vì trình duyệt chưa sẵn sàng. "
+                f"Bạn mở Chrome giúp tôi rồi hỏi lại nhé.")
+    if outcome == "BLOCKED":
+        return f"Tôi chưa tra được '{query}' vì trang bản đồ đang chặn. Bạn thử lại sau nhé."
+    if outcome == "TIMEOUT":
+        return f"Tra '{query}' lâu quá nên tôi chưa lấy được kết quả. Bạn thử lại nhé."
+    return f"Tôi chưa đọc được kết quả cho '{query}' lúc này."

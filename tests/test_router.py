@@ -145,3 +145,44 @@ if __name__ == "__main__":
                 print("FAIL", _name, "->", repr(_e))
     print(f"\n{'ALL PASS' if not failures else str(failures) + ' FAILED'}")
     raise SystemExit(1 if failures else 0)
+
+
+# --------------------------- mọi tool đã đăng ký phải với tới được --------------------------- #
+#
+# HỒI QUY: `research_places` từng được đăng ký vào registry nhưng KHÔNG có trong
+# CASE_TOOLS["place"]. Router bật (mặc định với ollama) thì thu hẹp danh sách tool theo
+# case, nên model KHÔNG BAO GIỜ nhìn thấy tool đó — tính năng chết lặng, test cũ vẫn xanh.
+
+def _full_registry():
+    """Registry có ĐỦ mọi nhóm tool (tiêm mock cho các phụ thuộc tuỳ chọn).
+
+    `_registry()` ở trên cố tình thiếu browser/screen/places để test phần thu hẹp; ở đây
+    cần bản đầy đủ mới đối chiếu được CASE_TOOLS với registry.
+    """
+    from unittest.mock import MagicMock
+    return build_default_registry(
+        _FakeActions(), scheduler=MagicMock(), browser=MagicMock(), screen=MagicMock(),
+        profile=MagicMock(), tasks=MagicMock(), routines=MagicMock(),
+        contacts=MagicMock(), places=MagicMock(), location=MagicMock())
+
+
+def test_case_tools_only_names_registered_tools():
+    """Tên trong CASE_TOOLS phải khớp registry — sai chính tả là tool biến mất im lặng."""
+    reg = _full_registry()
+    for case, names in CASE_TOOLS.items():
+        for name in names or []:
+            assert reg.has(name), f"CASE_TOOLS['{case}'] trỏ tới tool không tồn tại: {name}"
+
+
+def test_place_case_exposes_research_places():
+    reg = _full_registry()
+    assert reg.has("research_places"), "tool chưa đăng ký"
+    assert "research_places" in CASE_TOOLS["place"], (
+        "research_places không nằm trong case 'place' -> router che mất tool, "
+        "model không bao giờ chọn được")
+
+
+def test_place_case_prompt_mentions_research_places():
+    """Có tool trong danh sách chưa đủ: prompt phải nói KHI NÀO chọn nó."""
+    frag = prompts.load()["cases"]["place"]
+    assert "research_places" in frag

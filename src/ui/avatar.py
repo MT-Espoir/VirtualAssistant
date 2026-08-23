@@ -58,8 +58,12 @@ def _round_rect(canvas, x1, y1, x2, y2, radius=10, **kwargs):
 
 class AvatarWindow:
     def __init__(self, bus=None, title="Trợ lý AI", scale=None, opacity=None,
-                 emotion_hold_ms=None):
+                 emotion_hold_ms=None, on_open_place=None):
         self.bus = bus
+        # Panel kết quả địa điểm (L3-4): tạo LƯỜI ở lần dùng đầu, để phiên nào không hỏi
+        # địa điểm thì không phải trả chi phí dựng cửa sổ nào.
+        self._places_panel = None
+        self.on_open_place = on_open_place
         self.state, self.emotion, self.message = "idle", "neutral", ""
         # Giữ cảm xúc bao lâu rồi tự về neutral. <=0 = KHÔNG tự reset (để Persona/tâm trạng
         # dẫn dắt khuôn mặt). None = dùng mặc định EMOTION_HOLD_MS.
@@ -179,6 +183,22 @@ class AvatarWindow:
         self._render()
 
     # cập nhật trực tiếp (dùng ở demo/test tay)
+    def _show_places(self, payload):
+        """Mở/cập nhật panel kết quả địa điểm. Tạo lười — không có Lane 3 thì không tốn gì.
+
+        Panel là tầng KIỂM CHỨNG BẰNG MẮT cho các thuộc tính không đo được (yên tĩnh,
+        nhiều cây, phong cách cổ). Xem `ui/place_panel.py`.
+        """
+        try:
+            if self._places_panel is None:
+                from ui.place_panel import PlacesPanel
+                self._places_panel = PlacesPanel(self.root, on_open=self.on_open_place)
+            self._places_panel.show(payload.get("rows"), payload.get("need"))
+        except Exception:
+            # Panel hỏng KHÔNG được làm chết avatar hay vòng lặp trợ lý.
+            import logging
+            logging.getLogger(__name__).warning("Không mở được panel địa điểm", exc_info=True)
+
     def set(self, state=None, emotion=None, text=None):
         if state:
             self.state = state
@@ -194,6 +214,9 @@ class AvatarWindow:
         for ev in self.bus.drain():
             if getattr(ev, "ui", None):        # lệnh giao diện (đổi size/độ mờ)
                 self._apply_ui(ev.ui)
+                continue
+            if getattr(ev, "places", None) is not None:
+                self._show_places(ev.places)
                 continue
             if ev.state:
                 self.state = ev.state

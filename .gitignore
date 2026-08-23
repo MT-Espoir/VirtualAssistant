@@ -28,6 +28,8 @@ src/services/contacts.json
 src/components/user/user_data/
 # Dữ liệu bộ nhớ của trợ lý (hồ sơ người dùng, nhân cách) — RIÊNG TƯ, không đưa lên repo
 src/memory/data/
+# Claim cache của Lane 3 — nội dung web đã đọc, sinh lại được, không thuộc mã nguồn
+src/research/data/
 
 # Log runtime khi chạy qua launcher (launch_assistant.vbs)
 assistant.log

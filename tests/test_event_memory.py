@@ -64,11 +64,19 @@ def test_older_than_days():
 # --------------------------- ghi sự kiện --------------------------- #
 
 def test_note_with_when_becomes_event_not_durable_note():
-    data, changes = apply_update({}, note="phỏng vấn với anh Nam", when=NOON.isoformat())
+    data, changes = apply_update({}, note="phỏng vấn với anh Nam", when=NOON.isoformat(),
+                                 now=NOON)
     assert data["notes"] == []                       # KHÔNG vào kho bền vững
     assert len(data["events"]) == 1
     assert data["events"][0]["text"] == "phỏng vấn với anh Nam"
     assert "sự kiện" in changes[0]
+
+
+def test_recording_a_long_past_event_still_stores_it():
+    """Kể lại việc đã qua lâu vẫn phải vào kho — không thể báo "đã nhớ" mà kho rỗng."""
+    old = (NOON - timedelta(days=30)).isoformat()
+    data, changes = apply_update({}, note="phỏng vấn cũ", when=old, now=NOON)
+    assert len(data["events"]) == 1 and "sự kiện" in changes[0]
 
 
 def test_note_without_when_stays_durable():

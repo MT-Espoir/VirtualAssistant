@@ -36,7 +36,8 @@ def _build_parts():
     # schedule/weather) -> LLM thấy đúng bộ tool như lúc chạy thật.
     registry = build_default_registry(AssistantActions(), scheduler=_StubDep(),
                                       browser=_StubDep(), screen=_StubDep(),
-                                      tasks=_StubDep(), routines=_StubDep())
+                                      tasks=_StubDep(), routines=_StubDep(),
+                                      places=_StubDep(), location=_StubDep())
     # Dùng CHUNG quyết định với app.py -> eval đo đúng cấu hình production sẽ chạy.
     router = Router(llm) if config.use_router() else None
     return llm, registry, router
