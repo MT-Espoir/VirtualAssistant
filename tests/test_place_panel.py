@@ -1,15 +1,15 @@
 """
-Test panel kết quả địa điểm (`ui/place_panel.py`) — L3-4.
+Test nội dung panel kết quả địa điểm (`ui/panels.py`).
 
 Chỉ test phần THUẦN (`card_text`, `panel_title`). Phần vẽ Tk không test tự động được;
 nó cố ý mỏng và không chứa luật nào.
 
-Ràng buộc được khoá ở đây là quy tắc chống bịa của spec §12: chỉ hiện trường CÓ dữ liệu
+Ràng buộc được khoá ở đây là quy tắc chống bịa: chỉ hiện trường CÓ dữ liệu
 thật, số nguồn hiện dưới dạng CON SỐ chứ không phải tính từ, và panel không được khẳng
 định quán có tính chất được hỏi.
 """
 
-from ui.place_panel import card_text, panel_title
+from ui.panels import card_text, panel_title
 
 
 # --------------------------- chỉ hiện thứ CÓ dữ liệu --------------------------- #
@@ -33,7 +33,7 @@ def test_card_shows_distance_when_known():
 
 
 def test_card_rating_always_carries_review_count():
-    """4,8 với 3 lượt khác hẳn 4,8 với 646 lượt (F1.5 §7) — không được giấu số lượt."""
+    """4,8 với 3 lượt khác hẳn 4,8 với 646 lượt — không được giấu số lượt."""
     data = card_text({"name": "X", "rating": 4.8, "reviews": 646})
     assert any("646" in m for m in data["meta"])
 
@@ -61,7 +61,7 @@ def test_card_states_source_count_as_a_number():
 
 
 def test_card_never_asserts_the_quality():
-    """Panel KHÔNG được nói quán có tính chất đó — nó chưa kiểm chứng gì (I-L3-3)."""
+    """Panel KHÔNG được nói quán có tính chất đó — nó chưa kiểm chứng gì."""
     data = card_text({"name": "Tropical Forest", "sources": 3},
                      need="quán cà phê nhiều cây xanh")
     blob = " ".join([data["title"]] + data["meta"] + data["evidence"]).lower()
@@ -84,7 +84,7 @@ def test_card_missing_name_is_explicit():
 
 
 def test_card_photos_default_empty():
-    """Nguồn ảnh chưa có (L3-5 còn chờ §14) — khoá `photos` phải tồn tại và rỗng."""
+    """Nguồn ảnh chưa có — khoá `photos` phải tồn tại và rỗng."""
     assert card_text({"name": "X"})["photos"] == []
 
 
@@ -128,3 +128,35 @@ def test_card_shows_quote_with_its_source():
 def test_card_quote_without_source_has_no_dangling_dash():
     data = card_text({"name": "X", "sources": 2, "quote": "sân vườn rợp bóng cây"})
     assert "“sân vườn rợp bóng cây”" in data["evidence"]
+
+
+# --------------------------- khối cho khung HUD --------------------------- #
+
+def test_places_blocks_numbers_cards_and_carries_pick_key():
+    from ui.panels import places_blocks
+    blocks = places_blocks([{"name": "A", "sources": 3}, {"name": "B", "sources": 2}],
+                           need="quán nhiều cây xanh")
+    assert blocks[0][0] == "header"
+    cards = [b for b in blocks if b[0] == "card"]
+    assert [c[2] for c in cards] == [1, 2], "khoá bấm phải là SỐ THỨ TỰ người dùng nghe"
+    assert cards[0][1]["title"].startswith("1. A")
+
+
+def test_places_blocks_translates_evidence_to_hud_lines():
+    from ui.panels import places_blocks
+    card = [b for b in places_blocks([{"name": "A", "sources": 3}], need="x")
+            if b[0] == "card"][0]
+    assert "3 nguồn nhắc tới" in card[1]["lines"][0]
+    assert "evidence" not in card[1], "HUD chỉ biết 'lines'"
+
+
+def test_places_blocks_empty_hides_panel():
+    from ui.panels import places_blocks
+    assert places_blocks([], need="x") == []
+    assert places_blocks(None) == []
+
+
+def test_places_blocks_caps_card_count():
+    from ui.panels import MAX_CARDS, places_blocks
+    rows = [{"name": "Q%d" % i, "sources": 2} for i in range(MAX_CARDS + 5)]
+    assert len([b for b in places_blocks(rows) if b[0] == "card"]) == MAX_CARDS

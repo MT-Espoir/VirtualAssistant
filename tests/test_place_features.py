@@ -1,6 +1,6 @@
-"""Bóc đặc trưng địa điểm (F1.5 §6, đợt S1).
+"""Bóc đặc trưng địa điểm.
 
-Mọi chuỗi trong file này là dữ liệu THẬT bóc từ Google Maps ngày 2026-08-21, không phải
+Mọi chuỗi trong file này là dữ liệu THẬT bóc từ Google Maps, không phải
 ví dụ tự nghĩ. Đó là điều kiện để test có ý nghĩa: parser phải chịu được dạng thật.
 """
 
@@ -51,7 +51,7 @@ def test_dai_gia_hai_dang_viet():
 
 
 def test_thieu_dai_gia_la_None_khong_phai_0():
-    """Thiếu dữ liệu KHÁC với rẻ — trả 0 sẽ làm ranking hiểu sai (F1.5 §7)."""
+    """Thiếu dữ liệu KHÁC với rẻ — trả 0 sẽ làm ranking hiểu sai."""
     assert parse_price(HARU) is None
 
 
@@ -112,7 +112,7 @@ def test_trich_doan_review_la_bang_chung_duy_nhat_cho_thuoc_tinh_mem():
 
 
 def test_khong_co_trich_doan_thi_None():
-    """Không có bằng chứng -> không được nhắc tới thuộc tính mềm (F1.5 §5)."""
+    """Không có bằng chứng -> không được nhắc tới thuộc tính mềm."""
     assert parse_quote(HARU) is None
 
 

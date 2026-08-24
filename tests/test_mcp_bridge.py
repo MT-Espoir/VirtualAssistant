@@ -115,7 +115,7 @@ def test_read_only_tool_yields_no_preview_payload():
     assert reg.get("gcal_list_events").preview(date="today") is None
 
 
-# HỒI QUY (2026-08-24): người dùng nói "viết mail xin hướng dẫn đồ án" -> chỉ ĐỌC, không
+# HỒI QUY: người dùng nói "viết mail xin hướng dẫn đồ án" -> chỉ ĐỌC, không
 # hiện panel. Nguyên nhân: 'gws_gmail_draft' không chứa từ khoá GHI nào ('send/create/
 # delete'...) nên bị xếp là chỉ-đọc -> không cổng duyệt -> không panel. Mà LƯU NHÁP chính
 # là lúc cần nhìn bản nháp nhất.

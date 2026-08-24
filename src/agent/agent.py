@@ -114,14 +114,12 @@ class Agent:
     # Đặt thứ đổi mỗi lượt lên đầu thì tiền tố lệch ngay từ token đầu tiên, và toàn bộ prompt
     # — kể cả LỊCH SỬ HỘI THOẠI nằm sau nó — phải đọc lại từ đầu. Hội thoại càng dài càng chậm.
     #
-    # Đo trên máy này 2026-08-22 (qwen2.5:3b, prefix 1.414 token, CPU):
-    #     đổi ở ĐẦU  -> 23,6s  (prompt_eval 21,0s @ 68 tok/s)
-    #     đổi ở CUỐI ->  3,4s  (prompt_eval  0,8s @ 1.847 tok/s)
-    # ~7 lần, và `prompt_eval` chiếm ~83% chi phí một lượt. Xem docs/latency_optimization_spec.md §1b.
+    # Đọc prompt chiếm phần lớn chi phí một lượt, nên mất cache là mất nhiều lần thời gian
+    # chứ không phải vài phần trăm.
     #
-    # Nhân cách/tâm trạng trước ở TRÊN CÙNG để định hình giọng; đã chuyển xuống sau BASE+CASE
-    # vì nó đổi theo tâm trạng nên phá cache. Nếu giọng/thái độ tệ đi khi chạy thật, đưa nó về
-    # đầu lại — chỉ mất cache mỗi khi tâm trạng đổi, vẫn giữ được phần lớn lợi ích.
+    # Nhân cách/tâm trạng đặt sau BASE+CASE vì nó đổi theo tâm trạng nên phá cache. Nếu
+    # giọng/thái độ tệ đi, đưa nó lên đầu lại — chỉ mất cache mỗi khi tâm trạng đổi, vẫn
+    # giữ được phần lớn lợi ích.
     def _compose_system(self, base_system, user_text):
         """Ghép system prompt: khối ổn định trước, khối biến động sau. Trả chuỗi."""
         parts = [base_system]                       # BASE + CASE — ổn định giữa các lượt cùng case
@@ -353,8 +351,7 @@ class Agent:
              đọc bằng mắt mới kiểm được.
 
         Lý do (2) không thừa: `gws_gmail_draft` không chứa từ khoá GHI nào nên (1) xếp nó
-        là "chỉ đọc", trong khi "viết mail" chính là lúc cần nhìn bản nháp nhất. Đo được
-        2026-08-24 — đây đúng là ca người dùng gặp mà panel không hiện.
+        là "chỉ đọc", trong khi "viết mail" chính là lúc cần nhìn bản nháp nhất.
         """
         for call in tool_calls:
             if not self.registry.has(call.name):

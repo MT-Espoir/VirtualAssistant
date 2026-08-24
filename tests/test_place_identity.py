@@ -1,5 +1,5 @@
 """
-Test danh tính địa điểm (`actions/place_identity.py`) — L3-2.
+Test danh tính địa điểm (`actions/place_identity.py`).
 
 Hai tầng phải tách được: nhận định thẩm mỹ đúng ở cấp THƯƠNG HIỆU, khoảng cách chỉ đúng
 ở cấp CHI NHÁNH. Có test khoá cả GIỚI HẠN đã biết của `brand_key` — nó không tách được
@@ -69,7 +69,7 @@ def test_brand_key_known_limitation_bare_street_suffix():
 
     'Cộng Cà Phê Triệu Việt Vương' không có dấu hiệu tách nào -> hàm trả về CẢ CỤM, nên
     khác khoá với 'Cộng Cà Phê'. Danh tính chuỗi đáng tin phải đến từ trường chain/brand
-    của nhà cung cấp, không phải từ việc bổ chuỗi (spec §14).
+    của nhà cung cấp, không phải từ việc bổ chuỗi.
     """
     assert brand_key("Cộng Cà Phê Triệu Việt Vương") != brand_key("Cộng Cà Phê")
 

@@ -1,10 +1,10 @@
 """
-Lane 3 — tìm địa điểm theo NHU CẦU, không theo loại (spec `docs/research_lane_spec.md`).
+Tìm địa điểm theo NHU CẦU, không theo loại.
 
 Đây là phần cắm miền địa điểm vào lõi `research/`: lõi lo tìm-tải-lọc-đếm, file này lo
 phần chỉ địa điểm mới có (chuẩn hoá tên quán, giải toạ độ, khoảng cách).
 
-NGUYÊN TẮC CHI PHỐI — DISCOVERY khác VERIFICATION (spec §3):
+NGUYÊN TẮC CHI PHỐI — DISCOVERY khác VERIFICATION:
 
     Web  -> "chỗ nào có TIẾNG là nhiều cây xanh"   -> SINH ỨNG VIÊN
     Maps -> "chỗ CỤ THỂ này có thật thế không"     -> KIỂM CHỨNG
@@ -14,8 +14,7 @@ vẫn kể ĐÚNG TÊN quán, nhưng lời khen trong đó không đáng tin. N�
 cho ứng viên một SUẤT VÀO VÒNG TRONG, không bao giờ là phán quyết cuối.
 
 Vì thế ở đây KHÔNG có nhận định nào về thẩm mỹ. File này chỉ trả về "chỗ nào được nhắc
-tới, bởi mấy nguồn độc lập". Việc xác nhận quán có thật nhiều cây hay không thuộc bước
-kiểm chứng bằng ảnh (L3-5), còn đang chờ quyết định ở spec §14.
+tới, bởi mấy nguồn độc lập".
 """
 
 import time
@@ -34,37 +33,19 @@ logger = get_logger(__name__)
 PLACE_STOP_PREFIXES = ("địa chỉ", "giờ mở", "giờ hoạt động", "bảng giá", "giá cả",
                        "menu", "không gian", "đồ uống", "điểm nổi bật", "vị trí")
 
-# NGÂN SÁCH (spec §10).
-#
-# GIẢI TOẠ ĐỘ MẶC ĐỊNH LÀ **LƯỜI** (`0`). Đo trong app thật 2026-08-22: một lượt research
-# mất **65 giây**, trong đó **62 giây** nằm ở đúng một lời gọi `find_place` — nó chạm trần
-# `MAPS_READ` 45 giây rồi còn rơi vào dự phòng OSM hỏng.
-#
-# Tệ hơn: bước discovery dự phòng cũng dùng trình duyệt, mà Chrome là tài nguyên NỐI TIẾP
-# (một cửa sổ, một lượt). Tra bản đồ ngay sau khi vừa đọc trang kết quả là tự tranh chấp
-# với chính mình.
-#
-# Hai phương án rẻ hơn đều đã đo và đều HỎNG:
-#     Nominatim trên địa chỉ bóc được : 1/8 = 12% — không dùng được
-#     find_place qua DOM              : tới 45 giây, nối tiếp
-#
-# Nên: trả ứng viên kèm TÊN + ẢNH + ĐỊA CHỈ (chữ) trong ~8 giây, và chỉ tra bản đồ khi
-# người dùng thật sự chọn một chỗ. Đổi lại: câu trả lời đầu không có khoảng cách.
+# Giải toạ độ mặc định là LƯỜI (`0`): `find_place` đi qua DOM trình duyệt nên rất chậm và
+# NỐI TIẾP (một Chrome, một lượt) — tra bản đồ ngay sau khi vừa đọc trang kết quả là tự
+# tranh chấp với chính mình. Nên trả ứng viên kèm tên + ảnh + địa chỉ (chữ) trước, chỉ tra
+# bản đồ khi người dùng thật sự chọn một chỗ. Đổi lại: câu trả lời đầu không có khoảng cách.
 DEFAULT_RESOLVE_LIMIT = 0
 DEFAULT_DISPLAY_LIMIT = 8      # số ứng viên trả về cho panel (không tốn gì thêm)
 DEFAULT_FETCH_LIMIT = 8
 DEFAULT_FETCH_WALL_S = 6.0
 
 
-# Tiền tố THIÊN VỊ BÀI LIỆT KÊ. Vấn đề đo được ở §21.2 không phải "câu chữ chưa hay" mà là
-# đường tìm kiếm qua trình duyệt trả về nhiều SITE THƯƠNG HIỆU (trang của chính một quán,
-# trang trung tâm thương mại) thay vì bài liệt kê — mà đồng thuận chỉ hình thành từ bài liệt kê.
-#
-# "Top ..." là đúng cách các bài đó tự đặt tiêu đề, nên nó nhắm thẳng vào thứ đang thiếu.
-#
-# ĐÂY LÀ GIẢ THUYẾT, CHƯA ĐO ĐƯỢC: lúc viết, mọi máy tìm kiếm HTTP đều đang chặn nên không
-# so được biến thể nào tốt hơn. `diag["acquire"]["queries"]` ghi số domain MỚI của từng biến
-# thể để lượt chạy thật trả lời — biến thể không mang thêm domain nào thì nên bỏ.
+# Tiền tố THIÊN VỊ BÀI LIỆT KÊ. Tìm kiếm qua trình duyệt hay trả về site thương hiệu (trang
+# của chính một quán, trang trung tâm thương mại) thay vì bài liệt kê — mà đồng thuận chỉ
+# hình thành từ bài liệt kê. "Top ..." là đúng cách các bài đó tự đặt tiêu đề.
 QUERY_VARIANT_PREFIXES = ("top",)
 DEFAULT_MAX_QUERIES = 2
 
@@ -83,10 +64,9 @@ PLACE_GENERIC_TERMS = frozenset(
     "quán quan cà ca phê phe cafe coffee trà tra quầy nhà nha hàng ăn uống uong đồ do "
     "chỗ cho nơi noi địa dia điểm diem khu vực vuc gần gan tại tai ở và va có co "
     "những nhung các cac một mot này nay là la cho với voi khi thì thi top list "
-    # LƯỢNG TỪ và từ nhấn. Chạy thật 2026-08-23: *"quán cà phê nhiều cây xanh"* trích cho
-    # Tằm Art Café câu *"Quán trưng bày nhiều tác phẩm nghệ thuật..."* — khớp đúng một
-    # chữ "nhiều" và nói về TRANH. Lượng từ không mang nghĩa thuộc tính, nó chỉ đo cái
-    # danh từ đứng sau; để nó lại thì mọi câu có chữ "nhiều" đều thành bằng chứng.
+    # LƯỢNG TỪ và từ nhấn. Lượng từ không mang nghĩa thuộc tính, nó chỉ đo cái danh từ
+    # đứng sau: để nó lại thì mọi câu có chữ "nhiều" đều thành bằng chứng — kể cả câu
+    # "quán trưng bày nhiều tác phẩm nghệ thuật" đem chứng minh cho "nhiều cây xanh".
     "nhiều nhieu ít it rất rat hơi khá kha cực cuc siêu sieu lắm lam quá qua".split())
 
 
@@ -157,13 +137,12 @@ def _display_name(text):
 def canonicalize_keys(per_source):
     """{nguồn: [tên]} -> {khoá dài: khoá gộp}. Gộp các biến thể của CÙNG một quán.
 
-    Khớp khoá bằng dấu BẰNG là quá chặt cho tên quán trên blog. Đo thật 2026-08-22:
+    Khớp khoá bằng dấu BẰNG là quá chặt cho tên quán trên blog:
 
-        greensm.com : "Last Minute Cafe"          -> last minute
-        vincom.com.vn: "Last Minute Premium Cafe" -> last minute premium
+        "Last Minute Cafe"          -> last minute
+        "Last Minute Premium Cafe"  -> last minute premium
 
-    Cùng một quán, hai khoá, và đồng thuận không bao giờ hình thành. Với 64 tên từ 5 nguồn
-    mà chỉ 4 tên đạt ngưỡng, phần lớn thiệt hại đến từ đây.
+    Cùng một quán, hai khoá, và đồng thuận không bao giờ hình thành.
 
     Luật gộp: khoá NGẮN là tập con của khoá DÀI thì gộp về khoá ngắn — nhưng khoá ngắn phải
     có **ít nhất 2 token**. Không có điều kiện đó thì "Cafe Thanh" (khoá `thanh`) sẽ nuốt
@@ -196,11 +175,11 @@ def _harvest_all(sources, terms=()):
     """[nguồn đã tải] -> {domain: {url, records}}. Đây là "LỜI CỦA TỪNG NGUỒN".
 
     Bằng chứng lấy được MIỄN PHÍ từ chính trang đã tải: ảnh, địa chỉ và câu văn nằm trong
-    khối ngay dưới tên quán. Đo được ảnh phủ 100%, địa chỉ 52% (spec §2.8).
+    khối ngay dưới tên quán.
 
-    Tách khỏi `_aggregate` là điều kiện để có claim cache (L3-6): hình dạng trả về ở đây
-    JSON hoá được và ghép được giữa các lượt, nên nguồn nhớ từ lượt trước và nguồn vừa
-    đọc đi vào cùng một đường gộp phía sau.
+    Tách khỏi `_aggregate` là điều kiện để có claim cache: hình dạng trả về ở đây JSON hoá
+    được và ghép được giữa các lượt, nên nguồn nhớ từ lượt trước và nguồn vừa đọc đi vào
+    cùng một đường gộp phía sau.
     """
     by_domain = {}
     for src in sources or []:
@@ -253,7 +232,7 @@ def research(need, area=None, places=None, origin=None, http_get=None,
     `places` = `PlacesService` dùng để giải danh tính. None -> bỏ qua bước đó và trả ứng
     viên chỉ có tên (vẫn dùng được cho panel, chỉ thiếu khoảng cách).
 
-    `cache` = `ClaimCache` (L3-6). None -> không nhớ gì, mỗi lượt đọc web lại từ đầu.
+    `cache` = `ClaimCache`. None -> không nhớ gì, mỗi lượt đọc web lại từ đầu.
     """
     t0 = time.time()
     queries = build_queries(need, area)
@@ -264,7 +243,7 @@ def research(need, area=None, places=None, origin=None, http_get=None,
     terms = quote_terms(need, area)
     diag["quote_terms"] = sorted(terms)
 
-    # --- 1-4. tìm, tải song song, hai cổng lọc — HOẶC lấy từ bản nhớ (L3-6) ---
+    # --- 1-4. tìm, tải song song, hai cổng lọc — HOẶC lấy từ bản nhớ ---
     sources = []          # rỗng suốt nhánh cache hit: lượt này không tải trang nào
     key = cache_key(need, area)
     remembered = cache.get(key) if (cache is not None and key) else None
@@ -283,8 +262,8 @@ def research(need, area=None, places=None, origin=None, http_get=None,
         by_domain = _harvest_all(sources, terms) if sources else {}
 
         if by_domain and remembered:
-            # HỢP NHẤT. §2.5 đo được tập kết quả tìm kiếm không ổn định giữa hai lần gọi;
-            # gộp lại thì mỗi lượt góp thêm nguồn ĐỘC LẬP thay vì thay chỗ nguồn cũ.
+            # HỢP NHẤT: tập kết quả tìm kiếm không ổn định giữa hai lần gọi, nên gộp lại
+            # thì mỗi lượt góp thêm nguồn ĐỘC LẬP thay vì thay chỗ nguồn cũ.
             fresh_only = set(by_domain)
             by_domain = merge_sources(remembered["sources"], by_domain)
             diag["cache"] = {"mode": "merge", "age_hours": round(remembered["age_hours"], 1),
@@ -338,7 +317,7 @@ def research(need, area=None, places=None, origin=None, http_get=None,
     diag["consensus"] = cdiag
     if not passed:
         # Có ứng viên nhưng đều một nguồn -> phải NÓI RA điều đó, không im lặng như thể
-        # không tìm thấy gì (spec §13).
+        # không tìm thấy gì.
         diag["single_source_candidates"] = [r["label"] for r in ranked[:5]]
         return {"outcome": "NO_CONSENSUS", "results": [], "diagnostics": diag}
 
@@ -360,7 +339,7 @@ def research(need, area=None, places=None, origin=None, http_get=None,
             row.update(hit)
         diag["timing_ms"]["resolve"] = int((time.time() - t1) * 1000)
 
-    # Gắn BẰNG CHỨNG XEM ĐƯỢC — thứ người dùng dùng để tự kiểm chứng (spec §12).
+    # Gắn BẰNG CHỨNG XEM ĐƯỢC — thứ người dùng dùng để tự kiểm chứng.
     # Khớp lại theo khoá tên vì `_resolve` có thể trả về tên chuẩn khác tên trên blog.
     for row in rows:
         slot = evidence.get(key_of(row.get("name")) or "") or             evidence.get(_name_key(row.get("name")) or "")
@@ -380,21 +359,16 @@ def research(need, area=None, places=None, origin=None, http_get=None,
             # KHÔNG phải review khách viết. `place_ranking.evidence_score` cũng đọc trường
             # tên `quote` nhưng nó được thiết kế cho review Maps. Đừng cho hàng Lane 3 chạy
             # qua `score_place` mà không tách hai nguồn ra: khi đó lời tự khen của quán sẽ
-            # tự chấm điểm cho chính quán đó — đúng cái vòng tròn mà §3 dựng lên để tránh.
+            # tự chấm điểm cho chính quán đó.
             best = max(slot["quotes"], key=lambda q: q["hits"])
             row["quote"] = best["text"]
             row["quote_source"] = best["domain"]
 
     rows = merge_duplicates(rows)
 
-    # Trích dẫn đến từ MẤY nguồn khác nhau. Chạy thật 2026-08-23: 6/6 chỗ có trích dẫn
-    # nhưng 5 câu cùng một blog, vì site đó viết theo khuôn *"Nếu bạn muốn tìm một quán
-    # cafe nhiều cây xanh ở Hà Nội thì đừng bỏ qua X"* — câu ấy khớp nhiều từ khoá nhất
-    # nên luôn thắng, trong khi nó chỉ chép lại câu hỏi và không tả gì về quán.
-    #
-    # Tách "câu tả thật" khỏi "câu nhắc lại" bằng code thuần thì phải có danh sách hư từ
-    # tiếng Việt — đúng thứ đang cố tránh. Nên: ĐO trước, sửa sau. Con số này ở đây để
-    # lượt chạy thật trả lời, y như `acquire.queries` ở §22.2.
+    # Trích dẫn đến từ MẤY nguồn khác nhau. Câu khớp nhiều từ khoá nhất thường là câu
+    # chép lại chính câu hỏi ("nếu bạn muốn tìm quán cafe nhiều cây xanh thì đừng bỏ qua
+    # X") nên hay thắng dù không tả gì về quán; con số này để theo dõi mức độ dồn cụm.
     quoted = [r for r in rows if r.get("quote")]
     if quoted:
         diag["quotes"] = {"rows": len(quoted),
@@ -429,8 +403,7 @@ def research(need, area=None, places=None, origin=None, http_get=None,
 def _resolve(places, name, origin=None, area=None):
     """Tên quán -> bản ghi có toạ độ, hoặc None nếu không tra ra.
 
-    Dùng ĐÚNG `find_place` mà các tool khác dùng, không viết đường tra thứ hai — bài học
-    `set_my_location` vs `find_nearby` (phụ lục S2 của `smart_places_spec.md`): để hai
+    Dùng ĐÚNG `find_place` mà các tool khác dùng, không viết đường tra thứ hai: để hai
     đường song song thì cùng một chuỗi cho hai kết quả khác nhau.
     """
     try:
@@ -447,16 +420,12 @@ def _resolve(places, name, origin=None, area=None):
 
 # ======================== CÂU ĐỌC ========================
 
-# Khi nào phải NÓI RA rằng các bài viết ít trùng nhau (spec §22.1).
+# Khi nào phải NÓI RA rằng các bài viết ít trùng nhau.
 #
-# Hai điều kiện, và phải có CẢ HAI. Chỉ xét tỉ lệ thì câu này bật cả ở lượt tốt: Hà Nội cho
-# 8 chỗ đạt ngưỡng trên ~40 ứng viên — tỉ lệ thấp y hệt Thủ Đức, nhưng câu trả lời 8 chỗ
-# không hề mỏng nên không ai hiểu nhầm. Cái sinh ra hiểu nhầm là câu trả lời TRÔNG MỎNG
-# trong khi thực tế đã thấy rất nhiều tên.
-#
-#     Thủ Đức : 34 ứng viên, 1 đạt ngưỡng  -> bật  (đúng ca §22.1 mô tả)
-#     Hà Nội  : ~40 ứng viên, 8 đạt ngưỡng -> tắt
-#     khu nhỏ :  6 ứng viên, 1 đạt ngưỡng  -> tắt  (đúng là tìm được ít, không phải bất đồng)
+# Hai điều kiện, và phải có CẢ HAI. Chỉ xét tỉ lệ thì câu này bật cả ở lượt tốt: nhiều ứng
+# viên mà cũng nhiều chỗ đạt ngưỡng thì câu trả lời không hề mỏng, không ai hiểu nhầm. Cái
+# sinh ra hiểu nhầm là câu trả lời TRÔNG MỎNG trong khi thực tế đã thấy rất nhiều tên; còn
+# ít ứng viên thì đúng là tìm được ít, không phải các nguồn bất đồng.
 SPARSE_MIN_CANDIDATES = 10
 SPARSE_MAX_PASSED = 3
 
@@ -465,7 +434,7 @@ def say_sparse_note(cdiag):
     """Chẩn đoán đồng thuận -> câu nói thêm khi các bài ít trùng nhau. Hàm thuần.
 
     Im lặng ở ca này khiến người dùng hiểu "khu vực này chỉ có ngần đó quán", trong khi sự
-    thật là *các bài viết không đồng thuận với nhau*. Hai điều khác hẳn nhau (§22.1).
+    thật là *các bài viết không đồng thuận với nhau*. Hai điều khác hẳn nhau.
     """
     total = int((cdiag or {}).get("candidates") or 0)
     passed = int((cdiag or {}).get("passed") or 0)
@@ -488,16 +457,16 @@ def say_age(hours):
 def say_research(out, need, speak_limit=3):
     """Kết quả -> câu đọc cho người dùng. Hàm thuần.
 
-    RÀNG BUỘC PHÁT NGÔN (spec §3, I-L3-3): tầng này chỉ biết *bao nhiêu nguồn nhắc tới*,
+    RÀNG BUỘC PHÁT NGÔN: tầng này chỉ biết *bao nhiêu nguồn nhắc tới*,
     nó KHÔNG biết quán có thật sự nhiều cây hay không. Nên câu nói bắt buộc ở dạng
     "được N nguồn nhắc tới khi nói về X" — CẤM dạng "quán này nhiều cây xanh".
 
-    Đây là quy tắc kế thừa từ F1.5 §5 và là thứ dễ trôi nhất khi sửa về sau: câu suy diễn
-    nghe thuyết phục hơn hẳn câu trích dẫn, nên phải chặn ngay ở tầng sinh câu.
+    Đây là thứ dễ trôi nhất khi sửa về sau: câu suy diễn nghe thuyết phục hơn hẳn câu
+    trích dẫn, nên phải chặn ngay ở tầng sinh câu.
 
-    Khi dữ liệu đến từ BẢN NHỚ vì lượt tìm hỏng (L3-6, chế độ `fallback`), câu trả lời mở
-    đầu bằng lời nói rõ điều đó. Đây cùng một luật với I-L3-9: không được âm thầm đưa ra
-    thứ khác với thứ người dùng tưởng mình đang nhận.
+    Khi dữ liệu đến từ BẢN NHỚ vì lượt tìm hỏng (chế độ `fallback`), câu trả lời mở đầu
+    bằng lời nói rõ điều đó: không được âm thầm đưa ra thứ khác với thứ người dùng tưởng
+    mình đang nhận.
     """
     cache = (out.get("diagnostics") or {}).get("cache") or {}
     body = _say_outcome(out, need, speak_limit)
@@ -557,7 +526,7 @@ def _say_outcome(out, need, speak_limit=3):
     if note:
         tail.append(note)
     if not any(r.get("distance_km") is not None for r in rows):
-        # Chế độ giải toạ độ LƯỜI (§19.4): chưa tra bản đồ nên chưa lọc theo khoảng cách.
+        # Chế độ giải toạ độ LƯỜI: chưa tra bản đồ nên chưa lọc theo khoảng cách.
         # Thẻ trong panel đã ghi "(chưa tra được trên bản đồ)" nhưng CÂU ĐỌC thì chưa —
         # mà với trợ lý giọng nói, câu đọc mới là thứ người dùng thật sự nhận. Im lặng ở
         # đây khiến "quán cà phê nhiều cây xanh gần đây" nghe như đã lọc theo "gần đây".

@@ -9,7 +9,7 @@ except ImportError:
     pytest = None
 
 from actions.email_draft import email_draft, say_draft
-from ui.draft_panel import draft_header
+from ui.panels import draft_header
 
 
 # --------------------------- nhận dạng --------------------------- #
@@ -94,3 +94,32 @@ def test_draft_header_hides_empty_fields():
 if __name__ == "__main__":
     if pytest is not None:
         raise SystemExit(pytest.main([__file__, "-v"]))
+
+
+# --------------------------- khối cho khung HUD --------------------------- #
+
+def test_draft_blocks_has_both_buttons_with_send_last():
+    from ui.panels import draft_blocks
+    blocks = draft_blocks({"to": "a@b.com", "subject": "S", "body": "B"})
+    buttons = [b for b in blocks if b[0] == "buttons"][0][1]
+    assert [b[1] for b in buttons] == ["no", "yes"]
+    assert buttons[-1][2] == "go", "nút GỬI là nút chính, nằm ngoài cùng phải"
+
+
+def test_draft_blocks_shows_body_as_read_only_text():
+    from ui.panels import draft_blocks
+    blocks = draft_blocks({"subject": "S", "body": "Kính gửi thầy..."})
+    body = [b for b in blocks if b[0] == "body"]
+    assert body and body[0][1] == "Kính gửi thầy..."
+
+
+def test_draft_blocks_omits_empty_recipient_field():
+    from ui.panels import draft_blocks
+    labels = [b[1] for b in draft_blocks({"to": "", "subject": "S", "body": "B"})
+              if b[0] == "field"]
+    assert labels == ["Tiêu đề"]
+
+
+def test_draft_blocks_empty_hides_panel():
+    from ui.panels import draft_blocks
+    assert draft_blocks(None) == [] and draft_blocks({}) == []

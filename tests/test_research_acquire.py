@@ -1,7 +1,7 @@
 """
 Test tầng thu thập nguồn cho Lane 3 (`research/acquire.py`).
 
-Dữ liệu mẫu lấy từ SỐ ĐO THẬT ngày 2026-08-22 (`docs/research_lane_spec.md` §2):
+Dữ liệu mẫu dựng theo các trang THẬT đã gặp:
 foody.vn là khung AngularJS trả HTTP 200, thuychauecopark.vn là bài "mẹo chụp ảnh"
 không phải danh sách quán. Hai ca đó chính là lý do có hai cổng lọc.
 
@@ -54,7 +54,7 @@ def test_strip_chrome_removes_nav_and_footer():
 
 
 def test_strip_chrome_cuts_related_widget_after_real_content():
-    """Widget 'bài liên quan' làm lọt rác — đo được ở §2.6 (mia.vn, quananngonhanoi)."""
+    """Widget 'bài liên quan' làm lọt tiêu đề bài khác vào danh sách ứng viên."""
     html = ('<article><p>' + ("Quán cà phê nhiều cây xanh. " * 200) + '</p></article>'
             '<div class="related-posts"><h3>Khám Phá 5 Địa Chỉ Lẩu Băng Chuyền</h3></div>')
     out = strip_chrome(html)
@@ -64,8 +64,8 @@ def test_strip_chrome_cuts_related_widget_after_real_content():
 def test_strip_chrome_does_not_cut_widget_at_top_of_page():
     """HỒI QUY: nút share/tags nằm ở ĐẦU bài, cắt ở đó thì giết sạch trang.
 
-    Chạy thật 2026-08-22 lộ lỗi này: `toplist.vn` và `quananngonhanoi.com` bị loại nhầm
-    'too_short' dù thật ra có 14,8kb và 12,6kb nội dung.
+    Trang có nút share/tags ngay ĐẦU bài bị cắt mất sạch nội dung và loại nhầm là
+    'too_short', dù thật ra bài rất dài.
     """
     html = ('<div class="share-buttons">Chia sẻ</div>'
             '<article><p>' + ("Nội dung thật của bài viết. " * 200) + '</p></article>')
@@ -196,7 +196,7 @@ def test_page_type_gate_accepts_unnumbered_headings():
     """HỒI QUY: listicle dùng heading KHÔNG đánh số vẫn phải qua.
 
     Bản đầu chỉ nhận mục đánh số -> loại nhầm `hanoitoplist.com`, `giatheficoco.com`
-    khi chạy thật 2026-08-22, trong khi vẫn cho lọt trang cần chặn. Giá trị ròng âm.
+    trong khi vẫn cho lọt trang cần chặn. Giá trị ròng âm.
     """
     body = "".join("<h2>Quán số %d</h2>" % i for i in range(1, 6))
     ok, diag = page_type_gate(body)
@@ -206,8 +206,8 @@ def test_page_type_gate_accepts_unnumbered_headings():
 def test_fetch_many_enforces_wall_clock():
     """HỒI QUY: trần thời gian phải CẮT THẬT, không chờ nguồn treo tự timeout.
 
-    Chạy thật 2026-08-22: `mytour.vn` giữ cả lượt 15s dù đặt wall_seconds=8, vì code cũ
-    chỉ kiểm giờ SAU khi mỗi future xong.
+    Một nguồn treo giữ cả lượt vượt xa `wall_seconds` nếu chỉ kiểm giờ SAU khi mỗi
+    future xong.
     """
     import time
 
@@ -262,7 +262,7 @@ def test_harvest_records_uses_lazy_src():
 def test_harvest_records_drops_theme_assets():
     """HỒI QUY: ảnh giữ chỗ lazy-load của theme lọt qua khi chỉ lọc theo TÊN.
 
-    Chạy thật 2026-08-22: `.../themes/flatsome/assets/img/lazy.png` được nhận là ảnh quán.
+    Ảnh giao diện của theme (`.../themes/.../lazy.png`) bị nhận nhầm là ảnh quán.
     Ảnh nội dung luôn nằm ở /uploads/ hoặc CDN, không bao giờ trong /themes/ hay /plugins/.
     """
     from research.harvest import harvest_records
@@ -298,9 +298,9 @@ def test_fetch_images_empty_input_safe():
 
 # --------------------------- discovery hỏng: phải nói ĐÚNG chuyện gì xảy ra --------------------------- #
 #
-# CHẠY THẬT 2026-08-22: DDG trả HTTP 200 nhưng KHÔNG có link nào (bị giới hạn tần suất sau
-# nhiều truy vấn liên tiếp). Bản cũ trả [] lặng lẽ, không log gì, và tầng trên nói với người
-# dùng "các trang lấy được đều không đọc được nội dung" — trong khi chưa tải trang nào.
+# Máy tìm kiếm trả HTTP 200 nhưng KHÔNG có link nào khi bị giới hạn tần suất. Trả [] lặng
+# lẽ ở đây thì tầng trên nói với người dùng "các trang lấy được đều không đọc được nội
+# dung" — trong khi chưa tải trang nào.
 
 def test_decode_bing_links_skips_microsoft_domains():
     from research.acquire import decode_bing_links
@@ -340,9 +340,9 @@ def test_acquire_marks_discovery_failure_distinctly():
 
 
 def test_discover_falls_back_to_browser_when_http_blocked():
-    """Đo 2026-08-22: MỌI máy tìm kiếm HTTP đều chặn sau một buổi gọi liên tục.
+    """MỌI máy tìm kiếm qua HTTP đều chặn sau một buổi gọi liên tục.
 
-    DDG trả 202 (trang anomaly), Mojeek 403, Brave 429. Trình duyệt thật không bị chặn.
+    Chúng trả 202 (trang "anomaly"), 403 hoặc 429. Trình duyệt thật không bị chặn.
     """
     def blocked(url):
         class R:
@@ -406,7 +406,7 @@ def test_acquire_merges_pools_from_several_queries():
 
 
 def test_acquire_records_new_domains_per_query():
-    """Biến thể không mang thêm domain nào = tiêu một lượt tìm kiếm vô ích. Phải đo được."""
+    """Biến thể không mang thêm domain nào = tiêu một lượt tìm kiếm vô ích."""
     pages = {"https://a.vn/x": _page(), "https://b.vn/x": _page()}
 
     def get(url):
@@ -432,7 +432,7 @@ def test_acquire_ignores_duplicate_extra_query():
     assert len(diag["queries"]) == 1
 
 
-# --------------------------- trích dẫn nguyên văn (L3-5a) --------------------------- #
+# --------------------------- trích dẫn nguyên văn --------------------------- #
 
 def test_pick_quote_takes_sentence_mentioning_the_attribute():
     from research.harvest import pick_quote
@@ -448,7 +448,7 @@ def test_pick_quote_is_silent_when_nothing_mentions_the_attribute():
     """Không có câu nào nhắc thuộc tính -> None.
 
     Trích một câu bất kỳ cho đủ ô là bằng chứng GIẢ: nó trông như đang chứng minh điều
-    gì đó trong khi không (spec §12).
+    gì đó trong khi không.
     """
     from research.harvest import pick_quote
     text = "Quán mở cửa từ 7h sáng tới 22h. Giá đồ uống từ 35.000 tới 60.000 đồng."
@@ -488,7 +488,7 @@ def test_harvest_records_without_terms_has_no_quote():
 
 
 def test_pick_quote_does_not_glue_metadata_blocks_to_prose():
-    """HỒI QUY (chạy thật 2026-08-23, noithattruongsa.com).
+    """HỒI QUY: mỗi dòng thông tin là một `<p>` riêng, không dấu chấm cuối.
 
     Mỗi dòng thông tin là một `<p>` riêng và KHÔNG có dấu chấm cuối dòng. Bóc thẻ trước
     rồi mới ngắt câu thì cả khối giờ mở cửa + bảng giá dính vào câu văn kế tiếp, và trích
@@ -516,7 +516,7 @@ def test_block_text_marks_boundaries_without_leaking_the_mark():
 
 
 def test_pick_quote_skips_related_article_links():
-    """HỒI QUY (chạy thật 2026-08-23, giatheficoco.com).
+    """HỒI QUY: theme chèn dòng "bài viết liên quan" giữa thân bài.
 
     Theme chèn dòng "bài viết liên quan" ngay giữa thân bài. Nó khớp từ khoá nhưng nói
     về một chỗ hoàn toàn khác — trích nó ra là gán bằng chứng cho nhầm quán.
@@ -529,7 +529,7 @@ def test_pick_quote_skips_related_article_links():
 
 
 def test_pick_quote_skips_headline_links_but_keeps_inline_ones():
-    """HỒI QUY (chạy thật 2026-08-23, zalopay.vn).
+    """HỒI QUY: widget "Tham khảo thêm" nằm giữa thân bài.
 
     Widget "Tham khảo thêm" là `<li><a>tiêu đề bài khác</a></li>` nằm giữa thân bài. Nó
     khớp từ khoá nhưng nói về chỗ khác. Ngược lại đường dẫn NGẮN giữa câu văn là một phần

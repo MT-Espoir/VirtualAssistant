@@ -1,4 +1,4 @@
-"""Xếp hạng + giải thích có căn cứ (F1.5 §7, §9 — đợt S2)."""
+"""Xếp hạng + giải thích có căn cứ."""
 
 import datetime as dt
 
@@ -22,7 +22,7 @@ def _p(name, **kw):
 # --------------------------- trung bình Bayes ---------------------------
 
 def test_it_luot_danh_gia_KHONG_duoc_de_nhieu_luot():
-    """Tiêu chí F1.5 §7. Đây là ca dữ liệu thật: 5,0/3 lượt vs 4,7/166 lượt."""
+    """Điểm cao với rất ít lượt KHÔNG được đè điểm thấp hơn với rất nhiều lượt."""
     it = bayesian_quality(5.0, 3, RATING_PRIOR_MEAN)
     nhieu = bayesian_quality(4.7, 166, RATING_PRIOR_MEAN)
     assert nhieu > it
@@ -122,7 +122,7 @@ def test_moi_thanh_phan_deu_co_trong_so_mac_dinh():
     assert set(comp) == set(DEFAULT_WEIGHTS)
 
 
-# ============ GIẢI THÍCH CÓ CĂN CỨ — bất biến chống bịa (F1.5 §5, §9) ============
+# ============ GIẢI THÍCH CÓ CĂN CỨ — bất biến chống bịa ============
 
 _KHANG_DINH_CAM = ("quán này yên tĩnh", "quán yên tĩnh", "không đông", "quán này vắng",
                    "chắc chắn", "rất hợp")
@@ -146,7 +146,7 @@ def test_thuoc_tinh_mem_chi_xuat_hien_khi_co_trich_doan_review():
 
 
 def test_thuoc_tinh_mem_phai_phat_ngon_dang_SUY_DOAN():
-    """Cấm 'quán này yên tĩnh' — ta không đo được điều đó, chỉ có một câu review."""
+    """Cấm 'quán này yên tĩnh' — không kiểm chứng được, chỉ có một câu review."""
     câu = explain(_p("Y", quote="Không gian yên tĩnh, dễ chịu để ngồi lâu"),
                   {"intent_keys": ["yen_tinh"]}).lower()
     assert "review có nhắc" in câu

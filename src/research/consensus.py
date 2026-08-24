@@ -1,29 +1,23 @@
 """
-Đồng thuận chéo nguồn — TẤT ĐỊNH, thuần, không LLM (spec §4).
+Đồng thuận chéo nguồn — TẤT ĐỊNH, thuần, không LLM.
 
 Tín hiệu chính lấy từ web KHÔNG phải văn xuôi mà là **mức đồng thuận về TÊN**: bao nhiêu
 nguồn độc lập cùng nhắc tới một thực thể khi trả lời cùng một nhu cầu.
 
-Vì sao không cho LLM đọc từng trang (đo 2026-08-22, spec §2.6-2.7):
+Vì sao đếm bằng parser chứ không cho LLM đọc từng trang: LLM tự cắt danh sách giữa chừng
+nên bỏ sót nhiều tên, lại chậm hơn nhiều bậc. Parser liệt kê cạn kiệt; precision thấp hơn
+của nó được xử lý ở hạ nguồn — đồng thuận ở đây, rồi giải danh tính ở tầng miền.
 
-    LLM đọc toàn bài : 57 giây/trang, recall 54%
-    parser + đếm     : ~0 ms,          recall 93%
-
-Parser KHÔNG kém LLM ở việc này — nó TỐT HƠN. LLM tự cắt danh sách (mia.vn: parser 31
-tên, LLM dừng ở 10), còn parser liệt kê cạn kiệt. Và precision thấp hơn của parser được
-xử lý ở hạ nguồn: đồng thuận ở đây, rồi giải danh tính ở tầng miền.
-
-Cái bẫy phải đề phòng: **content farm SEO chép của nhau**. Đo được `hanoitoplist.com` và
-`mytour.vn` trùng Jaccard 0,76 (13 tên chung) — hai "domain độc lập" thực chất là một
-nguồn. Không khử trùng thì quán chi nhiều tiền SEO nhất luôn thắng.
+Cái bẫy phải đề phòng: **content farm SEO chép của nhau**. Hai domain trông độc lập có thể
+đăng gần như cùng một danh sách. Không khử trùng thì quán chi nhiều tiền SEO nhất luôn thắng.
 """
 
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-# Ngưỡng gộp nguồn. Đo ở spec §2.5: cặp chép nhau thật đạt 0,76; cặp kế tiếp chỉ 0,23.
-# 0,40 nằm giữa hai mức đó nên bắt đúng cặp cần bắt mà không gộp nhầm.
+# Ngưỡng gộp nguồn: cặp chép nhau có độ trùng rất cao, còn cặp độc lập thì thấp hẳn, nên
+# 0,40 nằm giữa hai mức đó — bắt đúng cặp cần bắt mà không gộp nhầm.
 DUPLICATE_JACCARD = 0.40
 
 # Số mục CHUNG tối thiểu mới được kết luận "chép nhau".
@@ -31,7 +25,7 @@ DUPLICATE_JACCARD = 0.40
 # Chỉ dùng Jaccard là KHÔNG đủ: hai nguồn cùng nhắc đúng một cái tên có Jaccard = 1,0 và
 # sẽ bị gộp làm một — tức là hai nguồn độc lập thật sự đồng thuận lại bị triệt tiêu thành
 # một phiếu, đúng ngược điều ta cần. Content farm chép cả DANH SÁCH, nên đòi hỏi chồng lấn
-# phải ĐỦ LỚN mới có ý nghĩa. Cặp đo được ở §2.5 có 13 tên chung, thừa sức qua mức này.
+# phải ĐỦ LỚN mới có ý nghĩa.
 MIN_SHARED_ITEMS = 5
 
 # Số nguồn ĐỘC LẬP tối thiểu để một ứng viên được vào vòng kiểm chứng.
@@ -109,9 +103,9 @@ def count_votes(per_source_items, key_of, label_of=None):
 def consensus(per_source_items, key_of, label_of=None, min_sources=MIN_SOURCES):
     """-> (ứng viên đạt ngưỡng, toàn bộ ứng viên đã đếm, chẩn đoán).
 
-    Trả cả danh sách CHƯA đạt ngưỡng vì tầng phát ngôn cần nó: mã `NO_CONSENSUS` (spec
-    §13) phải nói được "tôi chỉ thấy mỗi chỗ được nhắc một lần", chứ không phải im lặng
-    như thể không tìm thấy gì.
+    Trả cả danh sách CHƯA đạt ngưỡng vì tầng phát ngôn cần nó: mã `NO_CONSENSUS` phải
+    nói được "tôi chỉ thấy mỗi chỗ được nhắc một lần", chứ không phải im lặng như thể
+    không tìm thấy gì.
     """
     ranked = count_votes(per_source_items, key_of, label_of)
     groups = group_duplicate_sources(

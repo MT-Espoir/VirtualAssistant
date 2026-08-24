@@ -46,7 +46,7 @@ def _get_float(name: str, default: float) -> float:
 
 
 # Provider đủ mạnh để tự chọn tool giữa TOÀN BỘ tool mà không cần router thu hẹp.
-# Đo được: gemini giữ 100% chọn đúng tool khi bỏ router. Model local KHÔNG thuộc nhóm này.
+# Provider mạnh vẫn chọn đúng tool khi bỏ router; model local thì KHÔNG.
 STRONG_PROVIDERS = ("gemini", "claude")
 
 
@@ -117,10 +117,10 @@ class Config:
     FAST_COMMANDS = _get_bool("FAST_COMMANDS", True)
     # Router: 1 lượt LLM phân loại yêu cầu -> thu hẹp prompt+tool trước khi model chọn.
     # ROUTER_MODE: "auto" (mặc định) | "on" (luôn bật) | "off" (luôn tắt).
-    #   auto = TẮT với provider mạnh, BẬT với model local. Căn cứ đo 2026-08-08 (29 ca,
+    #   auto = TẮT với provider mạnh, BẬT với model local (provider mạnh vẫn chọn đúng
     #   gemini-3.1-flash-lite): tắt router vẫn 100% chọn đúng tool mà giảm 35% số call
     #   (2.86 -> 1.86 call/lượt). Ngược lại qwen 7B từng bỏ router và HỎNG (không gọi
-    #   tool) -> model local luôn giữ router. Xem docs/latency_optimization_spec.md.
+    #   tool khi thấy toàn bộ bộ tool, model local thì lạc).
     ROUTER_MODE = _get("ROUTER_MODE", "auto").strip().lower()
     # Đọc THẲNG kết quả tool khi tool đó đã trả câu hoàn chỉnh (thời tiết, thông tin máy,
     # "Đã mở Chrome") -> bớt 1 lượt LLM soạn lời.
@@ -162,7 +162,7 @@ class Config:
     # Gom bao nhiêu lượt bị đẩy ra rồi mới củng cố một lần (đỡ tốn lượt LLM).
     LTM_CONSOLIDATE_EVERY = _get_int("LTM_CONSOLIDATE_EVERY", 6)
 
-    # --- Persona: nhân cách + tâm trạng (Phase 0) ---
+    # --- Persona: nhân cách + tâm trạng ---
     # Bật -> bơm nhân cách (character card, thích nghi provider) + tâm trạng (công thức)
     # vào prompt, và để tâm trạng dẫn khuôn mặt avatar (bỏ tự reset về neutral sau 5s).
     PERSONA_ENABLED = _get_bool("PERSONA_ENABLED", True)
@@ -172,7 +172,7 @@ class Config:
     # có biên). TỐN thêm 1 lượt LLM/lần củng cố -> chỉ bật với provider NHANH (Gemini).
     PERSONA_AUTO_TUNE = _get_bool("PERSONA_AUTO_TUNE", False)
 
-    # --- MCP client (Slice 3: lịch/email qua MCP server) ---
+    # --- MCP client (lịch/email qua MCP server) ---
     # Bật khi ĐÃ cài server MCP + cấp OAuth. MCP_COMMAND/MCP_ARGS = lệnh chạy server (stdio).
     MCP_ENABLED = _get_bool("MCP_ENABLED", False)
     MCP_COMMAND = _get("MCP_COMMAND", "")           # vd "npx" hoặc đường dẫn python của server
@@ -228,33 +228,33 @@ class Config:
     # host_permissions cho miền tương ứng (xem chrome_extension/manifest.json).
     WEB_SEARCH_ENGINE = _get("WEB_SEARCH_ENGINE", "google")
 
-    # --- Tra địa điểm (PRD F1) ---
-    # Nguồn dữ liệu đổi được bằng cấu hình để việc TỪ BỎ Maps (§6 R1) là sửa một dòng,
+    # --- Tra địa điểm ---
+    # Nguồn dữ liệu đổi được bằng cấu hình để việc TỪ BỎ Maps là sửa một dòng,
     # không phải viết lại tính năng: maps (mặc định) | osm | places.
     PLACES_SOURCE = _get("PLACES_SOURCE", "maps")
-    # 1 km -> khung 17z. Đo thật: cùng tâm, khung 5 km (15z) trả 7 chỗ cách 0,96-1,41 km
-    # và KHÔNG chỗ nào dưới 500 m; khung 1 km trả 6 chỗ cách 0,20-0,63 km. Khung rộng
-    # KHÔNG cho nhiều lựa chọn hơn — nó chỉ giấu mất cụm quán ngay cạnh người dùng.
+    # 1 km -> khung 17z. Khung bản đồ quyết định lấy được cụm quán NÀO chứ không quyết
+    # định lấy được nhiều hay ít (bảng kết quả luôn bị cắt ở vài mục). Khung rộng KHÔNG
+    # cho nhiều lựa chọn hơn — nó chỉ giấu mất cụm quán ngay cạnh người dùng.
     PLACES_RADIUS_KM = _get_float("PLACES_RADIUS_KM", 1.0)    # ràng buộc cho "quanh đây"
     AREA_RADIUS_KM = _get_float("AREA_RADIUS_KM", 10.0)       # khi người dùng nêu khu vực
     PLACES_LIMIT = _get_int("PLACES_LIMIT", 3)     # số chỗ ĐỌC LÊN qua TTS
     PLACES_KEEP = _get_int("PLACES_KEEP", 8)       # số chỗ GIỮ trong phiên cho "mở cái thứ N"
-    # Trọng số xếp hạng (F1.5 §7). Đổi trọng số KHÔNG được đổi hành vi LỌC CỨNG.
+    # Trọng số xếp hạng. Đổi trọng số KHÔNG được đổi hành vi LỌC CỨNG.
     PLACES_W_DISTANCE = _get_float("PLACES_W_DISTANCE", 0.35)
     PLACES_W_QUALITY = _get_float("PLACES_W_QUALITY", 0.35)
     PLACES_W_OPEN = _get_float("PLACES_W_OPEN", 0.20)
     PLACES_W_EVIDENCE = _get_float("PLACES_W_EVIDENCE", 0.10)
     LOCATION_PATH = _get("LOCATION_PATH", "")                 # rỗng = chỉ nhớ trong phiên
 
-    # --- Claim cache của Lane 3 (research đọc web) — spec §15 L3-6 ---
+    # --- Claim cache của lane research (đọc web) ---
     # Nhớ LỜI CỦA TỪNG NGUỒN theo câu hỏi, không nhớ câu trả lời. Ba tác dụng: bỏ hẳn
     # phần đọc web khi hỏi lại trong cửa sổ tươi; GỘP nguồn giữa các lượt (tập kết quả
-    # tìm kiếm vốn không ổn định — spec §2.5); và còn cái để trả lời khi máy tìm kiếm
-    # chặn (spec §2.1), kèm lời nói rõ dữ liệu cũ bao lâu.
+    # tìm kiếm vốn không ổn định); và còn cái để trả lời khi máy tìm kiếm chặn, kèm lời
+    # nói rõ dữ liệu cũ bao lâu.
     RESEARCH_CACHE_PATH = _get("RESEARCH_CACHE_PATH", "")     # rỗng = <src>/research/data/claims.json
     RESEARCH_CACHE_ENABLED = _get_bool("RESEARCH_CACHE_ENABLED", True)
     RESEARCH_CACHE_FRESH_H = _get_int("RESEARCH_CACHE_FRESH_H", 24)
-    # Hạn dùng lấy theo LỚP BIẾN ĐỘNG CHẬM NHẤT: thẩm mỹ của một quán đổi theo năm (§11).
+    # Hạn dùng lấy theo LỚP BIẾN ĐỘNG CHẬM NHẤT: thẩm mỹ của một quán đổi theo năm.
     # Giờ mở cửa/điểm số KHÔNG nằm trong này — chúng tra từ bản đồ lúc bấm vào thẻ.
     RESEARCH_CACHE_TTL_DAYS = _get_int("RESEARCH_CACHE_TTL_DAYS", 90)
     # Ngữ cảnh vị trí THÔ được phép bơm vào prompt: province | district | none.

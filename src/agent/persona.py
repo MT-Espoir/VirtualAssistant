@@ -1,4 +1,4 @@
-"""Persona — nhân cách + tâm trạng của trợ lý (Phase 0).
+"""Persona — nhân cách + tâm trạng của trợ lý.
 
 Hai khối, khớp bộ nhớ hai tầng:
 - PersonaState (DÀI HẠN, persona.json): "character card" ổn định — danh tính, văn phong,
@@ -7,7 +7,7 @@ Hai khối, khớp bộ nhớ hai tầng:
 - MoodState (NGẮN HẠN, phiên): tâm trạng tính bằng CÔNG THỨC tất định (không LLM), đổi theo
   cảm xúc user + kết quả việc + mức thân thiết, PHAI dần về baseline do persona quy định.
 
-Cố ý KHÔNG tự học tính cách tự do (chỉ núm có biên) — xem docs/persona_spec.md. Thay hẳn
+Cố ý KHÔNG tự học tính cách tự do (chỉ núm có biên). Thay hẳn
 personality_learner.py cũ (thiết kế chết). Logic thuần, tách I/O để test được.
 """
 

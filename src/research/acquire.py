@@ -1,25 +1,17 @@
 """
-Thu thập nguồn cho Lane 3: TÌM -> TẢI SONG SONG -> HAI CỔNG LỌC.
+Thu thập nguồn: TÌM -> TẢI SONG SONG -> HAI CỔNG LỌC.
 
-Mọi ngưỡng trong file này đến từ số đo thật ngày 2026-08-22 (spec §2.2, §2.3, §2.5),
-không phải ước lượng. Đo cho truy vấn "quán cafe nhiều cây xanh Hà Nội":
+Có HAI cổng chứ không phải một, vì có hai cái bẫy khác hẳn nhau:
 
-    DDG HTML endpoint  -> 9 domain, link nằm trong tham số `uddg=` (phải giải mã)
-    7/8 trang tải được nội dung tĩnh dùng ngay, 122ms - 2.647ms
-    Song song hoá -> toàn bộ bước thu thập ~2,6s (bằng trang CHẬM NHẤT, không phải tổng)
+1. Trang SPA trả HTTP 200 kèm cả chục kb "text" — nhưng đó là khung template rỗng
+   (`{{...}}`, thuộc tính `ng-*`/`v-*`). Fetcher ngây thơ sẽ đưa khung template cho
+   LLM và LLM sẽ bịa ra nội dung. -> `content_gate`.
 
-Hai cái bẫy đo được, và đó là lý do có HAI cổng chứ không phải một:
+2. Trang có nội dung thật, dài, sạch — nhưng không phải danh sách quán (vd bài "mẹo
+   chụp ảnh cafe"): nó đóng góp toàn ứng viên rác, không tên quán nào. -> `page_type_gate`.
 
-1. `foody.vn/ha-noi/cafe` trả HTTP **200** với ~11kb "text" — nhưng là khung AngularJS
-   rỗng (48 marker `{{...}}`, 99 thuộc tính `ng-*`). Fetcher ngây thơ sẽ đưa khung
-   template cho LLM và LLM sẽ bịa ra nội dung. -> `content_gate`.
-
-2. `thuychauecopark.vn` qua được cổng nội dung ngon lành (31,7kb text, 0 marker) nhưng
-   là bài "mẹo chụp ảnh cafe", KHÔNG phải danh sách quán: đóng góp 15 ứng viên, 0 tên
-   quán thật. -> `page_type_gate`.
-
-Đây đúng là bài học Phase 0 lặp lại ở tầng mới: bộ trích chạy hoàn hảo mà vẫn giao ra
-dữ liệu sai. Cổng phải chặn TRƯỚC khi dữ liệu tới tay LLM.
+Cổng phải chặn TRƯỚC khi dữ liệu tới tay LLM: bộ trích chạy hoàn hảo mà vẫn giao ra dữ
+liệu sai là kiểu hỏng khó thấy nhất.
 
 Toàn bộ hàm phân tích ở đây là THUẦN (test không cần mạng); phần chạm mạng gom ở cuối
 và nhận `http_get` tiêm vào — cùng quy ước với `actions/places.py` và `web_content.py`.
@@ -38,20 +30,19 @@ _UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
 
 _DDG_HTML = "https://html.duckduckgo.com/html/"
 
-# --- ngưỡng cổng nội dung (§2.3 bẫy 1) ---
-MIN_BODY_CHARS = 4000      # trang dùng được đo được đều >= 11kb; 4k là mức sàn rộng rãi
-MAX_TEMPLATE_MARKERS = 5   # foody.vn có 48; trang thật cao nhất là 3
+# --- ngưỡng cổng nội dung (bẫy 1) ---
+MIN_BODY_CHARS = 4000      # mức sàn rộng rãi: bài liệt kê thật đều dài hơn nhiều
+MAX_TEMPLATE_MARKERS = 5   # trang thật hầu như không có marker; khung SPA thì hàng chục
 
-# --- ngưỡng cổng loại trang (§2.3 bẫy 2) ---
+# --- ngưỡng cổng loại trang (bẫy 2) ---
 MIN_ENUMERATED = 3         # listicle thường ĐÁNH SỐ mục
 MIN_HEADINGS = 5           # ...nhưng không phải lúc nào cũng vậy — xem `page_type_gate`
 
 # Khối "chrome" của trang — không bao giờ chứa nội dung bài viết.
 _CHROME_TAGS = ("nav", "header", "footer", "aside", "form", "script", "style", "noscript")
 
-# Widget lạc vào giữa thân bài. Đo được ở §2.6: `mia.vn` lọt "Gối cổ du lịch The Travel
-# Star TC3" (widget sản phẩm), `quananngonhanoi.com` lọt "Khám Phá 5 Địa Chỉ Lẩu Băng
-# Chuyền" (widget bài viết liên quan). Cả hai đều nằm trong div có class kiểu này.
+# Widget lạc vào giữa thân bài (sản phẩm liên quan, bài viết liên quan). Không gỡ thì
+# tên sản phẩm và tiêu đề bài khác lọt vào danh sách ứng viên.
 _WIDGET_CLASS = re.compile(
     r'<(div|section|ul)[^>]*class="[^"]*'
     r'(related|sidebar|widget|comment|share|tag-list|popular|trending|recirc|promo)'
@@ -59,8 +50,9 @@ _WIDGET_CLASS = re.compile(
 
 _TEMPLATE_MARKER = re.compile(r"\{\{[^}]{1,200}\}\}|\sng-[a-z-]+=|\sv-(?:if|for|bind|model)=")
 
-# Thứ tự ưu tiên khi tìm thân bài. Đo ở §2.5: bóc toàn trang cho 70% chính xác và đẩy
-# boilerplate WordPress lên hạng nhất; bóc thân bài cho 100%.
+# Thứ tự ưu tiên khi tìm thân bài. Bóc TOÀN TRANG là sai: boilerplate WordPress ("Để lại
+# một bình luận", "Đăng nhập") giống nhau ở mọi site nên nó đồng thuận chéo nguồn tốt hơn
+# cả nội dung thật, và leo lên đầu bảng ứng viên.
 _BODY_PATTERNS = (
     ("article", re.compile(r"<article[^>]*>(.*?)</article>", re.S | re.I)),
     ("entry-content", re.compile(
@@ -138,10 +130,9 @@ def strip_chrome(html):
     """Gỡ nav/header/footer/aside/form/script/style và các widget 'bài liên quan'.
 
     Widget được cắt bằng cách bỏ TỪ ĐÓ TỚI HẾT (regex không khớp được cặp thẻ lồng nhau).
-    Nhưng CHỈ cắt khi phía trước đã có đủ nội dung — chạy thật 2026-08-22 cho thấy giả
-    định "widget luôn nằm sau nội dung chính" là SAI: nút share/tags nằm ngay ĐẦU bài, và
-    cắt ở đó giết sạch trang (`toplist.vn`, `quananngonhanoi.com` bị loại nhầm 'too_short'
-    dù thật ra có 14,8kb và 12,6kb).
+    Nhưng CHỈ cắt khi phía trước đã có đủ nội dung: giả định "widget luôn nằm sau nội dung
+    chính" là SAI — nút share/tags nằm ngay ĐẦU nhiều bài, cắt ở đó thì giết sạch trang và
+    nó bị loại nhầm là 'too_short'.
     """
     out = html or ""
     for tag in _CHROME_TAGS:
@@ -155,8 +146,8 @@ def strip_chrome(html):
 def article_body(html):
     """HTML trang -> (html thân bài, cách lấy được). Không tìm ra -> trả cả trang.
 
-    Lùi về cả trang là CÓ CHỦ ĐÍCH chứ không phải bỏ cuộc: đo ở §2.5, `toplist.vn` không
-    khớp mẫu nào mà vẫn cho 9 tên sạch. Mất chính xác một ít còn hơn mất trắng nguồn.
+    Lùi về cả trang là CÓ CHỦ ĐÍCH chứ không phải bỏ cuộc: nhiều site không khớp mẫu nào
+    mà vẫn cho danh sách tên sạch. Mất chính xác một ít còn hơn mất trắng nguồn.
     """
     cleaned = strip_chrome(html)
     for how, pattern in _BODY_PATTERNS:
@@ -169,8 +160,8 @@ def article_body(html):
 def content_gate(html, body_html=None):
     """Trang này có NỘI DUNG THẬT không? -> (ok, chẩn đoán).
 
-    Chặn SPA trả khung template. Không có cổng này thì `foody.vn` (HTTP 200, 48 marker)
-    đi thẳng vào tầng trích và LLM sẽ bịa ra nội dung từ khung rỗng.
+    Chặn SPA trả khung template: không có cổng này thì trang HTTP 200 toàn marker đi
+    thẳng vào tầng trích và LLM sẽ bịa ra nội dung từ khung rỗng.
     """
     markers = len(_TEMPLATE_MARKER.findall(html or ""))
     text = html_to_text(body_html if body_html is not None else (html or ""))
@@ -187,17 +178,16 @@ def content_gate(html, body_html=None):
 def page_type_gate(body_html):
     """Trang này có CẤU TRÚC LIỆT KÊ không? -> (ok, chẩn đoán).
 
-    CỔNG YẾU, CỐ Ý ĐỂ YẾU. Bản đầu chỉ nhận trang có mục đánh số; chạy thật 2026-08-22
-    cho thấy nó **loại nhầm listicle thật** (`hanoitoplist.com`, `giatheficoco.com` —
-    dùng heading không đánh số) trong khi **vẫn cho lọt** đúng trang cần chặn
-    (`thuychauecopark.vn`). Giá trị ròng khi đó là ÂM.
+    CỔNG YẾU, CỐ Ý ĐỂ YẾU. Đòi trang phải có mục ĐÁNH SỐ là quá chặt: nhiều bài liệt kê
+    thật chỉ dùng heading không đánh số, nên cổng chặt vừa loại nhầm nguồn tốt vừa vẫn cho
+    lọt trang cần chặn — giá trị ròng ÂM.
 
-    Nên giờ chỉ đòi trang có *một dạng liệt kê nào đó*: mục đánh số HOẶC đủ nhiều heading.
-    Nó bảo vệ NGÂN SÁCH (khỏi tải bài một-chủ-đề), không bảo vệ tính đúng.
+    Nên chỉ đòi *một dạng liệt kê nào đó*: mục đánh số HOẶC đủ nhiều heading. Nó bảo vệ
+    NGÂN SÁCH (khỏi tải bài một-chủ-đề), KHÔNG bảo vệ tính đúng.
 
     Chốt chặn tính đúng nằm ở hai tầng sau, và đó mới là chỗ đáng tin: đồng thuận chéo
-    nguồn (`research/consensus.py`) và giải danh tính qua nguồn bản đồ (spec §4) — thứ
-    không giải ra được địa điểm thì bị loại, dù lọt qua đây.
+    nguồn (`research/consensus.py`) và giải danh tính qua nguồn bản đồ — thứ không giải ra
+    được địa điểm thì bị loại, dù lọt qua đây.
     """
     n_enum = len(_ENUMERATED.findall(body_html or ""))
     n_head = len(_HEADING.findall(body_html or ""))
@@ -232,16 +222,15 @@ def _discover_one(query, engine, get, exclude, limit):
         status = getattr(resp, "status_code", 200)
     except Exception as e:
         return [], "lỗi mạng: %s" % e
-    # Mã trạng thái nói thẳng là bị chặn — phải phân biệt với "không có kết quả".
-    # Đo 2026-08-22 sau nhiều truy vấn liên tiếp: DDG trả **202** (trang anomaly),
-    # Mojeek 403, Brave 429. Không kiểm mã thì cả ba đều bị hiểu nhầm là "không có gì".
+    # Mã trạng thái nói thẳng là bị chặn — phải phân biệt với "không có kết quả". Lưu ý
+    # 202: máy tìm kiếm trả trang "anomaly" kèm 202 chứ không phải mã lỗi, nên không kiểm
+    # mã ở đây thì nó bị hiểu nhầm thành một trang kết quả rỗng.
     if status in (202, 403, 429, 503):
         return [], "bị chặn (HTTP %s)" % status
     links = decode_bing_links(html) if engine == "bing" else decode_ddg_links(html)
     if not links:
-        # HTTP 200 mà KHÔNG có link nào = bị chặn/giới hạn tần suất, không phải "không có
-        # kết quả". Chạy thật 2026-08-22: DDG trả 200 với trang rỗng sau nhiều truy vấn
-        # liên tiếp, và bản cũ trả [] LẶNG LẼ nên không ai biết chuyện gì xảy ra.
+        # HTTP 200 mà KHÔNG có link nào = bị chặn/giới hạn tần suất, KHÔNG phải "không có
+        # kết quả". Trả [] lặng lẽ ở đây thì tầng trên báo nhầm là tìm không ra.
         return [], "trả 200 nhưng không có link nào (nhiều khả năng bị chặn)"
     return one_per_domain(links, exclude=exclude)[:max(1, int(limit))], None
 
@@ -255,9 +244,9 @@ def discover(query, http_get=None, engine="ddg", limit=8, exclude=("facebook.com
       1. HTTP thẳng (DDG, rồi Bing) — nhanh, nhưng **không đáng tin khi dùng lâu dài**.
       2. `browser_search(query, limit)` — đọc trang kết quả trong TRÌNH DUYỆT THẬT.
 
-    Vì sao cần tầng hai: đo 2026-08-22 sau một buổi gọi liên tục từ cùng một IP, **mọi**
-    máy tìm kiếm HTTP đều từ chối — DDG 202, Mojeek 403, Brave 429, Startpage render JS.
-    Kết luận "discovery qua HTTP thẳng là đủ" chỉ đúng khi IP còn sạch.
+    Vì sao cần tầng hai: sau một buổi gọi liên tục từ cùng một IP thì MỌI máy tìm kiếm
+    qua HTTP thẳng đều từ chối (202/403/429, hoặc trả trang render bằng JS). "Discovery
+    qua HTTP thẳng là đủ" chỉ đúng khi IP còn sạch.
 
     Trình duyệt thật không bị chặn vì nó LÀ trình duyệt thật. Chậm hơn (mở tab, render,
     đọc DOM) nên chỉ dùng khi tầng một đã hỏng — nhưng nó là thứ giữ cho tính năng còn
@@ -304,11 +293,11 @@ def discover(query, http_get=None, engine="ddg", limit=8, exclude=("facebook.com
 def fetch_many(urls, http_get=None, max_workers=8, wall_seconds=6.0):
     """Tải SONG SONG, áp trần thời gian chung -> danh sách kết quả theo thứ tự `urls`.
 
-    Song song là khoản tiết kiệm lớn nhất và nó MIỄN PHÍ: đo được 122ms-2.647ms mỗi
-    trang, tuần tự là ~8s còn song song là ~2,6s (bằng trang chậm nhất).
+    Song song là khoản tiết kiệm lớn nhất và nó MIỄN PHÍ: tổng thời gian bằng trang CHẬM
+    NHẤT thay vì tổng các trang.
 
-    Quá `wall_seconds` thì DÙNG NHỮNG TRANG ĐÃ VỀ thay vì chờ tiếp — spec §10 cấm vòng
-    lặp không có trần.
+    Quá `wall_seconds` thì DÙNG NHỮNG TRANG ĐÃ VỀ thay vì chờ tiếp: bước thu thập không
+    được phép chạy không có trần.
     """
     import concurrent.futures as cf
     import time
@@ -327,8 +316,7 @@ def fetch_many(urls, http_get=None, max_workers=8, wall_seconds=6.0):
     try:
         futures = {pool.submit(work, u): u for u in urls or []}
         # Trần phải đặt Ở CHÍNH `as_completed`: nếu chỉ kiểm giờ SAU mỗi future xong thì
-        # một nguồn treo sẽ giữ cả lượt tới khi nó tự timeout. Chạy thật 2026-08-22:
-        # `mytour.vn` treo 15s dù wall_seconds=8.
+        # một nguồn treo sẽ giữ cả lượt tới khi nó tự timeout, bất kể `wall_seconds`.
         try:
             for fut in cf.as_completed(futures, timeout=max(0.1, float(wall_seconds))):
                 u = futures[fut]
@@ -404,13 +392,13 @@ def acquire(query, http_get=None, limit=8, wall_seconds=6.0, engine="ddg",
 
     Mỗi nguồn: {url, domain, body_html, body_how, ms}. Chẩn đoán ghi rõ trang nào bị
     loại và VÌ SAO — cần cho việc nói thật với người dùng khi không đủ bằng chứng
-    (mã `SOURCES_UNUSABLE`, spec §13).
+    (mã `SOURCES_UNUSABLE`).
     """
     diag = {"query": query, "found": 0, "rejected": {}, "kept": 0}
 
     # MỞ RỘNG TRUY VẤN: mỗi biến thể là một lượt tìm kiếm riêng, gộp chung rổ URL rồi mới
     # tải MỘT lần song song. Mục tiêu không phải "câu chữ hay hơn" mà là **nhiều nguồn độc
-    # lập hơn**, vì đồng thuận chỉ hình thành khi các bài có chồng lấn (§21.2).
+    # lập hơn**, vì đồng thuận chỉ hình thành khi các bài có chồng lấn.
     #
     # Ghi số domain MỚI mà mỗi biến thể mang lại: biến thể nào không mang thêm gì thì nó
     # đang tiêu một lượt tìm kiếm vô ích, và số liệu này là cách duy nhất để biết.
@@ -457,7 +445,7 @@ def acquire(query, http_get=None, limit=8, wall_seconds=6.0, engine="ddg",
                      "body_html": body, "body_how": how, "ms": row.get("ms")})
     diag["kept"] = len(kept)
     # Ghi TÊN domain đã giữ, không chỉ số lượng: chẩn đoán "vì sao ít ứng viên" cần biết
-    # đã đọc những trang nào. Chạy thật 2026-08-22 không truy được vì log chỉ có con số.
+    # đã đọc những trang nào; log chỉ có con số thì không truy ngược được.
     diag["kept_domains"] = [k["domain"] for k in kept]
     logger.info("research: '%s' -> giữ %d/%d nguồn: %s", query, len(kept), len(urls),
                 ", ".join(diag["kept_domains"]) or "(không có)")

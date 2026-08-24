@@ -1,6 +1,6 @@
-"""Tinh chỉnh theo ngữ cảnh lượt trước (F1.5 §10 — đợt S3).
+"""Tinh chỉnh theo ngữ cảnh lượt trước.
 
-Lỗi THẬT sinh ra đợt này (2026-08-21): "có chỗ nào mở muộn hơn không" bị model biến
+Lỗi THẬT: "có chỗ nào mở muộn hơn không" bị model biến
 thành từ khoá tìm kiếm `find_nearby(query="quán cà phê mở muộn")`. Maps tra chữ đó như
 văn bản, nên kết quả KHÔNG hề được lọc theo giờ — trong khi hệ thống đã có `closes_at`
 của từng quán và lọc được trong ~1 giây.
@@ -76,7 +76,7 @@ def test_moc_gio_cu_the_duoc_ton_trong():
 # --------------------------- các hướng khác ---------------------------
 
 def test_gan_hon_phai_TRA_LAI_o_khung_hep_hon_chu_khong_chi_loc():
-    """Đo thật 2026-08-21: cùng tâm, khung 5 km trả 7 chỗ cách 0,96-1,41 km và KHÔNG chỗ
+    """Khung rộng KHÔNG cho thêm lựa chọn — nó chỉ đổi sang cụm quán xa hơn và KHÔNG chỗ
     nào dưới 500 m; khung 1 km trả 6 chỗ cách 0,20-0,63 km — hai tập KHÔNG trùng nhau một
     cái tên. Lọc 'nửa gần hơn' của tập cũ không thể tìm ra quán cách 200 m vì nó chưa bao
     giờ được lấy về."""

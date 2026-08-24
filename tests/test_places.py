@@ -1,6 +1,6 @@
-"""Test tra địa điểm — khoá lại các lỗi THẬT mà khảo sát Phase 0 đã tìm ra.
+"""Test tra địa điểm — khoá lại các lỗi THẬT đã gặp.
 
-Mọi ca ở đây đều bắt nguồn từ dữ liệu đo được, không phải tình huống tưởng tượng:
+Mọi ca ở đây đều bắt nguồn từ dữ liệu thật, không phải tình huống tưởng tượng:
 - Maps nới bán kính trong im lặng (Mường Tè -> kết quả cách 1.350 km)
 - Tên khớp lỏng ("Nhà sách Nguyễn Văn Cừ" vs "Nhà sách Fahasa Nguyễn Văn Cừ")
 - Trang chi tiết (/maps/place/) không có feed -> 1 kết quả là ĐỦ, không phải thiếu
@@ -61,7 +61,7 @@ def test_khong_rang_buoc_thi_khong_loc_khoang_cach():
 # --------------------------- khớp tên ---------------------------
 
 def test_token_chung_chung_khong_duoc_ganh_viec_khop_ten():
-    """Lỗi THẬT đo ở Phase 0: thước cũ cho 0,83 cho một CHUỖI KHÁC HẲN."""
+    """Thước khớp tên quá lỏng: hai chuỗi khác hẳn nhau vẫn qua ngưỡng."""
     score, missing, exact = name_score("Nhà sách Fahasa Nguyễn Văn Cừ",
                                        "Nhà sách Nguyễn Văn Cừ")
     assert not exact
@@ -270,7 +270,7 @@ def test_find_place_khong_biet_vi_tri_thi_khong_doan():
     assert out["outcome"] == "SOURCE_UNAVAILABLE"
 
 
-# ============ Giải địa danh — lỗi phát hiện khi CHẠY THẬT (2026-08-21) ============
+# ============ Giải địa danh — lỗi phát hiện khi chạy thật ============
 # Người dùng nói "quán cà phê gần Vinhomes Grand Park" -> trợ lý trả lời không tra được.
 # Nguyên nhân: danh bạ Open-Meteo chỉ biết địa danh HÀNH CHÍNH, và bản cũ luôn BỎ DẤU
 # trước khi tra nên hỏng cả với "Thủ Đức".
@@ -301,7 +301,7 @@ class _FakeGeo:
 
 
 def test_gazetteer_tra_ca_hai_bien_the_co_dau_va_bo_dau():
-    """'Thủ Đức' CHỈ ra kết quả khi giữ dấu — bản cũ bỏ dấu nên trả None (lỗi chạy thật)."""
+    """'Thủ Đức' CHỈ ra kết quả khi giữ dấu — bỏ dấu thì trả None."""
     geo = _FakeGeo({"Thủ Đức": [{"name": "Thủ Đức", "latitude": 10.849, "longitude": 106.772}]})
     svc = PlacesService(bridge=None, http_get=geo)
     assert svc.resolve_area("Thủ Đức")[2] == "Thủ Đức"
@@ -362,11 +362,11 @@ def test_khong_co_bridge_thi_khong_treo_o_tang_maps():
     assert svc.resolve_area("Vinhomes Grand Park") is None
 
 
-# ====== Đọc ít / giữ nhiều + zoom theo bán kính (lỗi chạy thật 2026-08-21) ======
+# ====== Đọc ít / giữ nhiều + zoom theo bán kính ======
 # Người dùng: "chỉ lựa 3 quán trong khi bản đồ có ít nhất 8".
 
 def test_zoom_khop_voi_ban_kinh():
-    """Bảng Maps luôn trả ~6 mục; zoom quyết định 6 mục NÀO (đo thật)."""
+    """Bảng Maps luôn bị cắt ở vài mục; zoom quyết định LẤY ĐƯỢC MỤC NÀO."""
     from services.browser_protocol import zoom_for_radius
     assert zoom_for_radius(1) == 17          # quanh đây rất gần -> khung chặt
     assert zoom_for_radius(5) == 15
@@ -450,10 +450,10 @@ def test_cau_doc_neu_mo_ca_ngay():
     assert "mở cả ngày" in summarize_places("OK", rows, "quán cà phê")
 
 
-# ====== Khung nhìn quyết định kết quả (lỗi chạy thật 2026-08-21) ======
+# ====== Khung nhìn quyết định kết quả ======
 
 def test_khung_nhin_hep_khi_ban_kinh_nho():
-    """Đo thật: cùng tâm, 15z trả 7 chỗ cách 0,96-1,41 km và 0 chỗ dưới 500 m; 17z trả
+    """Cùng một tâm, khung rộng bỏ qua hẳn các chỗ sát bên; khung hẹp thì lấy được —
     6 chỗ cách 0,20-0,63 km. Khung rộng KHÔNG cho nhiều lựa chọn hơn — nó giấu mất cụm
     quán ngay cạnh người dùng."""
     from services.browser_protocol import zoom_for_radius

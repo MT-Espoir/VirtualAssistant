@@ -74,7 +74,7 @@ def test_build_queries_keeps_user_wording_first():
 
 
 def test_build_queries_adds_listicle_variant():
-    """Biến thể thiên vị BÀI LIỆT KÊ — thứ đang thiếu khi tìm qua trình duyệt (§21.2)."""
+    """Biến thể thiên vị BÀI LIỆT KÊ — thứ đang thiếu khi tìm qua trình duyệt."""
     qs = build_queries("quán cà phê nhiều cây xanh", "Thủ Đức")
     assert len(qs) == 2 and qs[1].startswith("top ")
 
@@ -233,7 +233,7 @@ def test_research_empty_need_safe():
 # --------------------------- câu đọc: quy tắc chống bịa --------------------------- #
 
 def test_say_research_never_asserts_the_quality():
-    """KHOÁ RÀNG BUỘC I-L3-3: chỉ được nói 'nguồn nhắc tới', không được khẳng định."""
+    """KHOÁ RÀNG BUỘC: chỉ được nói 'nguồn nhắc tới', không được khẳng định."""
     from actions.place_research import say_research
     out = {"outcome": "OK",
            "results": [{"name": "Tropical Forest", "sources": 3, "distance_km": 1.2}],
@@ -341,7 +341,7 @@ def test_research_no_address_key_when_absent():
 def test_say_research_search_failed_does_not_claim_pages_were_read():
     """Chưa tải trang nào thì KHÔNG được nói 'các trang lấy được không đọc được'.
 
-    Nói sai chuyện đã xảy ra cũng là một kiểu bịa. Chạy thật 2026-08-22 mắc đúng lỗi này.
+    Nói sai chuyện đã xảy ra cũng là một kiểu bịa.
     """
     from actions.place_research import say_research
     text = say_research({"outcome": "SEARCH_FAILED", "results": []}, "quán cà phê retro")
@@ -356,9 +356,9 @@ def test_research_search_failed_when_discovery_empty():
 
 # --------------------------- giải toạ độ LƯỜI (mặc định) --------------------------- #
 #
-# Chạy thật 2026-08-22: một lượt research mất 65 giây, trong đó 62 giây nằm ở ĐÚNG MỘT lời
-# gọi find_place (chạm trần MAPS_READ 45s rồi rơi vào dự phòng OSM hỏng). Và bước discovery
-# dự phòng cũng dùng trình duyệt — Chrome là tài nguyên NỐI TIẾP, nên tra bản đồ ngay sau
+# Giải toạ độ qua find_place là bước ĐẮT NHẤT của cả lượt, gấp nhiều lần phần còn lại
+# cộng lại. Và bước discovery dự phòng cũng dùng trình duyệt — Chrome là tài nguyên NỐI
+# TIẾP, nên tra bản đồ ngay sau
 # khi vừa đọc trang kết quả là tự tranh chấp với chính mình.
 
 def test_research_does_not_touch_map_by_default():
@@ -423,8 +423,8 @@ def test_research_reports_harvest_yield_per_source():
 def test_clean_candidate_cuts_description_before_measuring_length():
     """HỒI QUY: đo độ dài TRƯỚC khi cắt mô tả -> loại oan tên thật.
 
-    Chạy thật 2026-08-22: `vincom.com.vn` viết "Elmar Coffee - Quán cà phê phong cách Tây
-    Ban Nha"; cả cụm 9 từ nên bị ngưỡng MAX_WORDS loại, và nguồn đó rớt từ 10 tên xuống 2.
+    Blog hay viết "Elmar Coffee - Quán cà phê phong cách Tây Ban Nha"; giữ cả cụm thì nó
+    vượt ngưỡng MAX_WORDS và bị loại, làm nguồn đó mất gần hết tên.
     """
     assert clean_candidate("Elmar Coffee - Quán cà phê phong cách Tây Ban Nha") == "Elmar Coffee"
     assert clean_candidate("Last Minute Premium Cafe - Quán cà phê 24/24 tại Thủ Đức") \
@@ -464,7 +464,7 @@ def test_research_merges_variants_end_to_end():
     assert out["results"][0]["sources"] == 2, "hai biến thể của cùng một quán phải gộp"
 
 
-# --------------------------- trích dẫn nguyên văn (L3-5a) --------------------------- #
+# --------------------------- trích dẫn nguyên văn --------------------------- #
 
 def _listicle_prose(entries):
     """entries = [(tên, đoạn văn)] -> HTML bài dạng danh sách.
@@ -506,7 +506,7 @@ def test_research_has_no_quote_when_prose_never_mentions_the_need():
     """Không nguồn nào nói về thuộc tính -> im lặng, KHÔNG trích một câu bất kỳ.
 
     Một câu có thật, trích đúng nguyên văn, mà không chứng minh điều đang nói vẫn là
-    bằng chứng giả — và là kiểu hỏng nguy hiểm nhất vì nó trông hợp lệ (spec §12).
+    bằng chứng giả — và là kiểu hỏng nguy hiểm nhất vì nó trông hợp lệ.
     """
     filler = "Quán mở cửa từ 7h sáng tới 22h, giá đồ uống từ 35.000 đồng."
     pages = {
@@ -521,7 +521,7 @@ def test_research_has_no_quote_when_prose_never_mentions_the_need():
 
 
 def test_quote_terms_drops_quantifiers():
-    """HỒI QUY (chạy thật 2026-08-23).
+    """HỒI QUY: lượng từ bị dùng làm bằng chứng thuộc tính.
 
     "quán cà phê nhiều cây xanh" trích cho Tằm Art Café câu *"Quán trưng bày nhiều tác
     phẩm nghệ thuật..."* — khớp đúng chữ "nhiều" và nói về TRANH. Lượng từ chỉ đo danh
@@ -532,7 +532,7 @@ def test_quote_terms_drops_quantifiers():
     assert quote_terms("quán rất yên tĩnh") == {"yên", "tĩnh"}
 
 
-# --------------------------- số thứ tự lọt vào tên (chạy thật 2026-08-23) --------------------------- #
+# --------------------------- số thứ tự lọt vào tên --------------------------- #
 #
 # Cùng một chuỗi, hai nghĩa trái ngược: trong "2 Tiệm cà phê Túi Mơ To" số 2 là thứ tự mục,
 # trong "36 Coffee" số 36 là tên quán. Luật cũ đòi phải có DẤU CÂU sau số nên an toàn với
@@ -554,7 +554,7 @@ def _bare_numbered(names, start=1):
 
 
 def test_harvest_drops_ordinal_written_without_punctuation():
-    """HỒI QUY: truy vấn "quán cà phê view đẹp Đà Lạt" chạy thật 2026-08-23.
+    """HỒI QUY: truy vấn "quán cà phê view đẹp Đà Lạt".
 
     Bài đánh số bằng khoảng trắng chứ không bằng dấu chấm, và luật cũ
     (`^\s*\d{1,2}\s*[.)\-–:]\s*`) ĐÒI dấu câu nên không khớp. Bốn tên ra ngoài kèm số
@@ -627,7 +627,7 @@ def test_harvest_records_strips_bare_ordinals_too():
         == ["36 Coffee", "1900 Cafe"]
 
 
-# --------------------------- nói thật khi các bài ít trùng nhau (§22.1) --------------------------- #
+# --------------------------- nói thật khi các bài ít trùng nhau --------------------------- #
 
 def test_sparse_note_fires_when_answer_looks_thin_but_many_were_seen():
     """Thủ Đức: 34 ứng viên, 1 đạt ngưỡng. Im lặng ở đây bị hiểu thành "khu vực này chỉ

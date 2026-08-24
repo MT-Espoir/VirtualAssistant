@@ -3,8 +3,8 @@ Nhận dạng "một lời gọi tool ĐANG ĐỊNH GỬI EMAIL" -> bản nháp 
 
 VÌ SAO CẦN: email là hành động KHÔNG HOÀN TÁC ĐƯỢC, và nội dung do LLM viết ra thì
 người dùng phải ĐỌC BẰNG MẮT mới kiểm được — đọc một lá thư dài qua TTS vừa mất cả
-phút vừa không nhớ nổi câu nào sai. Panel nháp (ui/draft_panel.py) là tầng kiểm chứng
-bằng mắt, cùng lý lẽ với panel địa điểm ở `docs/research_lane_spec.md` §12.
+phút vừa không nhớ nổi câu nào sai. Panel nháp (ui/panels.py + ui/hud.py) là tầng kiểm chứng
+bằng mắt, cùng lý lẽ với panel kết quả địa điểm.
 
 Hàm ở đây THUẦN và KHÔNG biết gì về Tk: `tools.py` gọi để dựng payload lúc hoãn hành
 động, `ui/` chỉ nhận dict rồi vẽ. Giữ đúng ranh giới của repo (core không import UI).

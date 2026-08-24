@@ -1,4 +1,4 @@
-"""Kho vị trí runtime + tầng tool tra địa điểm (PRD P0-2, P0-4)."""
+"""Kho vị trí runtime + tầng tool tra địa điểm."""
 
 import json
 import os
@@ -159,7 +159,7 @@ def test_set_my_location_ghi_vao_kho_runtime():
 
 
 def test_set_my_location_dung_CHUNG_bo_giai_dia_danh_voi_find_nearby():
-    """Lỗi thật 2026-08-21: "Vinhomes Grand Park Thủ Đức" — find_nearby giải được (qua
+    """Lỗi thật: "Vinhomes Grand Park Thủ Đức" — find_nearby giải được (qua
     bản đồ) nhưng set_my_location trượt (dùng danh bạ hành chính cũ), khiến trợ lý nói
     "đã ghi nhớ" trong khi không lưu được gì."""
     loc = _store()
@@ -251,7 +251,7 @@ def test_xuyen_tang_tool_den_bridge_giu_dung_giao_thuc():
 
 
 def test_xuyen_tang_ket_qua_xa_bi_chan_va_noi_dung_su_that():
-    """Ca THẬT của Phase 0: Maps trả kết quả Sài Gòn cho người ở Lai Châu."""
+    """Maps trả kết quả Sài Gòn cho người ở Lai Châu."""
     bridge = _FakeBridge([_maps_item("Nhà Thuốc FPT Long Châu", 10.768, 106.679)])
     loc = LocationStore(geocoder=lambda n: {"latitude": 22.37, "longitude": 102.83,
                                             "name": "Mường Tè", "admin1": "Lai Châu"})

@@ -1,5 +1,5 @@
 """
-Xếp hạng địa điểm — TẤT ĐỊNH, thuần, không LLM (F1.5 §7).
+Xếp hạng địa điểm — TẤT ĐỊNH, thuần, không LLM.
 
 Nguyên tắc kế thừa từ `weather._advice`: mọi thứ ĐỊNH LƯỢNG tính bằng code với ngưỡng
 đọc được, LLM chỉ diễn đạt lại. Nhờ vậy thứ hạng test được và giải thích được, thay vì
@@ -23,8 +23,8 @@ RATING_PRIOR_COUNT = 30
 # KHÔNG dùng trung bình của tập ứng viên làm prior — đó là mẫu ĐÃ BỊ CHỌN LỌC: Maps chỉ
 # trả về những chỗ điểm cao, nên trung bình của nó ~4,8. Lấy nó làm prior nghĩa là mặc
 # định "một quán lạ cũng tốt ngang quán tốt nhất", và khi đó bằng chứng mỏng KHÔNG bị
-# phạt: đo thật cho thấy 5,0 với 3 lượt (4,848) vẫn đè 4,7 với 166 lượt (4,720) — đúng
-# thứ tiêu chí F1.5 §7 cấm. Với mốc thận trọng 4,2 thì thành 4,273 vs 4,623, đúng chiều.
+# phạt — một quán 5,0 với vài lượt vẫn đè quán 4,7 với hàng trăm lượt. Mốc thận trọng
+# thấp hơn hẳn trung bình mẫu mới kéo được thứ hạng về đúng chiều.
 RATING_PRIOR_MEAN = 4.2
 _RATING_FLOOR, _RATING_CEIL = 3.0, 5.0     # dải rating thực tế trên Maps
 
@@ -48,8 +48,8 @@ def _clamp(x, lo=0.0, hi=1.0):
 def bayesian_quality(rating, reviews, prior_mean, prior_count=RATING_PRIOR_COUNT):
     """Trung bình Bayes: `(v*R + m*C) / (v + m)`.
 
-    BẮT BUỘC dùng thay rating thô — nếu không, quán 5,0 với 3 lượt sẽ đè quán 4,7 với
-    166 lượt. Dữ liệu thật đo được có đúng kiểu chênh lệch này.
+    BẮT BUỘC dùng thay rating thô — nếu không, một quán điểm tuyệt đối với vài lượt sẽ
+    đè quán điểm thấp hơn chút mà có hàng trăm lượt.
     """
     if rating is None:
         return None

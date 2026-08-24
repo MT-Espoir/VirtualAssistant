@@ -1,4 +1,4 @@
-"""Test Persona Phase 0: character card thích nghi provider, MoodState công thức, chấm cảm xúc."""
+"""Test Persona: character card thích nghi provider, MoodState công thức, chấm cảm xúc."""
 
 import os
 import sys

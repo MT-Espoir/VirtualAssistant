@@ -4,9 +4,9 @@ Test claim cache của Lane 3 (`research/claim_cache.py` + nhánh cache trong `p
 Ba chế độ được khoá ở đây, và cả ba đều sinh ra từ số đo chứ không từ mong muốn có cache:
 
   hit       hỏi lại trong cửa sổ tươi -> KHÔNG đụng mạng lần nào
-  merge     tập kết quả tìm kiếm không ổn định giữa hai lượt (spec §2.5) -> hợp nhất nguồn,
+  merge     tập kết quả tìm kiếm không ổn định giữa hai lượt -> hợp nhất nguồn,
             nên ứng viên từng chỉ có một nguồn có thể đạt ngưỡng ở lượt sau
-  fallback  máy tìm kiếm chặn (spec §2.1) -> vẫn trả lời được, và PHẢI nói rõ dữ liệu cũ
+  fallback  máy tìm kiếm chặn -> vẫn trả lời được, và PHẢI nói rõ dữ liệu cũ
 
 Không test nào chạm mạng và không test nào chạm đĩa trừ chỗ cố ý kiểm tra ghi/đọc file.
 Thời gian được tiêm qua `now=` nên không có test nào phải chờ.
@@ -135,7 +135,8 @@ def test_cache_survives_a_corrupt_file(tmp_path):
 
 
 def test_merge_sources_prefers_the_fresh_copy():
-    """Một domain có ở cả hai bên -> bản vừa đọc thắng; hợp nhất theo DOMAIN giữ I-L3-5."""
+    """Một domain có ở cả hai bên -> bản vừa đọc thắng; hợp nhất theo DOMAIN nên một
+    domain vẫn chỉ có MỘT phiếu."""
     old = {"a.vn": {"url": "https://a.vn/cu", "records": [1]},
            "b.vn": {"url": "https://b.vn/x", "records": [2]}}
     new = {"a.vn": {"url": "https://a.vn/moi", "records": [3]}}
@@ -163,7 +164,7 @@ def test_fresh_hit_touches_no_network():
 
 
 def test_merge_lets_a_second_turn_reach_consensus():
-    """Đây là lý do chính để có cache: tập kết quả tìm kiếm KHÔNG ổn định (spec §2.5).
+    """Đây là lý do chính để có cache: tập kết quả tìm kiếm KHÔNG ổn định.
 
     Lượt 1 và lượt 2 mỗi lượt chỉ thấy Tropical Forest ở MỘT nguồn, nên tự mình cả hai
     đều `NO_CONSENSUS`. Hợp nhất lại thì đó là HAI trang khác nhau cùng nhắc tới nó —
@@ -190,7 +191,7 @@ def test_merge_lets_a_second_turn_reach_consensus():
 
 
 def test_fallback_answers_from_memory_and_says_it_is_old():
-    """Máy tìm kiếm chặn (spec §2.1) -> vẫn trả lời, nhưng KHÔNG được giả vờ vừa đọc web."""
+    """Máy tìm kiếm chặn -> vẫn trả lời, nhưng KHÔNG được giả vờ vừa đọc web."""
     clock = _Clock()
     cache = ClaimCache(fresh_hours=24, ttl_days=90, now=clock)
     pages = {"https://a.vn/x": _listicle(["Tropical Forest", "Bagang Café", "Annamoi"]),

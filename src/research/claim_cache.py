@@ -1,5 +1,5 @@
 """
-Nhớ lại TỪNG NGUỒN ĐÃ NÓI GÌ, để không phải đọc lại web mỗi lượt (spec §15, đợt L3-6).
+Nhớ lại TỪNG NGUỒN ĐÃ NÓI GÌ, để không phải đọc lại web mỗi lượt.
 
 Đơn vị được nhớ là **lời của một nguồn**, không phải câu trả lời hoàn chỉnh:
 
@@ -9,30 +9,27 @@ Cắt ở đúng chỗ đó là có chủ đích. Nhớ câu trả lời hoàn c
 tra cứu; nhớ lời từng nguồn thì mọi bước hạ nguồn — gộp biến thể tên, khử trùng nguồn,
 đếm đồng thuận — vẫn chạy nguyên vẹn trên tập nguồn HỢP NHẤT của nhiều lượt.
 
-BA CHẾ ĐỘ, và cả ba đều xuất phát từ số đo chứ không từ mong muốn có cache:
+BA CHẾ ĐỘ:
 
   hit       Trong cửa sổ TƯƠI -> trả thẳng, không đụng mạng.
-            §11 xếp claim cache ở bậc 2/5 của thứ tự tối ưu độ trễ, ngay sau song song hoá.
 
   merge     Quá cửa sổ tươi nhưng chưa hết hạn -> vẫn đi tìm, rồi HỢP NHẤT nguồn cũ với
-            nguồn mới. Đây là chế độ đáng giá nhất và nó sinh ra từ một KHUYẾT TẬT: §2.5
-            đo được tập kết quả tìm kiếm KHÔNG ổn định giữa hai lần gọi — lượt này ra
-            `vietcetera`, lượt sau ra `quananngonhanoi`. Hợp nhất biến sự bất ổn đó từ
-            khuyết tật thành lợi thế: mỗi lượt góp thêm nguồn độc lập, nên ứng viên từng
-            chỉ có một nguồn có thể đạt ngưỡng ở lượt sau. Không có gì bị thổi phồng —
-            hai trang khác nhau đúng là hai trang khác nhau, dù đọc cách nhau một tuần.
+            nguồn mới. Đây là chế độ đáng giá nhất và nó sinh ra từ một KHUYẾT TẬT: tập
+            kết quả tìm kiếm KHÔNG ổn định giữa hai lần gọi. Hợp nhất biến sự bất ổn đó
+            từ khuyết tật thành lợi thế: mỗi lượt góp thêm nguồn độc lập, nên ứng viên
+            từng chỉ có một nguồn có thể đạt ngưỡng ở lượt sau. Không có gì bị thổi phồng
+            — hai trang khác nhau đúng là hai trang khác nhau, dù đọc cách nhau một tuần.
 
   fallback  Tìm kiếm HỎNG mà còn bản nhớ (kể cả cũ) -> dùng bản nhớ và NÓI RÕ nó cũ bao
-            lâu. §2.1 đo được mọi máy tìm kiếm qua HTTP đều chặn sau một buổi gọi liên
-            tục, nên đây không phải ca hiếm. Im lặng ở đây là bịa: người dùng sẽ tưởng
-            trợ lý vừa đọc web xong.
+            lâu. Máy tìm kiếm bị chặn không phải ca hiếm, và im lặng ở đây là bịa: người
+            dùng sẽ tưởng trợ lý vừa đọc web xong.
 
-TTL THEO LỚP BIẾN ĐỘNG (§11): thẩm mỹ của một quán đổi theo năm, nên hạn dài. Những thứ
-đổi nhanh — giờ mở cửa, điểm số, khoảng cách — KHÔNG nằm trong này; chúng đến từ bản đồ
-lúc người dùng bấm vào thẻ, và bấm lúc nào thì tra lúc đó.
+TTL THEO LỚP BIẾN ĐỘNG: thẩm mỹ của một quán đổi theo năm, nên hạn dài. Những thứ đổi
+nhanh — giờ mở cửa, điểm số, khoảng cách — KHÔNG nằm trong này; chúng đến từ bản đồ lúc
+người dùng bấm vào thẻ, và bấm lúc nào thì tra lúc đó.
 
-Module này TRUNG LẬP VỀ MIỀN (I-L3-6): khoá là một chuỗi mờ, bản ghi là dữ liệu mờ. Nó
-không biết "quán cà phê" là gì.
+Module này TRUNG LẬP VỀ MIỀN: khoá là một chuỗi mờ, bản ghi là dữ liệu mờ. Nó không biết
+"quán cà phê" là gì.
 """
 
 import io
@@ -51,11 +48,11 @@ CACHE_VERSION = 1
 # Cửa sổ TƯƠI: trong bao lâu thì trả thẳng bản nhớ mà không đụng mạng.
 DEFAULT_FRESH_HOURS = 24
 
-# Hạn dùng: quá mốc này thì bản nhớ bị bỏ. Lấy theo lớp biến động chậm nhất (§11).
+# Hạn dùng: quá mốc này thì bản nhớ bị bỏ. Lấy theo lớp biến động chậm nhất.
 DEFAULT_TTL_DAYS = 90
 
-# Trần số mục. Đo thật 2026-08-23: 3 nguồn thật = 9,6 KB, nên một mục đầy (6-8 nguồn) ~20 KB
-# và 50 mục ~1 MB — đủ cho thói quen hỏi của một người, vẫn đọc xong trong một nhịp.
+# Trần số mục: cả file phải đọc xong trong một nhịp lúc khởi tạo, nên giữ ở mức vài chục
+# mục — đủ cho thói quen hỏi của một người.
 MAX_ENTRIES = 50
 
 DEFAULT_PATH = os.path.join(os.path.dirname(__file__), "data", "claims.json")
@@ -150,9 +147,9 @@ def merge_sources(old, new):
     """Hợp nhất hai tập lời-của-nguồn theo DOMAIN. Hàm thuần.
 
     Một domain có ở cả hai bên -> lấy bản MỚI: trang có thể đã sửa, và bản vừa đọc bao giờ
-    cũng đúng hơn. Đây cũng là chỗ giữ I-L3-5 (một domain một phiếu) qua nhiều lượt: hợp
-    nhất theo domain chứ không theo URL, nếu không thì một site đổi đường dẫn bài sẽ tự
-    nhân đôi phiếu của nó.
+    cũng đúng hơn. Đây cũng là chỗ giữ luật MỘT DOMAIN MỘT PHIẾU qua nhiều lượt: hợp nhất
+    theo domain chứ không theo URL, nếu không thì một site đổi đường dẫn bài sẽ tự nhân
+    đôi phiếu của nó.
     """
     merged = dict(old or {})
     merged.update(new or {})

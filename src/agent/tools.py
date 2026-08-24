@@ -369,7 +369,7 @@ def build_default_registry(actions, scheduler=None, browser=None, screen=None,
     if mcp is not None:
         _register_mcp_tools(reg, mcp)
 
-    # Tra địa điểm: cần CẢ nguồn dữ liệu lẫn kho vị trí (toạ độ giải ở tầng tool, P0-4).
+    # Tra địa điểm: cần CẢ nguồn dữ liệu lẫn kho vị trí (toạ độ giải ở tầng tool).
     if places is not None and location is not None:
         _register_place_tools(reg, places, location, browser=browser, bus=bus,
                               speak_limit=config.PLACES_LIMIT)
@@ -382,11 +382,10 @@ def _register_mcp_tools(reg: ToolRegistry, mcp, destructive_keywords=None):
     GHI (heuristic theo tên: send/create/delete...) đánh dấu destructive -> cổng xác nhận.
 
     NGOÀI RA: mọi tool mang hình dạng EMAIL đều được gắn `preview` để hiện panel nháp,
-    KỂ CẢ tool không destructive. Lý do đo được (2026-08-24): `gws_gmail_draft` không
-    chứa từ khoá GHI nào nên heuristic tên xếp nó là "chỉ đọc" -> không có cổng, không
-    có panel. Mà "viết mail" (chưa gửi) CHÍNH LÀ lúc người dùng cần nhìn bản nháp nhất.
-    Cột mốc để hiện panel phải là "có nội dung do LLM viết ra", không phải "tên tool
-    có chữ send".
+    KỂ CẢ tool không destructive: tool LƯU NHÁP không chứa từ khoá GHI nào nên heuristic
+    tên xếp nó là "chỉ đọc" -> không cổng, không panel. Mà "viết mail" (chưa gửi) chính là
+    lúc người dùng cần nhìn bản nháp nhất. Cột mốc để hiện panel phải là "có nội dung do
+    LLM viết ra", không phải "tên tool có chữ send".
     """
     from services.mcp_bridge import is_destructive_tool, DEFAULT_DESTRUCTIVE_KEYWORDS
     from actions.email_draft import email_draft, say_draft
@@ -1067,7 +1066,7 @@ def _register_schedule_tools(reg: ToolRegistry, scheduler):
 
 def _register_place_tools(reg: ToolRegistry, places, location, browser=None, bus=None,
                           speak_limit=3):
-    """Tra ĐỊA ĐIỂM — hai ý định tách đôi (PRD P0-2).
+    """Tra ĐỊA ĐIỂM — hai ý định tách đôi.
 
     `find_nearby` : theo LOẠI, quanh một điểm  -> ràng buộc KHOẢNG CÁCH
     `find_place`  : ĐÚNG MỘT CHỖ có tên        -> ràng buộc TÊN (và khu vực nếu người nói)
@@ -1080,7 +1079,7 @@ def _register_place_tools(reg: ToolRegistry, places, location, browser=None, bus
                                       radius_factor)
     from services.browser_protocol import summarize_places, build_open_or_reuse
 
-    # Trạng thái lượt tìm gần nhất — nền cho việc tinh chỉnh ở lượt sau (F1.5 §10).
+    # Trạng thái lượt tìm gần nhất — nền cho việc tinh chỉnh ở lượt sau.
     # Giữ CẢ ứng viên lẫn ngữ cảnh: "có chỗ nào mở muộn hơn không" phải lọc trên đúng
     # danh sách đó, không được tra lại bằng từ khoá mới.
     session = {"results": [], "query": None, "area": None, "center": None,
@@ -1110,7 +1109,7 @@ def _register_place_tools(reg: ToolRegistry, places, location, browser=None, bus
         session["center"] = center if ok else None
         session["radius_km"] = radius_km if ok else None
         session["rank_ctx"] = ((out.get("diagnostics") or {}).get("rank_ctx") or {}) if ok else {}
-        # Giải thích CHỈ dựng từ bằng chứng có thật (F1.5 §9); LLM chỉ đọc lại, không thêm.
+        # Giải thích CHỈ dựng từ bằng chứng có thật; LLM chỉ đọc lại, không thêm.
         reason = None
         if out["outcome"] == "OK" and out["results"]:
             reason = explain(out["results"][0],
@@ -1152,12 +1151,9 @@ def _register_place_tools(reg: ToolRegistry, places, location, browser=None, bus
     def _browser_search(query, limit=8):
         """Dự phòng cho discovery: đọc trang kết quả trong TRÌNH DUYỆT THẬT -> [url].
 
-        Cần vì đo 2026-08-22 cho thấy MỌI máy tìm kiếm qua HTTP thẳng đều chặn sau một
-        buổi gọi liên tục từ cùng một IP (DDG 202, Mojeek 403, Brave 429). Trình duyệt
-        thật không bị chặn vì nó là trình duyệt thật — chậm hơn, nhưng giữ tính năng sống
-        thay vì chết lặng.
-
-        Đây cũng là tài sản mà một kiến trúc chạy trên server KHÔNG thể có.
+        Cần vì mọi máy tìm kiếm qua HTTP thẳng đều chặn sau một buổi gọi liên tục từ cùng
+        một IP. Trình duyệt thật không bị chặn vì nó là trình duyệt thật — chậm hơn, nhưng
+        giữ tính năng sống thay vì chết lặng.
         """
         if browser is None or not getattr(browser, "connected", False):
             return []
@@ -1175,10 +1171,10 @@ def _register_place_tools(reg: ToolRegistry, places, location, browser=None, bus
         return [r["url"] for r in results if r.get("url")]
 
     def _claim_cache():
-        """ClaimCache dùng chung cho lane research, TẠO LƯỜI (spec §15 L3-6).
+        """ClaimCache dùng chung cho lane research, TẠO LƯỜI.
 
         Lười vì phiên nào không hỏi địa điểm thì không phải đọc file nào — cùng lý lẽ với
-        panel kết quả (§18). Dựng hỏng thì trả None: mất phần tăng tốc, không mất tính năng.
+        panel kết quả. Dựng hỏng thì trả None: mất phần tăng tốc, không mất tính năng.
         """
         if "claim_cache" not in session:
             store = None
@@ -1194,7 +1190,7 @@ def _register_place_tools(reg: ToolRegistry, places, location, browser=None, bus
         return session["claim_cache"]
 
     def research_places(need=None, in_area=None):
-        """Lane 3: tìm theo NHU CẦU chứ không theo loại (docs/research_lane_spec.md).
+        """Tìm theo NHU CẦU chứ không theo loại.
 
         Chậm hơn `find_nearby` nhiều lần vì phải đọc web, nên chỉ dùng khi ràng buộc KHÔNG
         có trường dữ liệu nào trên bản đồ ("nhiều cây xanh", "phong cách cổ"). Ném thẳng
@@ -1209,8 +1205,8 @@ def _register_place_tools(reg: ToolRegistry, places, location, browser=None, bus
                        cache=_claim_cache())
 
         # Giữ ứng viên cho "mở cái thứ N", nhưng KHÔNG đặt `center`/`query`: nhánh tra lại
-        # của `refine_places` sẽ ném nguyên câu nhu cầu vào Maps như từ khoá — đúng lỗi mà
-        # F1.5 §10 đã ghi. Thiếu `center` thì nhánh đó dừng và hỏi lại, an toàn hơn.
+        # của `refine_places` sẽ ném nguyên câu nhu cầu vào Maps như từ khoá. Thiếu `center`
+        # thì nhánh đó dừng và hỏi lại, an toàn hơn.
         ok = out["outcome"] == "OK"
         session["results"] = out["results"] if ok else []
         session["query"] = None
@@ -1219,7 +1215,7 @@ def _register_place_tools(reg: ToolRegistry, places, location, browser=None, bus
         session["radius_km"] = None
         session["rank_ctx"] = {}
 
-        # Panel là tầng KIỂM CHỨNG BẰNG MẮT cho thuộc tính không đo được (spec §12).
+        # Panel là tầng KIỂM CHỨNG BẰNG MẮT cho thuộc tính không đo được.
         # Giọng nói đọc 3 chỗ đầu; panel hiện đủ danh sách kèm bằng chứng xem được.
         if bus is not None:
             bus.emit_places(out["results"], need=str(need).strip())
@@ -1352,11 +1348,10 @@ def _register_place_tools(reg: ToolRegistry, places, location, browser=None, bus
 
     reg.register(Tool(
         name="research_places",
-        # Mô tả này là thứ model dùng để CHỌN LANE, nên con số trong đó phải đúng: bản cũ
-        # ghi "mất khoảng nửa phút" từ trước khi có giải toạ độ lười (§19.4) và claim cache
-        # (§24) — nay còn ~5 giây, và câu quảng cáo sai đó đang chủ động đẩy model tránh
-        # tool. Nhưng KHÔNG được đổi thành "nhanh, cứ dùng": §11 cấm Lane 3 thành lane mặc
-        # định, nên luật chọn lane vẫn là KHÔNG diễn đạt được bằng loại + khoảng cách.
+        # Mô tả này là thứ model dùng để CHỌN LANE, nên con số thời gian trong đó phải
+        # đúng với hiện trạng: nói quá chậm thì model né tool, nói "nhanh, cứ dùng" thì nó
+        # thành lane mặc định. Luật chọn lane vẫn là: KHÔNG diễn đạt được bằng loại +
+        # khoảng cách thì mới dùng tool này.
         description=("Tìm địa điểm theo MÔ TẢ/CẢM GIÁC mà bản đồ không có trường dữ liệu: "
                      "'quán cà phê nhiều cây xanh', 'quán phong cách cổ', 'quán view đẹp "
                      "để dẫn người yêu đi', 'chỗ nào decor xinh'. Tool này ĐỌC BÁO/BLOG "

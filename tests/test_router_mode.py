@@ -1,6 +1,6 @@
 """Test ROUTER_MODE — quyết định bật/tắt router theo chế độ + sức của provider.
 
-Ràng buộc quan trọng nhất (R1 trong docs/latency_optimization_spec.md): model LOCAL phải
+Ràng buộc quan trọng nhất: model LOCAL phải
 LUÔN giữ router. Đã có bằng chứng ngược: qwen 7B bỏ router thì gần như không gọi tool nữa.
 """
 

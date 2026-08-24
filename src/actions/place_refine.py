@@ -1,7 +1,7 @@
 """
-Tinh chỉnh kết quả tìm địa điểm theo NGỮ CẢNH lượt trước (F1.5 §10).
+Tinh chỉnh kết quả tìm địa điểm theo NGỮ CẢNH lượt trước.
 
-Bài toán thật gặp khi chạy (2026-08-21): người dùng hỏi "có chỗ nào mở muộn hơn không"
+Bài toán: người dùng hỏi "có chỗ nào mở muộn hơn không"
 sau khi đã có 7 quán. Model biến "mở muộn" thành TỪ KHOÁ tìm kiếm và tra lại từ đầu —
 Maps tra chữ "mở muộn" như văn bản thường, nên kết quả không hề được lọc theo giờ đóng
 cửa. Trong khi đó hệ thống ĐÃ CÓ `closes_at` của cả 7 quán và hoàn toàn lọc được.
@@ -22,7 +22,7 @@ NARROWING = ("open_later", "open_now", "cheaper", "better_rated", "quieter")
 
 # Phải TRA LẠI (kèm hệ số nhân bán kính) — vì retrieval của Maps phụ thuộc KHUNG NHÌN.
 #
-# 'closer' nằm ở đây chứ KHÔNG phải ở NARROWING: đo thật 2026-08-21, cùng một tâm, bảng
+# 'closer' nằm ở đây chứ KHÔNG phải ở NARROWING: cùng một tâm, bảng
 # kết quả ở khung 5 km trả 7 chỗ cách 0,96-1,41 km và KHÔNG chỗ nào dưới 500 m; khung
 # 1 km trả 6 chỗ cách 0,20-0,63 km — hai tập KHÔNG trùng nhau một cái tên. Lọc "nửa gần
 # hơn" của tập cũ không thể tìm ra quán cách 200 m, vì nó chưa bao giờ được lấy về.

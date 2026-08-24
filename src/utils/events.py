@@ -17,7 +17,7 @@ class AssistantEvent:
     emotion: Optional[str] = None    # neutral | happy | sad
     text: Optional[str] = None       # câu trả lời / trạng thái để hiện
     ui: Optional[dict] = None        # lệnh giao diện avatar (scale_delta / opacity_delta...)
-    places: Optional[dict] = None    # {rows, need} -> panel kết quả địa điểm (L3-4)
+    places: Optional[dict] = None    # {rows, need} -> panel kết quả địa điểm
     draft: Optional[dict] = None     # {to, subject, body} -> panel nháp email; {} = đóng panel
 
 
@@ -33,7 +33,7 @@ class AssistantBus:
         self._q.put(AssistantEvent(ui=ui))
 
     def emit_places(self, rows, need=None):
-        """Gửi danh sách địa điểm cho panel kết quả (L3-4).
+        """Gửi danh sách địa điểm cho panel kết quả.
 
         Đi qua ĐÚNG kênh này thay vì gọi thẳng Tk: tool chạy ở thread nền, mà widget Tk
         chỉ được đụng từ main thread. Danh sách rỗng = ẩn panel.

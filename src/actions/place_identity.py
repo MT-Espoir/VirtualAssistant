@@ -1,5 +1,5 @@
 """
-DANH TÍNH địa điểm — khoá gộp bằng chứng (L3-2, `docs/research_lane_spec.md` §9).
+DANH TÍNH địa điểm — khoá gộp bằng chứng.
 
 Đây là phần RIÊNG của miền địa điểm; lõi `research/` không được biết gì về nó.
 
@@ -15,14 +15,14 @@ Và có HAI tầng, không phải một:
 Lưu phẳng là sai: sẽ phải research lại từng chi nhánh cho một nhận định chỉ cần biết một
 lần.
 
-DRY: mọi thứ về so tên và khoảng cách lấy từ `actions/places.py`. Bài học đắt nhất của
-S2 (phụ lục `smart_places_spec.md`) là để HAI đường giải địa danh tồn tại song song —
-cùng một chuỗi cho hai kết quả khác nhau. Không lặp lại ở đây.
+DRY: mọi thứ về so tên và khoảng cách lấy từ `actions/places.py`. Để HAI đường giải địa
+danh tồn tại song song thì cùng một chuỗi cho hai kết quả khác nhau — không lặp lại ở đây.
 """
 
 from actions.places import GENERIC_TOKENS, haversine_km, name_score, tokens
 
-# Lưới toạ độ ~20 m. Cùng con số với đề xuất khử trùng ở `smart_places_spec` §11.
+# Lưới toạ độ ~20 m: đủ mịn để không gộp hai quán cạnh nhau, đủ thô để cùng một quán
+# lấy từ hai nguồn vẫn rơi vào một ô.
 COORD_PRECISION_M = 20.0
 _M_PER_DEG_LAT = 111_320.0
 
@@ -72,9 +72,8 @@ def brand_key(name):
     trả về cả cụm.
 
     Không cố đoán thêm là CÓ CHỦ ĐÍCH: đoán sai sẽ gộp nhầm hai quán khác nhau và mọi
-    bằng chứng sau đó dính vào sai chỗ — hỏng im lặng, đúng loại lỗi tệ nhất mà Phase 0
-    đã dạy. Danh tính chuỗi đáng tin phải đến từ dữ liệu nhà cung cấp (trường chain/brand),
-    không phải từ việc bổ chuỗi. Xem `research_lane_spec.md` §14.
+    bằng chứng sau đó dính vào sai chỗ — hỏng im lặng. Danh tính chuỗi đáng tin phải đến
+    từ dữ liệu nhà cung cấp (trường chain/brand), không phải từ việc bổ chuỗi.
     """
     text = (name or "").strip()
     if not text:

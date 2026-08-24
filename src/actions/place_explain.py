@@ -1,5 +1,5 @@
 """
-Giải thích VÌ SAO đề xuất — mỗi nhận định phải có BẰNG CHỨNG (F1.5 §5, §9).
+Giải thích VÌ SAO đề xuất — mỗi nhận định phải có BẰNG CHỨNG.
 
 Luật của module này, theo đúng thứ tự ưu tiên:
 
@@ -10,9 +10,8 @@ Luật của module này, theo đúng thứ tự ưu tiên:
    — "review có nhắc tới ...", KHÔNG phải "quán này yên tĩnh".
 3. Số lượt đánh giá dùng làm proxy độ đông thì phải NÓI RÕ là proxy.
 
-Vì sao siết chặt: Phase 0 cho thấy bộ trích chạy hoàn hảo mà vẫn giao ra dữ liệu sai.
-Tầng này còn nguy hiểm hơn vì nó SUY DIỄN, và câu suy diễn nghe thuyết phục hơn hẳn câu
-trích dẫn. Không có luật thì đây là chỗ dễ biến trợ lý thành máy bịa có duyên nhất.
+Vì sao siết chặt: tầng này SUY DIỄN, và câu suy diễn nghe thuyết phục hơn hẳn câu trích
+dẫn. Không có luật thì đây là chỗ dễ biến trợ lý thành máy bịa có duyên nhất.
 """
 
 from actions.place_features import minutes_until_close

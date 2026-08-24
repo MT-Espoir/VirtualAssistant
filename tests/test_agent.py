@@ -277,7 +277,7 @@ def test_panel_cancel_button_does_not_send():
 
 
 def test_non_destructive_tool_with_draft_is_still_gated():
-    """HỒI QUY (2026-08-24): 'viết mail ...' -> chỉ đọc, không hiện panel.
+    """HỒI QUY: 'viết mail ...' -> chỉ đọc, không hiện panel.
 
     Tool LƯU NHÁP không mang từ khoá GHI nào nên `destructive=False`. Trước bản vá, cổng
     duyệt chỉ nhìn `destructive` -> không chặn, không panel, thư nháp lưu thẳng. Giờ chỉ
@@ -620,9 +620,9 @@ if __name__ == "__main__":
 
 # --------------------------- Thứ tự khối trong system prompt (KV cache) --------------------------- #
 #
-# Bài học đo được 2026-08-22: `prompt_eval` chiếm ~83% chi phí một lượt LLM, và runtime tái dùng
+# `prompt_eval` (đọc prompt) chiếm phần lớn chi phí một lượt LLM, và runtime tái dùng
 # KV cache theo TIỀN TỐ CHUNG. Thứ gì đổi mỗi lượt mà nằm ở ĐẦU prompt sẽ phá cache của TOÀN BỘ
-# prompt lẫn lịch sử hội thoại phía sau (đo được: 23,6s so với 3,4s).
+# prompt lẫn lịch sử hội thoại phía sau.
 #
 # Các test dưới đây KHOÁ thứ tự đó lại. Nếu ai đó bơm thời gian/hồ sơ lên đầu lần nữa, test phải đỏ.
 

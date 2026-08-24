@@ -252,7 +252,7 @@ def summarize_open_or_reuse(resp, url):
 
 
 # ============================ MAPS_READ (địa điểm) ============================
-# Bảng mã kết quả — xem PRD P0-1. Ý nghĩa của mã quyết định CÂU ĐƯỢC PHÉP NÓI, nên
+# Bảng mã kết quả. Ý nghĩa của mã quyết định CÂU ĐƯỢC PHÉP NÓI, nên
 # mọi mã đều phải có mặt ở đúng một trong hai nhóm dưới đây.
 
 # Chỉ những mã này mới được diễn đạt thành "không có / không tìm thấy".
@@ -266,9 +266,9 @@ PLACE_OUTCOMES = ("OK",) + SAYS_NOTHING_FOUND + SAYS_CANNOT_LOOK_UP
 def zoom_for_radius(radius_km):
     """Bán kính yêu cầu -> mức zoom của URL Maps.
 
-    Đo thật (2026-08-21): bảng kết quả Maps trả TỐI ĐA ~6 mục bất kể zoom hay cuộn, nhưng
-    zoom quyết định 6 mục NÀO — 17z cho các chỗ cách 0,25-0,63 km, còn 15z cho 0,4-1,26 km.
-    Vậy nên khớp khung nhìn với ràng buộc, thay vì cố định 15z.
+    Bảng kết quả Maps luôn bị cắt ở vài mục bất kể zoom hay cuộn, nhưng zoom quyết định
+    LẤY ĐƯỢC MỤC NÀO: khung hẹp cho các chỗ sát bên, khung rộng thì bỏ qua chúng. Vậy nên
+    khớp khung nhìn với ràng buộc, thay vì cố định một mức zoom.
     """
     try:
         r = float(radius_km)
@@ -291,7 +291,7 @@ def build_maps_read(query, lat, lng, limit=10, radius_km=None):
     """Dựng payload MAPS_READ. Extension chỉ ĐỌC DOM và trả dữ liệu THÔ.
 
     Tâm bản đồ là BẮT BUỘC: thiếu nó Maps rơi vào 'limited view' và chỉ trả 1 kết quả
-    (đo thật ở Phase 0). Lọc khoảng cách / khớp tên / quyết mã kết quả nằm ở
+    Lọc khoảng cách / khớp tên / quyết mã kết quả nằm ở
     actions/places.py — thuần, test được, dùng chung cho cả nguồn OSM.
     """
     if not query or not str(query).strip():
@@ -320,7 +320,7 @@ def parse_maps_response(resp):
     """Phản hồi MAPS_READ -> (page_outcome, [mục thô], diagnostics).
 
     KHÔNG BAO GIỜ trả mảng trần: lỗi vận chuyển -> SOURCE_UNAVAILABLE, để tầng trên
-    phân biệt được 'không có quán' với 'tôi hỏng' (PRD P0-1).
+    phân biệt được 'không có quán' với 'tôi hỏng'.
     """
     if not isinstance(resp, dict) or resp.get("type") == "ERROR":
         msg = resp.get("message", "") if isinstance(resp, dict) else ""
@@ -338,7 +338,7 @@ def parse_maps_response(resp):
             continue          # thiếu tên hoặc toạ độ -> không kiểm chứng được -> bỏ
         items.append({"name": name, "url": (r.get("url") or "").strip(),
                       "lat": lat, "lng": lng,
-                      # dòng THÔ để tầng Python bóc đặc trưng (F1.5 §6)
+                      # dòng THÔ để tầng Python bóc đặc trưng
                       "lines": r.get("lines") or [], "aria": r.get("aria") or [],
                       "rating": r.get("rating"), "address": r.get("address")})
     return page, items, (resp.get("diagnostics") or {})
@@ -368,7 +368,7 @@ def summarize_places(outcome, results, query, diagnostics=None, area=None, sourc
                      speak_limit=None, top_reason=None):
     """Kết quả tra địa điểm -> câu tiếng Việt ĐỌC được.
 
-    Đây là nơi CHỐT quy tắc bất khả xâm phạm của P0-1: chỉ NO_RESULTS / OUT_OF_AREA /
+    Đây là nơi CHỐT quy tắc bất khả xâm phạm: chỉ NO_RESULTS / OUT_OF_AREA /
     APPROX_MATCH mới được nói 'không có'; mọi mã hỏng phải nói 'không tra được'.
     Ghép câu ở đây (không giao LLM) để quy tắc là tất định và test được.
     """

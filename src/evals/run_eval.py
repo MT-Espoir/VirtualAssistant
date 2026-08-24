@@ -113,7 +113,7 @@ def main(argv=None):
     print(f"Gọi đúng tool : {s['tool_pass']}/{s['total']}  ({s['tool_acc']*100:.0f}%)")
     if s["case_acc"] is not None:
         print(f"Phân loại case: {s['case_pass']}/{s['case_total']}  ({s['case_acc']*100:.0f}%)")
-    # CHI PHÍ — con số cần theo dõi khi cắt bớt lượt LLM (xem docs/latency_optimization_spec.md)
+    # CHI PHÍ — con số cần theo dõi khi cắt bớt lượt LLM
     if s["avg_calls"] is not None:
         print(f"Số call LLM   : {s['total_calls']} tổng  ({s['avg_calls']:.2f} call/lượt)")
     if s["avg_seconds"] is not None:

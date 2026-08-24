@@ -1,23 +1,5 @@
 """
-Thu hoạch TÊN THỰC THỂ từ cấu trúc bài viết — thuần, không LLM (spec §4).
-
-Bài dạng danh sách có cấu trúc sẵn: `<h2>1. Quán A</h2>`, `<li>2. Quán B</li>`. Đọc cấu
-trúc đó bằng parser thay vì nhờ LLM đọc cả bài. Đo 2026-08-22 trên 9 trang thật:
-
-    LLM đọc toàn bài : 57 giây/trang, recall 54%
-    parser           : ~0 ms,          recall 93%
-
-Parser thắng ở CẢ hai chiều. LLM tự cắt danh sách (mia.vn: parser 31 tên, LLM dừng ở 10)
-còn parser liệt kê cạn kiệt.
-
-Đánh đổi có thật: parser recall cao, **precision trung bình**. Chấp nhận được vì hai tầng
-sau lọc giúp — đồng thuận chéo nguồn (`consensus.py`) rồi giải danh tính ở tầng miền.
-Recall thì ngược lại: **mất là mất luôn**, không tầng nào cứu được.
-
-Bài học đắt nhất (spec §2.5): bóc trên TOÀN TRANG cho 70% chính xác và đẩy boilerplate
-WordPress *"Để lại một bình luận Hủy"* lên **hạng nhất** — vì mọi site WordPress đều có
-cùng chuỗi đó, nên nó đồng thuận chéo nguồn còn tốt hơn nội dung thật. Chỉ bóc trong
-thân bài viết (`acquire.article_body`) mới cho 100%.
+Thu hoạch TÊN THỰC THỂ từ cấu trúc bài viết — thuần, không LLM.
 """
 
 import re
@@ -32,56 +14,26 @@ STOP_PREFIXES = (
     "review", "tại sao", "lưu ý", "faq", "câu hỏi", "gợi ý", "bình luận", "để lại",
     "tags", "đăng nhập", "đăng ký", "hỗ trợ", "recent ", "mẹo ", "cài đặt", "tư duy",
     "chính sách", "điều khoản", "giới thiệu", "hướng dẫn", "kinh nghiệm", "khám phá",
-    # Tiêu đề MỤC bên trong bài, không phải tên thực thể. Đo thật 2026-08-22:
-    # "Những quán cà phê Thủ Đức có view đẹp", "Các quán cafe mở 24/24".
     "những ", "các ", "top", "tổng ", "địa điểm", "nên ",
 )
 
 MIN_LEN = 4
 MAX_LEN = 80
-# Đo thật 2026-08-22 trên nguồn Thủ Đức: tên quán thật dài nhất 5 từ ("The Coffee Farm
-# Thủ Đức"), còn tiêu đề mục dài 8-11 từ ("Quán cafe sân vườn Thủ Đức nào có nhiều góc
-# check in"). Ngưỡng 12 cũ để lọt hết đám sau.
 MAX_WORDS = 7
 
 _HEADING = re.compile(r"<(h[234])[^>]*>(.*?)</\1>", re.S | re.I)
 _LIST_ITEM = re.compile(r"<li[^>]*>(.*?)</li>", re.S | re.I)
-# Số đứng đầu heading: THỨ TỰ MỤC hay MỘT PHẦN CỦA TÊN? Chuỗi tự nó không trả lời được —
-# "36 Coffee", "1900 Cafe", "6 Degrees" là tên quán thật, còn "2 Tiệm cà phê Túi Mơ To" thì
-# số 2 là thứ tự mục. Nên số chỉ bị bỏ trong hai trường hợp: có DẤU CÂU ngăn ngay sau nó
-# ("1. ", "12) "), hoặc nó là thứ tự HỢP LỆ trong dãy của cả trang (`page_ordinals`).
-#
-# Nhóm 1 = số, nhóm 2 = dấu câu ngăn (None khi chỉ cách bằng khoảng trắng). `(?!\d)` giữ
-# "1900 Cafe" nguyên vẹn: không cho khớp hai chữ số đầu của một số dài hơn.
 _LEADING_NUMBER = re.compile(r"^\s*(\d{1,2})(?!\d)\s*(?:([\.\)\-–:])\s*|\s+)")
 
 _NUMBERED = re.compile(r"^\d{1,2}[\.\)]\s+\S")
 
-# Dãy 1,2,3... phải dài bao nhiêu thì mới tin là bài có đánh số. Hai mục thì còn có thể là
-# trùng hợp ("1900 Cafe" bị bỏ qua, nhưng "6 Degrees" rồi "7 Bridges" thì không).
 MIN_ORDINAL_RUN = 3
 
-
-# Phần MÔ TẢ mà người viết nối sau tên, ngăn bằng dấu gạch có khoảng trắng hai bên.
 _TRAILING_DESC = re.compile(r"\s[–—-]\s|\s\|\s")
 
 
 def page_ordinals(headings):
-    """[chuỗi heading thô] -> tập số mà TRANG NÀY đang dùng làm số thứ tự. Hàm thuần.
-
-    Xét từng heading một cách cô lập thì "2 Tiệm cà phê Túi Mơ To" và "36 Coffee" giống hệt
-    nhau. Cái phân biệt chúng nằm ở CẢ TRANG: bài có đánh số thì các số chạy 1, 2, 3... theo
-    đúng thứ tự xuất hiện, còn con số trong tên quán thì không ăn khớp với vị trí nào cả.
-
-    Nên chỉ nhận số thứ tự khi nó nối được vào dãy đếm từ 1: đi dọc các heading có số, số
-    nào bằng đúng số đang chờ thì dãy dài thêm một, số nào không khớp thì BỎ QUA (nó không
-    phải thứ tự) và vẫn chờ đúng số cũ. Nhờ vậy "36 Coffee" chen giữa một bài đánh số không
-    làm đứt dãy, và "6 Degrees" đứng ở vị trí thứ 4 thì không được coi là thứ tự.
-
-    Dãy ngắn hơn `MIN_ORDINAL_RUN` -> trả tập rỗng, tức giữ nguyên mọi con số. Đây là phía
-    an toàn của đánh đổi: bỏ nhầm số làm HỎNG TÊN THẬT, còn giữ nhầm chỉ khiến tên thừa một
-    con số — tầng đồng thuận chéo nguồn vẫn gom được vì mọi nguồn khác viết đúng tên.
-    """
+    """[chuỗi heading thô] -> tập số mà TRANG NÀY đang dùng làm số thứ tự. Hàm thuần."""
     expected = 1
     for h in headings or []:
         m = _LEADING_NUMBER.match((h or "").strip())
@@ -92,17 +44,7 @@ def page_ordinals(headings):
 
 
 def clean_candidate(text, ordinals=frozenset()):
-    """Chuỗi thô -> tên ứng viên. Rỗng nếu không dùng được.
-
-    Thứ tự BẮT BUỘC: bỏ số thứ tự -> **cắt phần mô tả sau dấu gạch** -> rồi mới đo độ dài.
-
-    Đảo thứ tự là hỏng: listicle hay viết "Elmar Coffee - Quán cà phê phong cách Tây Ban
-    Nha"; đo độ dài trước khi cắt thì cả cụm dài 9 từ nên bị loại oan. Chạy thật
-    2026-08-22: `vincom.com.vn` rớt từ 10 tên xuống 2 vì đúng lỗi này.
-
-    `ordinals` là tập số thứ tự của trang, do `page_ordinals` tính trên TOÀN BỘ heading.
-    Rỗng (mặc định) thì số chỉ bị bỏ khi có dấu câu ngăn sau nó.
-    """
+    """Chuỗi thô -> tên ứng viên. Rỗng nếu không dùng được."""
     t = (text or "").strip()
     m = _LEADING_NUMBER.match(t)
     if m and (m.group(2) or int(m.group(1)) in ordinals):
@@ -174,10 +116,6 @@ def harvest_per_source(sources, stop_prefixes=(), key_of=None):
 # GIỮA hai heading chính là phần nói về quán đó. Nhờ vậy lấy được ảnh và địa chỉ mà không
 # cần gọi thêm nguồn nào — chúng đã nằm trong trang vừa tải.
 #
-# Đo 2026-08-22 trên 3 truy vấn, 2 thành phố (spec §2.8):
-#     ứng viên đạt ngưỡng có ẢNH     : 100%  (23/23)
-#     ứng viên đạt ngưỡng có ĐỊA CHỈ :  52%  (12/23)
-#
 # Ảnh phủ tuyệt đối nên đây là nguồn bằng chứng thị giác rẻ nhất có thể có: 0 đồng, 0 lời
 # gọi thêm, không đụng điều khoản của nhà cung cấp bản đồ.
 
@@ -186,10 +124,10 @@ _IMG_SRC = re.compile(r"<img[^>]+?(?:data-src|data-lazy-src|data-original|src)\s
                       r"[\"']([^\"']+)[\"']", re.I)
 _ADDRESS = re.compile(r"(?:Địa\s*chỉ|Add?ress)\s*[::\-–]\s*([^<\n]{6,120})", re.I)
 
-# --- TRÍCH DẪN NGUYÊN VĂN (spec §12) ---
+# --- TRÍCH DẪN NGUYÊN VĂN ---
 #
 # Thẻ kết quả đòi mỗi nhận định phải kèm NGUỒN XEM ĐƯỢC: ảnh, hoặc trích dẫn nguyên văn.
-# Ảnh đã có (100%, §2.8). Trích dẫn là loại bằng chứng THỨ HAI, không thay ảnh — ảnh cho
+# Trích dẫn là loại bằng chứng THỨ HAI, không thay ảnh — ảnh cho
 # thấy chỗ đó TRÔNG thế nào, câu văn cho thấy người viết đã NÓI GÌ về đúng thuộc tính
 # được hỏi. Hai loại bổ sung nhau vì chúng hỏng theo hai kiểu khác nhau.
 #
@@ -200,9 +138,8 @@ QUOTE_MIN_LEN = 25    # ngắn hơn thì thường là mẩu tiêu đề, không
 QUOTE_MAX_LEN = 160   # panel bọc chữ ở 330px -> khoảng ba dòng
 
 # Dòng CHÈN của theme nằm lẫn trong thân bài: bài viết liên quan, chú thích ảnh, nguồn.
-# Chạy thật 2026-08-23: Lermalermer bị trích *"READ Hải Phòng Cải Tạo Sân Vận Động Máy Tơ
-# Thành Công Viên Cây Xanh 2026"* — một đường dẫn sang bài khác, khớp "cây xanh" nhưng
-# không nói gì về quán đang xét.
+# Một tiêu đề bài khác kiểu "READ ... Công Viên Cây Xanh" khớp đúng từ khoá đang tìm rồi
+# được trích làm bằng chứng, trong khi nó không nói gì về quán đang xét.
 #
 # Cố ý KHÔNG dùng lại `STOP_PREFIXES` của phần thu hoạch tên: nó có "những " và "các ",
 # hợp lý cho tiêu đề mục nhưng sẽ giết đúng những câu văn hay nhất ("Những bức tường trát
@@ -213,8 +150,7 @@ _QUOTE_NOISE_PREFIXES = ("read ", "xem thêm", "xem ngay", "đọc thêm", "có 
 
 # RANH GIỚI KHỐI là mốc ngắt câu THẬT; dấu chấm chỉ là mốc phụ.
 #
-# Đo thật 2026-08-23 trên noithattruongsa.com: mỗi dòng thông tin là một `<p>` riêng và
-# KHÔNG kết thúc bằng dấu chấm —
+# Nhiều bài đặt mỗi dòng thông tin trong một `<p>` riêng và KHÔNG kết thúc bằng dấu chấm —
 #
 #     <p><span>⏰ Giờ mở cửa: 08h00 – 23h00</span></p>
 #     <p><span>💲 Giá tham khảo: 30.000 – 200.000đ/người</span></p>
@@ -244,9 +180,9 @@ _WORD = re.compile(r"\w+", re.UNICODE)
 # bằng ĐỘ DÀI CHỮ TRONG THẺ: tham chiếu giữa câu là cụm 1-4 từ, còn tiêu đề bài là một
 # câu hoàn chỉnh.
 #
-# Đo thật 2026-08-23 trên zalopay.vn: `<li><a><span><u>Thác Voi Đà Lạt: Vẻ đẹp, đường đi
-# và kinh nghiệm du lịch</u></span></a></li>` chen giữa thân bài, khớp "đẹp" rồi được
-# trích làm bằng chứng cho một quán mà nó không hề nói tới.
+# Widget "tham khảo thêm" dạng `<li><a>tiêu đề bài khác</a></li>` chen giữa thân bài:
+# tiêu đề đó khớp từ khoá rồi được trích làm bằng chứng cho một quán mà nó không hề
+# nói tới.
 _LINK = re.compile(r"<a\b[^>]*>(.*?)</a>", re.S | re.I)
 LINK_HEADLINE_WORDS = 5
 
@@ -272,7 +208,7 @@ def pick_quote(text, terms, min_len=QUOTE_MIN_LEN, max_len=QUOTE_MAX_LEN):
     """Đoạn văn + từ khoá nhu cầu -> (câu nguyên văn, số từ khoá khớp). Hàm thuần.
 
     Trả `(None, 0)` khi không câu nào nhắc tới thuộc tính đang hỏi. Đó là kết quả ĐÚNG,
-    không phải thiếu sót: thẻ chỉ hiện trường có dữ liệu thật, thiếu thì im lặng (§12).
+    không phải thiếu sót: thẻ chỉ hiện trường có dữ liệu thật, thiếu thì im lặng.
     Trích một câu bất kỳ cho đủ ô sẽ là bằng chứng GIẢ — nó trông như đang chứng minh
     điều gì đó trong khi không.
 
@@ -307,11 +243,11 @@ def _clip(sentence, max_len):
 
 # Ảnh giao diện lẫn vào — loại theo đường dẫn.
 #
-# Hai nhóm, và nhóm thứ hai mới là nhóm bắt được nhiều nhất khi chạy thật:
+# Hai nhóm, và nhóm thứ hai mới là nhóm bắt được nhiều nhất:
 #   1. tên nói rõ là ảnh giao diện (logo, icon, avatar...)
 #   2. NẰM TRONG THƯ MỤC của theme/plugin — ảnh nội dung luôn ở /uploads/ hoặc CDN, không
-#      bao giờ ở /themes/ hay /plugins/. Chạy thật 2026-08-22 lọt
-#      `.../themes/flatsome/assets/img/lazy.png` (ảnh giữ chỗ lazy-load) vì chỉ lọc theo tên.
+#      bao giờ ở /themes/ hay /plugins/. Lọc theo TÊN thôi là hụt: ảnh giữ chỗ lazy-load
+#      của theme có tên vô hại nhưng vẫn là ảnh giao diện.
 _IMG_NOISE = ("logo", "icon", "avatar", "gravatar", "placeholder", "sprite", "banner-ads",
               ".svg", "1x1", "pixel", "lazy", "blank", "spacer", "default-",
               "/themes/", "/plugins/", "/assets/img/")

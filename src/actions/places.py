@@ -1,5 +1,5 @@
 """
-Tra cứu ĐỊA ĐIỂM — hai ý định, hai cách kiểm chứng (PRD P0-1..P0-3).
+Tra cứu ĐỊA ĐIỂM — hai ý định, hai cách kiểm chứng.
 
 - `find_nearby`  : tìm theo LOẠI quanh một điểm  -> kiểm chứng bằng KHOẢNG CÁCH
 - `find_place`   : tìm ĐÚNG MỘT CHỖ có tên       -> kiểm chứng bằng TÊN
@@ -12,7 +12,7 @@ Toàn bộ CHÍNH SÁCH ở đây là hàm THUẦN (test không cần Chrome/m�
 trong extension, phần gọi mạng nằm ở cuối file. Nhờ vậy nguồn Maps và nguồn OSM dùng
 chung đúng một hiện thực của luật.
 
-Vì sao phải kiểm chứng: khảo sát Phase 0 cho thấy Google Maps NỚI BÁN KÍNH TRONG IM
+Vì sao phải kiểm chứng: Google Maps NỚI BÁN KÍNH TRONG IM
 LẶNG (tra ở Mường Tè trả kết quả cách 1.350 km, trông hoàn toàn bình thường), và tên
 khớp lỏng lẻo ("Nhà sách Nguyễn Văn Cừ" khớp 0,83 với "Nhà sách Fahasa Nguyễn Văn Cừ"
 dù là chuỗi khác). Không kiểm chứng thì bộ trích chạy đúng mà vẫn giao ra dữ liệu sai.
@@ -57,7 +57,7 @@ def name_score(want, got):
 
     Chấm trên token ĐẶC TRƯNG (đã bỏ từ chỉ loại). Nếu tính cả từ chung chung thì
     "Nhà sách Nguyễn Văn Cừ" đạt 0,83 so với "Nhà sách Fahasa Nguyễn Văn Cừ" — vượt
-    ngưỡng dù là chuỗi khác hẳn (đo thật ở Phase 0).
+    ngưỡng dù là chuỗi khác hẳn.
     Truy vấn gồm TOÀN từ chung ("nhà sách") -> lùi về chấm trên mọi token.
     """
     want_all = tokens(want)
@@ -129,7 +129,7 @@ def apply_policy(page_outcome, items, center=None, radius_km=0.0,
 
 # ======================== NGUỒN DỮ LIỆU ========================
 # Hai nguồn dùng CHUNG một giao diện (page_outcome, items, diag) để việc đổi nguồn khi
-# phải từ bỏ Maps (PRD §6 R1) là sửa cấu hình, không phải viết lại tính năng.
+# phải từ bỏ Maps là sửa cấu hình, không phải viết lại tính năng.
 
 _OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 _GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search"
@@ -250,7 +250,7 @@ class PlacesService:
         if self.bridge is None or not getattr(self.bridge, "connected", False):
             return "SOURCE_UNAVAILABLE", [], {"reason": "bridge chưa kết nối"}
         # Bán kính quyết định ZOOM: khung nhìn khớp ràng buộc thì 6 chỗ Maps trả về là 6 chỗ
-        # GẦN, thay vì 6 chỗ rải rác (đo thật 2026-08-21).
+        # GẦN, thay vì 6 chỗ rải rác.
         payload = bp.build_maps_read(query, center[0], center[1], limit=max(limit, 10),
                                      radius_km=radius_km)
         payload.pop("action", None)
@@ -280,7 +280,8 @@ class PlacesService:
 
         Không thể đoán trước biến thể nào đúng: "Thủ Đức" chỉ ra kết quả khi CÓ dấu, còn
         "Đà Lạt" có dấu lại ra nhầm "Đã Tịch" — nên tra cả hai rồi xếp hạng, thay vì chọn
-        cứng một hướng như bản cũ (đó chính là lý do 'Thủ Đức' và 'quận 9' hỏng lúc chạy thật).
+        cứng một hướng — tên có tiền tố hành chính ('Thủ Đức' vs 'phường Thủ Đức') hỏng theo
+        cả hai chiều.
         """
         variants, seen = [], set()
         for v in (str(name).strip(), strip_accents(str(name).strip())):
@@ -346,7 +347,7 @@ class PlacesService:
                 "nearest_km": min(distances) if distances else None}
 
     def _lookup(self, query, center, radius_km, match_name=None):
-        """Chạy nguồn chính, áp chính sách; không OK thì thử nguồn dự phòng (PRD P0-3)."""
+        """Chạy nguồn chính, áp chính sách; không OK thì thử nguồn dự phòng."""
         limit = self.limit
         primary = self.source if self.source in ("maps", "osm") else "maps"
         page, items, pdiag = self._read(primary, query, center, radius_km, limit)

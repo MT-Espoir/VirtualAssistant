@@ -2,7 +2,7 @@
 
 Ngưỡng phải khai báo bằng GIÂY rồi quy đổi ra chunk theo rate: cùng một số chunk mang ý
 nghĩa khác nhau ở mỗi sample rate (1024 chunk = 23ms @44.1kHz nhưng 64ms @16kHz), nên đặt
-thẳng số chunk từng khiến ngưỡng im lặng âm thầm chỉ còn ~0.96s và cắt ngang người nói.
+thẳng số chunk thì ngưỡng im lặng âm thầm ngắn lại và cắt ngang người nói.
 """
 
 import sys
@@ -52,7 +52,7 @@ def _recorder(**kw):
 
 
 def test_default_silence_is_long_enough_for_a_natural_pause():
-    """Bug đã sửa: 15 chunk (~0.96s) cắt ngang lúc ngắt hơi. Mặc định phải >= 1.2s."""
+    """Ngưỡng quá ngắn thì cắt ngang lúc người nói ngắt hơi. Mặc định phải >= 1.2s."""
     rec = _recorder()
     silence_chunks = chunks_for_seconds(rec.silence_duration, rec.rate, rec.chunk)
     assert silence_chunks * rec.chunk / rec.rate >= 1.2

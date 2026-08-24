@@ -60,10 +60,9 @@ class AvatarWindow:
     def __init__(self, bus=None, title="Trợ lý AI", scale=None, opacity=None,
                  emotion_hold_ms=None, on_open_place=None, on_draft_decision=None):
         self.bus = bus
-        # Panel kết quả địa điểm (L3-4): tạo LƯỜI ở lần dùng đầu, để phiên nào không hỏi
-        # địa điểm thì không phải trả chi phí dựng cửa sổ nào.
-        self._places_panel = None
-        self._draft_panel = None       # panel nháp email — cũng tạo lười, cùng lý do
+        # Panel dùng chung khung HUD (`ui/hud.py`), tạo LƯỜI ở lần dùng đầu: phiên nào
+        # không dùng tới tính năng đó thì không phải trả chi phí dựng cửa sổ nào.
+        self._panels = {}
         self.on_open_place = on_open_place
         self.on_draft_decision = on_draft_decision
         self.state, self.emotion, self.message = "idle", "neutral", ""
@@ -184,34 +183,42 @@ class AvatarWindow:
         self.emotion = "neutral"
         self._render()
 
+    def _panel(self, key, title, on_pick, close_value=None):
+        """Lấy (hoặc dựng lười) một HudPanel theo khoá. Mọi panel dùng CHUNG khung HUD."""
+        if self._panels.get(key) is None:
+            from ui.hud import HudPanel
+            self._panels[key] = HudPanel(self.root, title=title, on_pick=on_pick,
+                                         close_value=close_value)
+        return self._panels[key]
+
     # cập nhật trực tiếp (dùng ở demo/test tay)
     def _show_places(self, payload):
-        """Mở/cập nhật panel kết quả địa điểm. Tạo lười — không có Lane 3 thì không tốn gì.
+        """Mở/cập nhật panel kết quả địa điểm. Tạo lười — không hỏi địa điểm thì không tốn gì.
 
         Panel là tầng KIỂM CHỨNG BẰNG MẮT cho các thuộc tính không đo được (yên tĩnh,
-        nhiều cây, phong cách cổ). Xem `ui/place_panel.py`.
+        nhiều cây, phong cách cổ).
         """
         try:
-            if self._places_panel is None:
-                from ui.place_panel import PlacesPanel
-                self._places_panel = PlacesPanel(self.root, on_open=self.on_open_place)
-            self._places_panel.show(payload.get("rows"), payload.get("need"))
+            from ui.panels import places_blocks
+            panel = self._panel("places", "CHỖ TÌM ĐƯỢC", self.on_open_place)
+            panel.show(places_blocks(payload.get("rows"), payload.get("need")))
         except Exception:
             # Panel hỏng KHÔNG được làm chết avatar hay vòng lặp trợ lý.
             import logging
             logging.getLogger(__name__).warning("Không mở được panel địa điểm", exc_info=True)
 
     def _show_draft(self, draft):
-        """Mở/cập nhật panel nháp email; dict rỗng = đóng. Xem `ui/draft_panel.py`.
+        """Mở/cập nhật panel nháp email; dict rỗng = đóng.
 
         Panel hỏng KHÔNG được nuốt mất việc xác nhận: người dùng vẫn nói được 'có'/'không'
         vì đường xác nhận bằng giọng nằm ở agent, không nằm ở đây.
         """
         try:
-            if self._draft_panel is None:
-                from ui.draft_panel import DraftPanel
-                self._draft_panel = DraftPanel(self.root, on_decide=self.on_draft_decision)
-            self._draft_panel.show(draft)
+            from ui.panels import draft_blocks
+            # Đóng panel = KHÔNG gửi. Im lặng đóng rồi vẫn gửi là cái bẫy tệ nhất.
+            panel = self._panel("draft", "NHÁP EMAIL", self.on_draft_decision,
+                                close_value="no")
+            panel.show(draft_blocks(draft))
         except Exception:
             import logging
             logging.getLogger(__name__).warning("Không mở được panel nháp", exc_info=True)

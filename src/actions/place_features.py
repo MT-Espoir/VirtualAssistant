@@ -1,11 +1,11 @@
 """
-Bóc ĐẶC TRƯNG của một địa điểm từ các dòng text thô trên thẻ kết quả Maps (F1.5 §6).
+Bóc ĐẶC TRƯNG của một địa điểm từ các dòng text thô trên thẻ kết quả Maps.
 
 Vì sao parser nằm ở Python chứ không ở extension: mỗi lần sửa parser trong extension là
 một lần người dùng phải RELOAD extension thủ công. Để JS chỉ gửi dòng thô, ta sửa cách
 hiểu dữ liệu mà không cần đụng trình duyệt — và test được không cần Chrome.
 
-Dữ liệu THẬT mà thẻ kết quả cho (đo 2026-08-21):
+Hình dạng dòng thô mà thẻ kết quả cho:
     "Oleoleo Coffee & Cats"
     "4,8(646) · 1-100.000 ₫"
     "Quán cà phê ·  · 5t2 Ngõ 62 Nguyễn Chí Thanh"
@@ -166,8 +166,8 @@ def minutes_until_close(opening, now):
 def parse_quote(lines):
     """Trích đoạn review trên thẻ (nếu có) -> chuỗi, hoặc None.
 
-    Đây là BẰNG CHỨNG DUY NHẤT cho các thuộc tính mềm (yên tĩnh, hợp học bài) — F1.5 §5.
-    Không có nó thì không được nhắc tới thuộc tính mềm.
+    Đây là BẰNG CHỨNG DUY NHẤT cho các thuộc tính mềm (yên tĩnh, hợp học bài): không có
+    nó thì không được nhắc tới thuộc tính mềm.
     """
     buf = []
     for line in lines or []:

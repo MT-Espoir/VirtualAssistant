@@ -1,8 +1,8 @@
 """
 Test đếm đồng thuận chéo nguồn (`research/consensus.py`).
 
-Ca trung tâm lấy từ số đo thật 2026-08-22: `hanoitoplist.com` và `mytour.vn` trùng
-Jaccard **0,76** (13 tên chung) — hai "domain độc lập" thực chất là một content farm
+Ca trung tâm: hai domain trông độc lập nhưng đăng gần như cùng một danh sách — thực
+chất là một content farm
 chép của nhau. Không khử trùng thì quán chi nhiều tiền SEO nhất luôn thắng.
 """
 
@@ -30,7 +30,7 @@ def test_jaccard_empty_is_zero_not_one():
 # --------------------------- gộp nguồn chép nhau --------------------------- #
 
 def test_groups_the_real_seo_copy_pair():
-    """Tái hiện cặp đo được: 13/17 tên chung -> phải gộp thành MỘT nguồn."""
+    """Hai nguồn chồng lấn phần lớn danh sách -> phải gộp thành MỘT nguồn."""
     shared = {"kat coffee", "uu dam chay", "tropical forest", "an garden", "tayta",
               "garden cafe", "cafe vuon pho co", "vuon xinh", "cafe vuon tre",
               "khu vuon gac mai", "cafe bach thao", "vui garden", "tam art"}

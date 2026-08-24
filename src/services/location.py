@@ -1,5 +1,5 @@
 """
-Kho VỊ TRÍ của người dùng — tầng RUNTIME giữ toạ độ chính xác (PRD P0-4).
+Kho VỊ TRÍ của người dùng — tầng RUNTIME giữ toạ độ chính xác.
 
 Ranh giới ba tầng:
   LLM      : chỉ thấy ngữ cảnh THÔ (cấp tỉnh/thành) và tham chiếu tượng trưng '@current'
@@ -80,11 +80,11 @@ class LocationStore:
 
         Tách khỏi `set_place` vì việc giải địa danh phải dùng CHUNG một đường với
         `find_nearby` — nếu không, cùng một câu "tôi đang ở X" sẽ lưu được ở chỗ này mà
-        tra được ở chỗ kia (lỗi thật gặp khi chạy 2026-08-21).
+        tra được ở chỗ kia.
 
         `province` chỉ được điền khi nguồn là danh bạ hành chính. Giải qua bản đồ thì để
         TRỐNG — tên một khu đô thị cụ thể không phải "ngữ cảnh thô", không được phép rơi
-        vào prompt (P0-4).
+        vào prompt.
         """
         if lat is None or lng is None:
             return None
