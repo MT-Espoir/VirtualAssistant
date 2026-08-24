@@ -205,6 +205,63 @@ def test_search_list_reports_connection_error():
     assert "chưa kết nối" in out.lower()
 
 
+# --------------------- Feature 4: đọc NỘI DUNG một kết quả để trả lời --------------------- #
+
+class _FakeActionsWithFetch(_FakeActions):
+    """Ghi lại URL được yêu cầu tải, trả nội dung giả cố định."""
+    def __init__(self):
+        self.fetched_url = None
+
+    def web_fetch(self, url):
+        self.fetched_url = url
+        return "Nội dung giả của trang."
+
+
+def _registry_with_fetch(browser, actions=None):
+    from agent.tools import build_default_registry
+    return build_default_registry(actions or _FakeActionsWithFetch(), scheduler=None,
+                                  browser=browser)
+
+
+def test_read_search_result_registered_only_with_browser():
+    names = [s["name"] for s in _registry_with_fetch(_FakeBrowser(_SEARCH_RESP)).specs()]
+    assert "read_search_result" in names
+    assert "read_search_result" not in [s["name"] for s in _registry(None).specs()]
+
+
+def test_read_search_result_fetches_url_of_chosen_index():
+    br = _ScriptBrowser({"SEARCH_READ": _SEARCH_RESP})
+    actions = _FakeActionsWithFetch()
+    reg = _registry_with_fetch(br, actions)
+    reg.run("web_search_list", {"query": "toeic"})
+    out = reg.run("read_search_result", {"index": 2})
+    assert actions.fetched_url == "https://b.com/2"
+    assert "TOEIC Speaking B" in out and "Nội dung giả của trang." in out
+
+
+def test_read_search_result_defaults_to_first_index():
+    br = _ScriptBrowser({"SEARCH_READ": _SEARCH_RESP})
+    actions = _FakeActionsWithFetch()
+    reg = _registry_with_fetch(br, actions)
+    reg.run("web_search_list", {"query": "toeic"})
+    reg.run("read_search_result", {})
+    assert actions.fetched_url == "https://a.com/1"
+
+
+def test_read_search_result_without_prior_search():
+    reg = _registry_with_fetch(_FakeBrowser(_SEARCH_RESP))
+    out = reg.run("read_search_result", {"index": 1})
+    assert "chưa có kết quả" in out.lower()
+
+
+def test_read_search_result_index_out_of_range():
+    br = _ScriptBrowser({"SEARCH_READ": _SEARCH_RESP})
+    reg = _registry_with_fetch(br)
+    reg.run("web_search_list", {"query": "toeic"})
+    out = reg.run("read_search_result", {"index": 9})
+    assert "chỉ có 2 kết quả" in out.lower()
+
+
 if __name__ == "__main__":
     if pytest is not None:
         raise SystemExit(pytest.main([__file__, "-v"]))

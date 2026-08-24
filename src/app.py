@@ -559,7 +559,10 @@ def main():
                   auto_extract=config.LTM_AUTO_EXTRACT,
                   consolidate_every=config.LTM_CONSOLIDATE_EVERY,
                   persona=persona, mood=mood, auto_tune=config.PERSONA_AUTO_TUNE,
-                  skip_respond_for_speakable=config.SKIP_RESPOND_FOR_SPEAKABLE)
+                  skip_respond_for_speakable=config.SKIP_RESPOND_FOR_SPEAKABLE,
+                  # Hành động chờ xác nhận mà có nội dung đáng NHÌN (thân thư email) ->
+                  # trưng lên panel thay vì bắt tai nghe TTS đọc cả lá thư.
+                  on_pending=bus.emit_draft)
 
     # Giờ đã có agent -> nối callback lịch (remind đọc / do thực thi) rồi chạy scheduler.
     scheduler.notify = lambda msg, kind="remind": _run_scheduled(bus, synth, agent, msg, kind)
@@ -602,9 +605,29 @@ def main():
         except Exception as e:
             print(f"(không mở được chỗ số {index}: {e})")
 
+    # Bấm Gửi/Huỷ trên panel nháp = ĐÚNG đường xác nhận bằng giọng (agent.confirm_pending),
+    # không dựng đường gửi thứ hai. Chạy trên main thread Tk nên phải lấy _AGENT_LOCK để
+    # không đụng agent.run của vòng lặp nền; lấy không được thì nói ra chứ không im lặng
+    # nuốt cú bấm — người dùng sẽ tưởng đã gửi.
+    def _decide_draft(decision):
+        if not _AGENT_LOCK.acquire(timeout=5):
+            _say(synth, bus, "Tôi đang bận một việc khác, bạn bấm lại giúp tôi nhé.", "sad")
+            return
+        try:
+            result = agent.confirm_pending(decision)
+        except Exception as e:
+            logger.error("Lỗi khi chốt bản nháp: %s", e)
+            result = "Xin lỗi, tôi gặp lỗi khi gửi."
+        finally:
+            _AGENT_LOCK.release()
+        if result:
+            _say(synth, bus, result, "happy" if decision == "yes" else "neutral")
+            bus.emit(state="idle")
+
     win = AvatarWindow(bus=bus, title="Trợ lý AI",
                        emotion_hold_ms=0 if config.PERSONA_ENABLED else None,
-                       on_open_place=_open_place_from_panel)
+                       on_open_place=_open_place_from_panel,
+                       on_draft_decision=_decide_draft)
     try:
         win.run()          # Tk mainloop (main thread) — chặn tới khi đóng cửa sổ
     finally:

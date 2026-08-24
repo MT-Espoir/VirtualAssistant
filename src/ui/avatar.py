@@ -58,12 +58,14 @@ def _round_rect(canvas, x1, y1, x2, y2, radius=10, **kwargs):
 
 class AvatarWindow:
     def __init__(self, bus=None, title="Trợ lý AI", scale=None, opacity=None,
-                 emotion_hold_ms=None, on_open_place=None):
+                 emotion_hold_ms=None, on_open_place=None, on_draft_decision=None):
         self.bus = bus
         # Panel kết quả địa điểm (L3-4): tạo LƯỜI ở lần dùng đầu, để phiên nào không hỏi
         # địa điểm thì không phải trả chi phí dựng cửa sổ nào.
         self._places_panel = None
+        self._draft_panel = None       # panel nháp email — cũng tạo lười, cùng lý do
         self.on_open_place = on_open_place
+        self.on_draft_decision = on_draft_decision
         self.state, self.emotion, self.message = "idle", "neutral", ""
         # Giữ cảm xúc bao lâu rồi tự về neutral. <=0 = KHÔNG tự reset (để Persona/tâm trạng
         # dẫn dắt khuôn mặt). None = dùng mặc định EMOTION_HOLD_MS.
@@ -199,6 +201,21 @@ class AvatarWindow:
             import logging
             logging.getLogger(__name__).warning("Không mở được panel địa điểm", exc_info=True)
 
+    def _show_draft(self, draft):
+        """Mở/cập nhật panel nháp email; dict rỗng = đóng. Xem `ui/draft_panel.py`.
+
+        Panel hỏng KHÔNG được nuốt mất việc xác nhận: người dùng vẫn nói được 'có'/'không'
+        vì đường xác nhận bằng giọng nằm ở agent, không nằm ở đây.
+        """
+        try:
+            if self._draft_panel is None:
+                from ui.draft_panel import DraftPanel
+                self._draft_panel = DraftPanel(self.root, on_decide=self.on_draft_decision)
+            self._draft_panel.show(draft)
+        except Exception:
+            import logging
+            logging.getLogger(__name__).warning("Không mở được panel nháp", exc_info=True)
+
     def set(self, state=None, emotion=None, text=None):
         if state:
             self.state = state
@@ -217,6 +234,9 @@ class AvatarWindow:
                 continue
             if getattr(ev, "places", None) is not None:
                 self._show_places(ev.places)
+                continue
+            if getattr(ev, "draft", None) is not None:
+                self._show_draft(ev.draft)
                 continue
             if ev.state:
                 self.state = ev.state

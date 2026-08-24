@@ -83,3 +83,62 @@ def test_mcp_duplicate_name_skipped_not_crash():
 
 def test_mcp_absent_without_client():
     assert not build_default_registry(MagicMock()).has("gcal_list_events")
+
+
+# --------------------------- nháp email -> panel xem trước --------------------------- #
+
+_MAIL = {"to": "sep@x.com", "subject": "Xin nghỉ phép", "body": "Kính gửi anh..."}
+
+
+def test_email_send_tool_gets_a_preview():
+    # Dò theo HÌNH DẠNG THAM SỐ, không theo tên tool -> server MCP nào cũng nhận đúng.
+    reg = build_default_registry(MagicMock(), mcp=FakeMCP([_tool("gws_gmail_send")]))
+    assert reg.get("gws_gmail_send").preview(**_MAIL) == _MAIL
+
+
+def test_email_confirm_phrase_is_human_not_tool_name():
+    reg = build_default_registry(MagicMock(), mcp=FakeMCP([_tool("gws_gmail_send")]))
+    phrase = reg.get("gws_gmail_send").confirm_message(**_MAIL)
+    assert "gửi email" in phrase and "sep@x.com" in phrase
+    assert "gws_gmail_send" not in phrase          # không đọc tên tool máy móc cho người nghe
+
+
+def test_non_email_destructive_tool_has_no_preview_payload():
+    reg = build_default_registry(MagicMock(), mcp=FakeMCP([_tool("gcal_create_event")]))
+    tool = reg.get("gcal_create_event")
+    assert tool.preview(summary="Họp", start="2026-08-25T09:00") is None
+    assert "gcal_create_event" in tool.confirm_message(summary="Họp")
+
+
+def test_read_only_tool_yields_no_preview_payload():
+    reg = build_default_registry(MagicMock(), mcp=FakeMCP([_tool("gcal_list_events")]))
+    assert reg.get("gcal_list_events").preview(date="today") is None
+
+
+# HỒI QUY (2026-08-24): người dùng nói "viết mail xin hướng dẫn đồ án" -> chỉ ĐỌC, không
+# hiện panel. Nguyên nhân: 'gws_gmail_draft' không chứa từ khoá GHI nào ('send/create/
+# delete'...) nên bị xếp là chỉ-đọc -> không cổng duyệt -> không panel. Mà LƯU NHÁP chính
+# là lúc cần nhìn bản nháp nhất.
+def test_draft_tool_is_not_flagged_destructive_by_name():
+    assert not is_destructive_tool("gws_gmail_draft")     # đúng như heuristic tên vốn thế
+
+
+def test_draft_tool_still_gets_a_preview():
+    reg = build_default_registry(MagicMock(), mcp=FakeMCP([_tool("gws_gmail_draft")]))
+    assert reg.get("gws_gmail_draft").preview(**_MAIL) == _MAIL
+
+
+def test_draft_tool_confirm_phrase_says_save_not_send():
+    # Đồng ý "lưu nháp" mà hệ thống gửi thật là kiểu phản bội tin cậy tệ nhất.
+    reg = build_default_registry(MagicMock(), mcp=FakeMCP([
+        _tool("gws_gmail_draft"), _tool("gws_gmail_send")]))
+    assert "lưu nháp" in reg.get("gws_gmail_draft").confirm_message(**_MAIL)
+    assert "gửi email" in reg.get("gws_gmail_send").confirm_message(**_MAIL)
+
+
+def test_draft_without_recipient_still_previews():
+    # Ca thật của người dùng: "viết mail xin hướng dẫn đồ án" — chưa nói gửi cho ai.
+    reg = build_default_registry(MagicMock(), mcp=FakeMCP([_tool("gws_gmail_draft")]))
+    payload = reg.get("gws_gmail_draft").preview(
+        to="", subject="Xin hướng dẫn đồ án tốt nghiệp", body="Kính gửi thầy...")
+    assert payload is not None and payload["to"] == ""

@@ -218,6 +218,184 @@ def test_unrelated_reply_drops_pending_and_handles_new_request():
     assert agent.pending is None and reply.text == "Đã mở Notepad."
 
 
+# ------------------ Xem trước nội dung hành động chờ (panel nháp email) ------------------ #
+
+def _mail_registry(sent):
+    """Registry có một tool 'send_mail' destructive kèm preview kiểu email."""
+    from agent.tools import Tool, build_default_registry
+    from actions.email_draft import email_draft, say_draft
+    reg = build_default_registry(make_actions())
+    reg.register(Tool(
+        name="send_mail",
+        description="gửi mail",
+        input_schema={"type": "object", "properties": {}},
+        handler=lambda **kw: sent.append(kw) or "Đã gửi email tới sep@x.com.",
+        destructive=True,
+        confirm_message=lambda **a: say_draft(email_draft(a) or {}),
+        preview=lambda **a: email_draft(a),
+    ))
+    return reg
+
+
+_MAIL_ARGS = {"to": "sep@x.com", "subject": "Xin nghỉ phép", "body": "Kính gửi anh..."}
+
+
+def test_pending_email_is_shown_not_read_aloud():
+    shown, sent = [], []
+    llm = FakeLLMClient([AssistantTurn(tool_calls=[ToolCall("t1", "send_mail", _MAIL_ARGS)])])
+    agent = Agent(llm, _mail_registry(sent), on_pending=shown.append)
+    reply = agent.run("gửi mail xin nghỉ phép cho sếp")
+
+    assert sent == []                                   # CHƯA gửi
+    assert shown == [_MAIL_ARGS]                        # nháp đã lên panel
+    assert "màn hình" in reply.text.lower()             # giọng chỉ mời NHÌN
+    assert "Kính gửi anh" not in reply.text             # KHÔNG đọc thân thư
+
+
+def test_panel_send_button_runs_the_same_tool():
+    shown, sent = [], []
+    llm = FakeLLMClient([AssistantTurn(tool_calls=[ToolCall("t1", "send_mail", _MAIL_ARGS)])])
+    agent = Agent(llm, _mail_registry(sent), on_pending=shown.append)
+    agent.run("gửi mail cho sếp")
+    result = agent.confirm_pending("yes")
+
+    assert sent == [_MAIL_ARGS] and "Đã gửi" in result
+    assert agent.pending is None
+    assert shown[-1] is None                            # panel được dẹp sau khi xong
+    assert llm.calls == 1                               # chốt bằng nút không tốn lượt LLM
+
+
+def test_panel_cancel_button_does_not_send():
+    shown, sent = [], []
+    llm = FakeLLMClient([AssistantTurn(tool_calls=[ToolCall("t1", "send_mail", _MAIL_ARGS)])])
+    agent = Agent(llm, _mail_registry(sent), on_pending=shown.append)
+    agent.run("gửi mail cho sếp")
+    result = agent.confirm_pending("no")
+
+    assert sent == [] and agent.pending is None
+    assert "bỏ qua" in result.lower() and shown[-1] is None
+
+
+def test_non_destructive_tool_with_draft_is_still_gated():
+    """HỒI QUY (2026-08-24): 'viết mail ...' -> chỉ đọc, không hiện panel.
+
+    Tool LƯU NHÁP không mang từ khoá GHI nào nên `destructive=False`. Trước bản vá, cổng
+    duyệt chỉ nhìn `destructive` -> không chặn, không panel, thư nháp lưu thẳng. Giờ chỉ
+    cần DỰNG ĐƯỢC bản xem trước là phải dừng lại cho người dùng nhìn.
+    """
+    from agent.tools import Tool
+    from actions.email_draft import email_draft, say_draft
+    saved = []
+    reg = build_default_registry(make_actions())
+    reg.register(Tool(
+        name="mail_draft", description="lưu nháp",
+        input_schema={"type": "object", "properties": {}},
+        handler=lambda **kw: saved.append(kw) or "Đã lưu nháp.",
+        destructive=False,                       # <- heuristic tên xếp là 'chỉ đọc'
+        confirm_message=lambda **a: say_draft(email_draft(a), action="draft"),
+        preview=lambda **a: email_draft(a),
+    ))
+    shown = []
+    args = {"to": "", "subject": "Xin hướng dẫn đồ án tốt nghiệp",
+            "body": "Kính gửi thầy, em xin phép..."}
+    llm = FakeLLMClient([AssistantTurn(tool_calls=[ToolCall("t1", "mail_draft", args)])])
+    agent = Agent(llm, reg, on_pending=shown.append)
+    reply = agent.run("viết mail xin hướng dẫn đồ án tốt nghiệp")
+
+    assert saved == []                            # dừng lại, chưa lưu
+    assert shown == [args]                        # panel ĐÃ hiện dù tool không destructive
+    assert "lưu nháp" in reply.text.lower()       # nói đúng việc: lưu nháp, không phải gửi
+    assert "màn hình" in reply.text.lower()
+
+
+def test_read_only_tool_with_null_preview_runs_normally():
+    """Cổng duyệt mới KHÔNG được chặn nhầm tool chỉ đọc có gắn preview trả None."""
+    from agent.tools import Tool
+    ran = []
+    reg = build_default_registry(make_actions())
+    reg.register(Tool(
+        name="list_mail", description="đọc mail",
+        input_schema={"type": "object", "properties": {}},
+        handler=lambda **kw: ran.append(kw) or "Có 3 thư mới.",
+        preview=lambda **a: None,
+    ))
+    llm = FakeLLMClient([
+        AssistantTurn(tool_calls=[ToolCall("t1", "list_mail", {})]),
+        AssistantTurn(text="Bạn có 3 thư mới."),
+    ])
+    agent = Agent(llm, reg, on_pending=lambda _p: None)
+    reply = agent.run("có mail mới không")
+    assert ran == [{}] and reply.text == "Bạn có 3 thư mới."
+
+
+def test_confirm_pending_without_anything_pending():
+    assert Agent(FakeLLMClient([]), _mail_registry([])).confirm_pending("yes") is None
+
+
+def test_voice_confirmation_also_closes_the_panel():
+    # Nói 'có' và bấm nút phải đi CÙNG một đường; panel không được để lại lơ lửng.
+    shown, sent = [], []
+    llm = FakeLLMClient([AssistantTurn(tool_calls=[ToolCall("t1", "send_mail", _MAIL_ARGS)])])
+    agent = Agent(llm, _mail_registry(sent), on_pending=shown.append)
+    agent.run("gửi mail cho sếp")
+    reply = agent.run("có")
+
+    assert sent == [_MAIL_ARGS] and shown[-1] is None
+    assert "Đã gửi" in reply.text
+
+
+def test_dropping_pending_closes_the_panel():
+    shown, sent = [], []
+    llm = FakeLLMClient([
+        AssistantTurn(tool_calls=[ToolCall("t1", "send_mail", _MAIL_ARGS)]),
+        AssistantTurn(text="Đã mở Notepad."),
+    ])
+    agent = Agent(llm, _mail_registry(sent), on_pending=shown.append)
+    agent.run("gửi mail cho sếp")
+    agent.run("mở notepad")
+
+    assert sent == [] and shown[-1] is None
+
+
+def test_destructive_without_preview_asks_as_before():
+    # close_app không có preview -> không panel, không câu 'xem trên màn hình'.
+    shown = []
+    actions = make_actions()
+    actions.close_application.return_value = "Đã đóng Chrome."
+    llm = FakeLLMClient([
+        AssistantTurn(tool_calls=[ToolCall("t1", "close_app", {"app_name": "chrome"})]),
+    ])
+    agent = Agent(llm, build_default_registry(actions), on_pending=shown.append)
+    reply = agent.run("đóng chrome")
+    assert shown == [None] and "màn hình" not in reply.text.lower()
+    assert "chắc" in reply.text.lower()
+
+
+def test_broken_preview_does_not_break_confirmation():
+    from agent.tools import Tool
+    reg = build_default_registry(make_actions())
+    reg.register(Tool(
+        name="boom", description="x", input_schema={"type": "object", "properties": {}},
+        handler=lambda **kw: "xong", destructive=True,
+        preview=lambda **a: (_ for _ in ()).throw(RuntimeError("hỏng")),
+    ))
+    llm = FakeLLMClient([AssistantTurn(tool_calls=[ToolCall("t1", "boom", {})])])
+    agent = Agent(llm, reg, on_pending=lambda _p: None)
+    assert "chắc" in agent.run("làm đi").text.lower() and agent.pending is not None
+
+
+def test_broken_sink_does_not_break_confirmation():
+    def explode(_payload):
+        raise RuntimeError("panel hỏng")
+
+    llm = FakeLLMClient([AssistantTurn(tool_calls=[ToolCall("t1", "send_mail", _MAIL_ARGS)])])
+    agent = Agent(llm, _mail_registry([]), on_pending=explode)
+    reply = agent.run("gửi mail cho sếp")
+    # Panel hỏng -> mất phần NHÌN, nhưng xác nhận bằng giọng vẫn còn nguyên.
+    assert agent.pending is not None and "chắc" in reply.text.lower()
+    assert "màn hình" not in reply.text.lower()
+
+
 # --------------------------- Cảm xúc do LLM --------------------------- #
 
 def test_parses_emotion_tag_and_strips():

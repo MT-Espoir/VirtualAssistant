@@ -18,6 +18,7 @@ class AssistantEvent:
     text: Optional[str] = None       # câu trả lời / trạng thái để hiện
     ui: Optional[dict] = None        # lệnh giao diện avatar (scale_delta / opacity_delta...)
     places: Optional[dict] = None    # {rows, need} -> panel kết quả địa điểm (L3-4)
+    draft: Optional[dict] = None     # {to, subject, body} -> panel nháp email; {} = đóng panel
 
 
 class AssistantBus:
@@ -38,6 +39,15 @@ class AssistantBus:
         chỉ được đụng từ main thread. Danh sách rỗng = ẩn panel.
         """
         self._q.put(AssistantEvent(places={"rows": list(rows or []), "need": need}))
+
+    def emit_draft(self, draft):
+        """Gửi bản nháp email cho panel xem-trước. `None`/rỗng = ĐÓNG panel.
+
+        Cùng lý do với emit_places: agent chạy ở thread nền, widget Tk chỉ được đụng từ
+        main thread. Dict rỗng thay vì None trong event để `_poll` phân biệt được
+        'không có tin gì về nháp' với 'đóng panel đi'.
+        """
+        self._q.put(AssistantEvent(draft=dict(draft) if draft else {}))
 
     def drain(self):
         """Lấy hết event đang chờ (không chặn)."""

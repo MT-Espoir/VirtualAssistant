@@ -59,6 +59,10 @@ CASES = [
     {"id": "web-search", "text": "tìm thông tin về toeic speaking", "expect": ["web_search_list"], "case": "web"},
     {"id": "web-yt", "text": "phát bài Nơi Này Có Anh trên youtube", "expect": ["play_youtube"], "case": "web"},
     {"id": "web-wiki", "text": "tra cứu Albert Einstein trên wikipedia", "expect": ["wikipedia_lookup"], "case": "web"},
+    # câu hỏi cần TRẢ LỜI trực tiếp -> phải đọc nội dung (read_search_result), không chỉ
+    # liệt kê tiêu đề rồi dừng lại chờ người dùng chọn.
+    {"id": "web-question", "text": "hôm nay có sự kiện gì mà Việt Nam lại đi bão",
+     "expect": ["web_search_list", "read_search_result"], "case": "web"},
 
     # --- schedule ---
     {"id": "sch-add", "text": "nhắc tôi họp lúc 3 giờ chiều", "expect": ["schedule_reminder"], "case": "schedule"},

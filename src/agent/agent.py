@@ -76,7 +76,7 @@ class Agent:
                  profile=None, auto_extract: bool = False, consolidate_every: int = 6,
                  extractor=None, persona=None, mood=None,
                  auto_tune: bool = False, persona_tuner=None,
-                 skip_respond_for_speakable: bool = False):
+                 skip_respond_for_speakable: bool = False, on_pending=None):
         self.llm = llm
         self.registry = registry
         self.system = system
@@ -86,6 +86,10 @@ class Agent:
         self.persona = persona       # PersonaState: nhân cách (card) -> bơm vào prompt
         self.mood = mood             # MoodState: tâm trạng phiên -> bơm vào prompt + dẫn avatar
         self.pending = None          # hành động khó hoàn tác đang CHỜ người dùng xác nhận
+        # callable(payload|None): TRƯNG nội dung của hành động đang chờ ra cho người dùng
+        # xem (app.py nối vào panel nháp), None = dẹp đi. Agent không biết panel là gì —
+        # nó chỉ đưa dict do `Tool.preview` dựng, nên core vẫn không import UI.
+        self.on_pending = on_pending
         # Bỏ lượt LLM soạn lời khi tool đã trả câu hoàn chỉnh (xem _speakable_shortcut).
         self.skip_respond_for_speakable = skip_respond_for_speakable
         # Trí nhớ NGẮN HẠN: vài lượt gần đây (session-only nếu memory_path rỗng).
@@ -183,7 +187,11 @@ class Agent:
             deferred = self._find_destructive(turn.tool_calls)
             if deferred is not None:
                 self.pending = deferred
-                final_text = (f"Bạn có chắc muốn {deferred['phrase']} không? "
+                shown = self._show_pending(deferred.get("preview"))
+                # Có gì để NHÌN thì đừng bắt người dùng nghe lại — mắt đọc một lá thư
+                # nhanh hơn tai nghe TTS đọc nó rất nhiều, và soát lỗi được.
+                look = " Bạn xem bản nháp trên màn hình giúp tôi." if shown else ""
+                final_text = (f"Bạn có chắc muốn {deferred['phrase']} không?{look} "
                               f"Nói 'có' để tôi làm, 'không' để bỏ qua.")
                 break
 
@@ -337,20 +345,67 @@ class Agent:
 
     # ------------------------- xác nhận hành động khó hoàn tác ------------------------- #
     def _find_destructive(self, tool_calls):
-        """Trả {name, arguments, phrase} cho lời gọi tool destructive ĐẦU TIÊN, hoặc None."""
+        """Trả {name, arguments, phrase, preview} cho lời gọi CẦN DUYỆT đầu tiên, hoặc None.
+
+        HAI lý do phải duyệt, chỉ cần một là đủ:
+          1. tool `destructive` — khó hoàn tác (đóng app, gửi thư, xoá việc);
+          2. tool dựng được BẢN XEM TRƯỚC — có nội dung do LLM viết ra mà người dùng phải
+             đọc bằng mắt mới kiểm được.
+
+        Lý do (2) không thừa: `gws_gmail_draft` không chứa từ khoá GHI nào nên (1) xếp nó
+        là "chỉ đọc", trong khi "viết mail" chính là lúc cần nhìn bản nháp nhất. Đo được
+        2026-08-24 — đây đúng là ca người dùng gặp mà panel không hiện.
+        """
         for call in tool_calls:
             if not self.registry.has(call.name):
                 continue
             tool = self.registry.get(call.name)
-            if not getattr(tool, "destructive", False):
-                continue
             args = call.arguments or {}
+            builder = getattr(tool, "preview", None)
+            try:
+                preview = builder(**args) if builder else None
+            except Exception as e:            # dựng bản xem trước lỗi -> coi như không có
+                logger.warning("Không dựng được bản xem trước cho %s: %s", call.name, e)
+                preview = None
+            if not getattr(tool, "destructive", False) and not preview:
+                continue
             try:
                 phrase = tool.confirm_message(**args) if tool.confirm_message else call.name
             except Exception:                 # confirm_message lỗi -> vẫn hỏi, dùng tên tool
                 phrase = call.name
-            return {"name": call.name, "arguments": args, "phrase": phrase}
+            return {"name": call.name, "arguments": args, "phrase": phrase,
+                    "preview": preview}
         return None
+
+    def _show_pending(self, payload):
+        """Đưa nội dung hành động đang chờ ra cho người dùng NHÌN. Trả True nếu có hiện.
+
+        Không có sink hoặc sink lỗi -> False, và luồng xác nhận bằng giọng chạy y như cũ:
+        panel là thứ LÀM TỐT HƠN, không được là thứ để hỏng thì mất luôn tính năng.
+        """
+        if self.on_pending is None:
+            return False
+        try:
+            self.on_pending(payload or None)
+        except Exception as e:
+            logger.warning("Không hiện được bản xem trước: %s", e)
+            return False
+        return bool(payload)
+
+    def confirm_pending(self, decision):
+        """Chốt hành động đang chờ TỪ BÊN NGOÀI (nút trên panel) -> chuỗi kết quả, hoặc None.
+
+        Cùng một đường với xác nhận bằng giọng: bấm nút và nói 'có' chạy đúng code này,
+        nên không có đường thực thi thứ hai để lệch nhau về sau.
+        """
+        if self.pending is None:
+            return None
+        act = self.pending
+        self.pending = None
+        self._show_pending(None)              # xong việc -> dẹp panel
+        if decision != "yes":
+            return "Được, tôi bỏ qua nhé."
+        return self._run_tool_direct(act["name"], act["arguments"])
 
     def _resolve_pending(self, user_text):
         """Xử lý câu trả lời cho hành động đang chờ xác nhận.
@@ -361,10 +416,12 @@ class Agent:
         decision = match_confirmation(user_text)
         if decision is None:
             self.pending = None
+            self._show_pending(None)          # bỏ chờ -> panel không được để lại lơ lửng
             return None
 
         act = self.pending
         self.pending = None
+        self._show_pending(None)
         if decision == "no":
             text = "Được, tôi không làm nữa."
             self._remember(user_text, text)

@@ -81,6 +81,10 @@ class Tool:
     handler: Callable[..., str]  # nhận **kwargs theo schema, trả về chuỗi
     destructive: bool = False    # True = khó hoàn tác -> Agent hỏi xác nhận trước khi chạy
     confirm_message: Callable[..., str] = None  # (**args) -> cụm mô tả việc sẽ làm, để hỏi
+    # (**args) -> dict để HIỆN RA cho người dùng xem trước khi xác nhận, hoặc None nếu
+    # không có gì đáng xem. Chỉ có nghĩa với tool destructive (Agent gọi lúc hoãn hành
+    # động). Dùng cho nội dung mà TAI không kiểm được — thư dài, văn bản do LLM viết ra.
+    preview: Callable[..., dict] = None
     # True = kết quả trả về ĐÃ là câu tiếng Việt hoàn chỉnh, đọc thẳng cho người dùng được.
     # Agent dùng cờ này để BỎ lượt LLM soạn lời (tiết kiệm 1 call) — chỉ khi model gọi đúng
     # MỘT tool này và không làm gì thêm. Đánh đổi: câu trả lời không mang giọng persona,
@@ -345,7 +349,7 @@ def build_default_registry(actions, scheduler=None, browser=None, screen=None,
 
     if browser is not None:
         _register_browser_tools(reg, browser)
-        _register_web_search_tools(reg, browser)
+        _register_web_search_tools(reg, browser, actions)
 
     if screen is not None:
         _register_screen_tools(reg, screen)
@@ -375,9 +379,32 @@ def build_default_registry(actions, scheduler=None, browser=None, screen=None,
 
 def _register_mcp_tools(reg: ToolRegistry, mcp, destructive_keywords=None):
     """Đăng ký mỗi tool của MCP server thành một Tool: handler gọi `mcp.call_tool`. Tool
-    GHI (heuristic theo tên: send/create/delete...) đánh dấu destructive -> cổng xác nhận."""
+    GHI (heuristic theo tên: send/create/delete...) đánh dấu destructive -> cổng xác nhận.
+
+    NGOÀI RA: mọi tool mang hình dạng EMAIL đều được gắn `preview` để hiện panel nháp,
+    KỂ CẢ tool không destructive. Lý do đo được (2026-08-24): `gws_gmail_draft` không
+    chứa từ khoá GHI nào nên heuristic tên xếp nó là "chỉ đọc" -> không có cổng, không
+    có panel. Mà "viết mail" (chưa gửi) CHÍNH LÀ lúc người dùng cần nhìn bản nháp nhất.
+    Cột mốc để hiện panel phải là "có nội dung do LLM viết ra", không phải "tên tool
+    có chữ send".
+    """
     from services.mcp_bridge import is_destructive_tool, DEFAULT_DESTRUCTIVE_KEYWORDS
+    from actions.email_draft import email_draft, say_draft
     keywords = destructive_keywords or DEFAULT_DESTRUCTIVE_KEYWORDS
+
+    def _confirm(tool_name):
+        """Cụm mô tả để hỏi xác nhận. Lời gọi hình dạng EMAIL được nói bằng tiếng người
+        ('gửi email tới sếp...') thay vì đọc tên tool máy móc ('thực hiện gws_gmail_send')."""
+        saves_draft = "draft" in tool_name.lower() or "nhap" in strip_accents(tool_name).lower()
+
+        def phrase(**args):
+            draft = email_draft(args)
+            # Dò tên chỉ để chọn ĐỘNG TỪ ('lưu nháp' vs 'gửi'). Đoán sai làm câu chữ hơi
+            # lệch chứ KHÔNG làm mất cổng duyệt — việc chặn do email_draft quyết định.
+            return (say_draft(draft, action="draft" if saves_draft else "send")
+                    if draft else f"thực hiện '{tool_name}'")
+        return phrase
+
     for spec in mcp.list_tools():
         name = spec["name"]
         if reg.has(name):                          # tránh trùng tên tool sẵn có
@@ -390,8 +417,10 @@ def _register_mcp_tools(reg: ToolRegistry, mcp, destructive_keywords=None):
             input_schema=spec.get("input_schema") or {"type": "object", "properties": {}},
             handler=(lambda tn: (lambda **kwargs: mcp.call_tool(tn, kwargs)))(name),
             destructive=destructive,
-            confirm_message=((lambda tn: (lambda **a: f"thực hiện '{tn}'"))(name)
-                             if destructive else None),
+            confirm_message=_confirm(name),
+            # Gắn cho MỌI tool: tool không mang hình dạng email thì email_draft trả None
+            # -> không panel, không cổng, luồng y như cũ.
+            preview=lambda **a: email_draft(a),
         ))
 
 
@@ -847,10 +876,11 @@ def _register_browser_tools(reg: ToolRegistry, browser):
     ))
 
 
-def _register_web_search_tools(reg: ToolRegistry, browser):
+def _register_web_search_tools(reg: ToolRegistry, browser, actions):
     """Tìm web + ĐỌC danh sách kết quả (extension trích DOM), rồi mở kết quả người dùng
-    chọn theo SỐ THỨ TỰ. Giữ trạng thái danh sách kết quả gần nhất giữa các lượt trong
-    closure `session` — người dùng chỉ cần nói 'số 2', KHÔNG bắt model chép lại URL dài.
+    chọn theo SỐ THỨ TỰ — hoặc ĐỌC NỘI DUNG một kết quả để trả lời câu hỏi trực tiếp
+    (khác việc mở tab). Giữ trạng thái danh sách kết quả gần nhất giữa các lượt trong
+    closure `session` — người dùng/model chỉ cần nói 'số 2', KHÔNG cần chép lại URL dài.
     """
     from services.browser_protocol import (
         build_search_read, parse_search_results, summarize_search_results,
@@ -916,6 +946,37 @@ def _register_web_search_tools(reg: ToolRegistry, browser):
             "required": ["index"],
         },
         handler=open_result,
+    ))
+
+    def read_result(index=1):
+        results = session["results"]
+        if not results:
+            return "Chưa có kết quả tìm kiếm nào — hãy gọi web_search_list trước."
+        try:
+            i = int(str(index).strip())
+        except (TypeError, ValueError):
+            i = 1
+        if i < 1 or i > len(results):
+            return f"Chỉ có {len(results)} kết quả, không có số {i}."
+        chosen = results[i - 1]
+        text = actions.web_fetch(chosen["url"])
+        return f"Nội dung bài '{chosen['title']}':\n{text}"
+
+    reg.register(Tool(
+        name="read_search_result",
+        description=("Tải NỘI DUNG THẬT của một kết quả trong danh sách VỪA tìm bằng "
+                     "web_search_list, theo SỐ THỨ TỰ (mặc định số 1) — để ĐỌC rồi TRẢ LỜI "
+                     "CÂU HỎI của người dùng bằng nội dung đó. Dùng cho câu hỏi cần thông "
+                     "tin cụ thể (vd 'hôm nay có sự kiện gì...', 'vì sao...', 'X là ai'), "
+                     "KHÁC với open_search_result (chỉ mở tab, không đọc nội dung)."),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "index": {"type": "integer",
+                          "description": "Số thứ tự kết quả cần đọc (mặc định 1)"},
+            },
+        },
+        handler=read_result,
     ))
 
 
