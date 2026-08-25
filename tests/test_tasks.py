@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from services.tasks import TaskStore
 from agent.tools import build_default_registry
+from conftest import registry_with
 
 
 def _store(tmp=True):
@@ -87,7 +88,7 @@ def test_corrupt_file_degrades():
 # --------------------------- Tool việc cần làm --------------------------- #
 
 def _reg(store):
-    return build_default_registry(MagicMock(), tasks=store)
+    return registry_with(tasks=store)
 
 
 def test_tool_add_and_list():

@@ -9,6 +9,7 @@ from llm import prompts
 from agent.router import Router, CASE_TOOLS
 from llm.client import AssistantTurn
 from agent.tools import build_default_registry
+from conftest import registry_with
 
 
 class _FakeLLM:
@@ -102,7 +103,7 @@ def test_classify_task_case():
 def test_select_narrows_to_task_case():
     from services.tasks import TaskStore
     from services.routines import RoutineStore
-    reg = build_default_registry(_FakeActions(), tasks=TaskStore(path="__none__.json"),
+    reg = registry_with(actions=_FakeActions(), tasks=TaskStore(path="__none__.json"),
                                  routines=RoutineStore(path="__none__.json"))
     _, specs = Router(_FakeLLM("task")).select("thêm việc mua sữa", reg)
     names = {s["name"] for s in specs}

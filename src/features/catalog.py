@@ -17,6 +17,9 @@ Thêm feature = tạo package dưới `features/` rồi thêm một dòng vào �
 Gỡ feature  = xoá dòng đó, hoặc để `enabled` trả False.
 """
 
+from features.task.feature import FEATURE as TASK
+from features.profile.feature import FEATURE as PROFILE
+from features.screen.feature import FEATURE as SCREEN
 from features.pim.feature import FEATURE as PIM
 from features.places.feature import FEATURE as PLACE
 
@@ -32,6 +35,9 @@ from features.places.feature import FEATURE as PLACE
 # cuối cùng còn lại và thêm vào ĐẦU danh sách này. Làm vậy thì tiền tố prompt không xê
 # dịch một lần nào trong suốt đợt refactor.
 FEATURES = [
+    SCREEN,
+    PROFILE,
+    TASK,
     PIM,
     PLACE,
 ]

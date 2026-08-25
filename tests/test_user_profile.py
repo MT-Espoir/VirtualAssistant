@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from memory.profile import (UserProfile, apply_update, summarize,
                                           _relevant_facts)
 from agent.tools import build_default_registry
+from conftest import registry_with
 
 
 # --------------------------- logic thuần --------------------------- #
@@ -145,7 +146,7 @@ def test_weather_uses_profile_default_location():
     class _P:
         def get_default_location(self): return "Đà Lạt"
         def summary(self): return ""
-    reg = build_default_registry(actions, profile=_P())
+    reg = registry_with(actions=actions, profile=_P())
     reg.run("get_weather", {})                    # không truyền location -> lấy từ hồ sơ
     actions.get_weather.assert_called_once_with("Đà Lạt")
 
@@ -158,6 +159,6 @@ def test_remember_tool_registered_only_with_profile():
         def get_default_location(self): return None
         def summary(self): return ""
         def remember(self, **kw): return "Đã nhớ."
-    reg_yes = build_default_registry(MagicMock(), profile=_P())
+    reg_yes = registry_with(profile=_P())
     assert reg_yes.has("remember_about_user")
     assert reg_yes.run("remember_about_user", {"name": "Nam"}) == "Đã nhớ."

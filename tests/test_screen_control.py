@@ -7,6 +7,7 @@ except ImportError:
 
 from actions.screen_control import search_text, summarize_find
 from agent.tools import build_default_registry
+from conftest import registry_with
 
 
 # --------------------------- search_text (thuần) --------------------------- #
@@ -63,7 +64,7 @@ class _FakeScreen:
 
 
 def _registry(screen):
-    return build_default_registry(_FakeActions(), screen=screen)
+    return registry_with(actions=_FakeActions(), screen=screen)
 
 
 def test_screen_tools_registered_only_with_screen():

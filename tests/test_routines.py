@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from services.routines import RoutineStore
 from agent.tools import build_default_registry
+from conftest import registry_with
 
 
 def _tmp():
@@ -75,7 +76,7 @@ def test_roundtrip_and_degrade():
 # --------------------------- Tool routine --------------------------- #
 
 def _reg(store):
-    return build_default_registry(MagicMock(), routines=store)
+    return registry_with(routines=store)
 
 
 def test_tool_create_and_list():

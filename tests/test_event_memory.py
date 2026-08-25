@@ -205,7 +205,7 @@ def test_forget_persists(tmp_path):
 def test_forget_tool_is_destructive():
     """Xoá trí nhớ phải qua cổng xác nhận."""
     from unittest.mock import MagicMock
-    from agent.tools import build_default_registry
-    reg = build_default_registry(MagicMock(), profile=MagicMock())
+    from conftest import registry_with
+    reg = registry_with(profile=MagicMock())
     assert reg.has("forget_about_user")
     assert reg.get("forget_about_user").destructive is True

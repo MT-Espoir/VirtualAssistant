@@ -121,10 +121,8 @@ CASE_SYSTEM = (
     "sổ ĐANG CHẠY SẴN (vd 'chuyển sang Chrome', 'qua Claude', 'mở lại cửa sổ Word đang mở') "
     "= switch_window; hỏi 'đang mở những gì/cửa sổ nào' = list_windows."
 )
-
-CASE_SCREEN = (
-    'Yêu cầu thuộc nhóm MÀN HÌNH: chụp, tìm chữ (OCR), cuộn.'
-)
+# CASE_SCREEN đã chuyển sang `features/screen/prompt.py` (gom về đúng feature).
+from features.screen.prompt import CASE_SCREEN  # noqa: E402
 
 CASE_BROWSER = (
     'Yêu cầu thuộc nhóm ĐIỀU KHIỂN CHROME. Điều khiển video/nhạc ĐANG phát (tạm dừng, phát '
@@ -142,25 +140,10 @@ CASE_SCHEDULE = (
     "mở/phát/làm Y', '22h30 mở youtube' -> schedule_action với command=Y (trợ lý sẽ TỰ THỰC "
     "THI khi tới giờ). Cả hai dùng 'delay_minutes' (số phút nữa) HOẶC 'at' (giờ HH:MM)."
 )
-
-CASE_TASK = (
-    'Yêu cầu thuộc nhóm VIỆC CẦN LÀM hoặc QUY TRÌNH (routine). Việc: add_task để thêm; '
-    "list_tasks để xem (mặc định chỉ việc chưa xong); complete_task khi 'xong việc...'; "
-    "remove_task khi 'xoá việc...'. Routine: create_routine khi 'tạo routine X gồm A, B, C' "
-    "(TÁCH mỗi việc thành một phần tử trong 'steps'); list_routines khi 'có routine nào'; "
-    "delete_routine khi 'xoá routine X'. remove_task/delete_routine sẽ tự hỏi xác nhận. "
-    'Khớp theo từ khoá.'
-)
-
-CASE_PROFILE = (
-    'Người dùng cho biết THÔNG TIN CÁ NHÂN. BẮT BUỘC gọi tool remember_about_user, chỉ '
-    'truyền đúng (các) trường họ vừa nói: name (tên), address_form (cách xưng hô), location '
-    '(nơi ở/địa điểm mặc định), note (điều khác cần nhớ). Nếu note là SỰ KIỆN có thời '
-    'điểm (phỏng vấn, cuộc hẹn) thì truyền thêm when dạng ISO, suy từ ngày giờ hiện '
-    'tại. Ngược lại, nếu người dùng muốn BỎ một điều đã nhớ thì gọi forget_about_user '
-    'với từ khoá. Sau đó xác nhận ngắn gọn, thân '
-    'thiện.'
-)
+# CASE_TASK đã chuyển sang `features/task/prompt.py` (gom về đúng feature).
+from features.task.prompt import CASE_TASK  # noqa: E402
+# CASE_PROFILE đã chuyển sang `features/profile/prompt.py` (gom về đúng feature).
+from features.profile.prompt import CASE_PROFILE  # noqa: E402
 # CASE_PIM đã chuyển sang `features/pim/prompt.py` (gom về đúng feature).
 from features.pim.prompt import CASE_PIM  # noqa: E402
 

@@ -48,12 +48,23 @@ def registry_with(actions=None, **ctx_kwargs):
     `FeatureContext`. Feature nào thiếu dependency sẽ tự bỏ qua, nên chỉ tool của phần
     truyền vào được đăng ký — đúng ý các test gọi kiểu này.
     """
+    import dataclasses
+    import inspect
     from unittest.mock import MagicMock
 
     from agent.tools import build_default_registry
     from features.catalog import FEATURES
     from features.contract import FeatureContext, load_features
 
-    reg = build_default_registry(actions or MagicMock())
-    load_features(reg, FeatureContext(**ctx_kwargs), FEATURES)
+    # Một tên có thể thuộc CẢ HAI nơi trong lúc migrate: `profile` vừa là tham số của
+    # `build_default_registry` (tool thời tiết dùng địa điểm mặc định) vừa là trường của
+    # FeatureContext (feature `profile`). Chuyển tiếp sang bên nào nhận được thì nhận.
+    con_lai = set(inspect.signature(build_default_registry).parameters)
+    truong_ctx = {f.name for f in dataclasses.fields(FeatureContext)}
+
+    reg = build_default_registry(
+        actions or MagicMock(),
+        **{k: v for k, v in ctx_kwargs.items() if k in con_lai})
+    load_features(reg, FeatureContext(
+        **{k: v for k, v in ctx_kwargs.items() if k in truong_ctx}), FEATURES)
     return reg
