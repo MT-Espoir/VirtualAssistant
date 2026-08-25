@@ -9,5 +9,5 @@ FEATURE = Feature(
     register=tools.register,
     requires=('actions',),
     prompt=CASE_WEATHER,
-    max_spec_chars=900,
+    max_spec_chars=600,
 )

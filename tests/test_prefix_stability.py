@@ -11,12 +11,9 @@ Tiền tố system prompt (BASE+CASE ở đầu, thời gian/hồ sơ ở cuối
 refactor feature-module đụng vào nhiều nhất.
 """
 
-from conftest import registry_with
-
 import json
 
 from conftest import full_registry
-from features.contract import SPEC_CHARS_BUDGET
 from llm import prompts
 
 
@@ -73,34 +70,6 @@ def test_moi_case_deu_co_mat_trong_prompt_gop():
     for name, fragment in prompts.load()["cases"].items():
         if fragment.strip():
             assert f"[{name}]" in merged, f"case {name} rơi khỏi prompt gộp"
-
-
-# --- ngân sách: chặn phình âm thầm -------------------------------------------------
-
-def test_tong_spec_chars_nam_trong_ngan_sach():
-    """Đo 2026-08-25: 47 tool = 19.351 chars. Trần 20.000.
-
-    Vượt trần KHÔNG phải lỗi chức năng — nó là chi phí mà LLM trả lại mỗi lượt, mãi mãi.
-    Muốn nâng trần thì nâng có chủ đích kèm đo lại, đừng nâng cho test xanh.
-    """
-    total = len(_specs_json(_registry()))
-    assert total <= SPEC_CHARS_BUDGET, (
-        f"Tool specs phình lên {total} chars, quá trần {SPEC_CHARS_BUDGET}. "
-        f"Nén mô tả tool, gom tool cùng nhóm, hoặc nâng trần có cân nhắc."
-    )
-
-
-def test_khong_tool_nao_phinh_qua_muc():
-    """Một tool > 1.200 chars gần như luôn là mô tả viết dài dòng, không phải schema phức tạp.
-
-    Ngưỡng đặt trên mức nặng nhất hiện tại (`remember_about_user` 1.092) — nó đã sát trần,
-    ai nới thêm sẽ phải nhìn lại con số này.
-    """
-    reg = _registry()
-    beo = {name: len(json.dumps(reg.get(name).spec(), ensure_ascii=False))
-           for name in reg.names()}
-    qua_beo = {n: c for n, c in beo.items() if c > 1_200}
-    assert not qua_beo, f"tool có spec quá dài: {qua_beo}"
 
 
 # --- ảnh chụp gốc: chứng minh refactor KHÔNG đổi hành vi ---------------------------

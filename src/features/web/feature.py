@@ -9,5 +9,5 @@ FEATURE = Feature(
     register=tools.register,
     requires=('actions',),
     prompt=CASE_WEB,
-    max_spec_chars=4_200,
+    max_spec_chars=3_600,
 )

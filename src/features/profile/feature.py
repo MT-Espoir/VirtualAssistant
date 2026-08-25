@@ -9,5 +9,5 @@ FEATURE = Feature(
     register=tools.register,
     requires=('profile',),
     prompt=CASE_PROFILE,
-    max_spec_chars=1_600,
+    max_spec_chars=1_700,
 )

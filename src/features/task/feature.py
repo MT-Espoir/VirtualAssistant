@@ -10,5 +10,5 @@ FEATURE = Feature(
     # KHÔNG khai `requires`: hai nguồn độc lập, thiếu một cái thì phần kia
     # vẫn dùng được — `register` tự bỏ qua nguồn nào là None.
     prompt=CASE_TASK,
-    max_spec_chars=2_600,
+    max_spec_chars=2_800,
 )

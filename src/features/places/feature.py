@@ -16,5 +16,5 @@ FEATURE = Feature(
     prompt=CASE_PLACE,
     # Đo 2026-08-25: 6 tool = 3.341 chars. Đây là feature nặng nhất hệ thống — nếu phải
     # nén payload thì bắt đầu từ đây (xem việc 12: gom 6 tool thành 1 + `action` enum).
-    max_spec_chars=3_500,
+    max_spec_chars=3_800,
 )

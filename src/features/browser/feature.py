@@ -9,5 +9,5 @@ FEATURE = Feature(
     register=tools.register,
     requires=('browser',),
     prompt=CASE_BROWSER,
-    max_spec_chars=2_500,
+    max_spec_chars=2_600,
 )

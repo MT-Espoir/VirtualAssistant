@@ -18,10 +18,19 @@ from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-# Trần tổng payload tool specs gửi lên LLM mỗi lượt, tính bằng ký tự JSON.
+# Trần TỔNG payload tool specs gửi lên LLM mỗi lượt, tính bằng ký tự JSON.
 # Đo 2026-08-25: 47 tool = 19.351 chars (~6.450 token) — ĐỌC LẠI MỖI LƯỢT.
 # Trần đặt sát baseline có chủ đích: thêm feature mà vượt thì test đỏ NGAY tại đó,
 # buộc phải nén mô tả hoặc nâng trần có cân nhắc, thay vì để chi phí trôi âm thầm.
+#
+# HAI LỚP HÀNG RÀO, BẮT HAI LOẠI LỖI KHÁC NHAU — cố ý KHÔNG bắt tổng các trần
+# `Feature.max_spec_chars` phải nằm trong con số này (hiện chúng cộng lại là 22.000):
+#   - Trần TỔNG bắt "mọi thứ nhích dần": từng feature vẫn trong hạn mà cả hệ thống
+#     đã đắt lên. Đây là con số quyết định độ trễ, nên nó là cổng thật.
+#   - Trần TỪNG FEATURE bắt "một feature phình to" ngay cả khi tổng còn chỗ — ví dụ
+#     sau khi gỡ một feature khác, chỗ trống vừa giải phóng sẽ che mất việc phình.
+# Ép hai lớp phải cộng khớp nhau sẽ làm trần từng feature chỉ còn ~74 ký tự dư mỗi
+# cái (đang dùng 96% ngân sách), tức đỏ mỗi lần sửa câu chữ mô tả — vô dụng.
 SPEC_CHARS_BUDGET = 20_000
 
 
