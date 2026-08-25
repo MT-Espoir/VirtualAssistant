@@ -5,7 +5,7 @@ try:
 except ImportError:
     pytest = None
 
-from agent.tools import build_default_registry
+
 from conftest import registry_with
 
 

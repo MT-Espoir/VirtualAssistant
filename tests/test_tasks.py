@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from services.tasks import TaskStore
-from agent.tools import build_default_registry
+
 from conftest import registry_with
 
 
@@ -135,5 +135,5 @@ def test_remove_task_is_destructive():
 
 
 def test_tools_absent_without_store():
-    reg = build_default_registry(MagicMock())
+    reg = registry_with(actions=MagicMock())
     assert not reg.has("add_task")

@@ -5,6 +5,8 @@ Agent được tiêm LLM giả (FakeLLMClient) chạy theo kịch bản + action
 cần API key, mạng, hay SDK. run() trả AgentReply(text, emotion).
 """
 
+from conftest import registry_with
+
 import os
 import tempfile
 from unittest.mock import MagicMock
@@ -16,7 +18,7 @@ except ImportError:
 
 from agent.agent import Agent, _clean_text
 from llm.client import AssistantTurn, Message, ToolCall
-from agent.tools import build_default_registry
+
 
 
 # --------------------------- _clean_text (dọn rác model 3B) --------------------------- #
@@ -64,7 +66,7 @@ def make_actions():
 
 def make_agent(script, actions=None, **kwargs):
     actions = actions or make_actions()
-    return Agent(FakeLLMClient(script), build_default_registry(actions), **kwargs)
+    return Agent(FakeLLMClient(script), registry_with(actions=actions), **kwargs)
 
 
 # --------------------------- Vòng lặp cơ bản --------------------------- #
@@ -82,7 +84,7 @@ def test_action_tool_then_model_composes_reply():
         AssistantTurn(tool_calls=[ToolCall("t1", "open_app", {"app_name": "chrome"})]),
         AssistantTurn(text="Đã mở Chrome cho bạn."),
     ])
-    agent = Agent(llm, build_default_registry(actions))
+    agent = Agent(llm, registry_with(actions=actions))
     reply = agent.run("mở chrome")
     actions.open_application.assert_called_once_with("chrome")
     assert reply.text == "Đã mở Chrome cho bạn." and llm.calls == 2
@@ -97,7 +99,7 @@ def test_multiple_tools_in_one_turn_then_compose():
             ToolCall("t2", "set_volume", {"change": 20})]),
         AssistantTurn(text="Đã mở Chrome và tăng âm lượng."),
     ])
-    agent = Agent(llm, build_default_registry(actions))
+    agent = Agent(llm, registry_with(actions=actions))
     reply = agent.run("mở chrome và tăng âm lượng 20%")
     actions.open_application.assert_called_once_with("chrome")
     actions.control_volume.assert_called_once_with(level=None, change=20)
@@ -113,7 +115,7 @@ def test_multi_step_request_chains_tools():
         AssistantTurn(tool_calls=[ToolCall("t2", "set_volume", {"change": 20})]),
         AssistantTurn(text="Đã mở Chrome và tăng âm lượng.\n#emotion: happy"),
     ])
-    agent = Agent(llm, build_default_registry(actions))
+    agent = Agent(llm, registry_with(actions=actions))
     reply = agent.run("mở chrome sau đó tăng âm lượng")
     actions.open_application.assert_called_once_with("chrome")
     actions.control_volume.assert_called_once_with(level=None, change=20)
@@ -128,7 +130,7 @@ def test_tool_returning_raw_data_gets_summarized():
         AssistantTurn(tool_calls=[ToolCall("t1", "wikipedia_lookup", {"topic": "AI"})]),
         AssistantTurn(text="Tóm tắt: AI là..."),
     ])
-    agent = Agent(llm, build_default_registry(actions))
+    agent = Agent(llm, registry_with(actions=actions))
     reply = agent.run("AI là gì")
     assert reply.text == "Tóm tắt: AI là..." and llm.calls == 2
 
@@ -167,7 +169,7 @@ def test_destructive_tool_asks_before_running():
     llm = FakeLLMClient([
         AssistantTurn(tool_calls=[ToolCall("t1", "close_app", {"app_name": "chrome"})]),
     ])
-    agent = Agent(llm, build_default_registry(actions))
+    agent = Agent(llm, registry_with(actions=actions))
     reply = agent.run("đóng chrome")
     actions.close_application.assert_not_called()          # CHƯA đóng
     assert agent.pending is not None
@@ -181,7 +183,7 @@ def test_confirmation_yes_executes_without_llm():
     llm = FakeLLMClient([
         AssistantTurn(tool_calls=[ToolCall("t1", "close_app", {"app_name": "chrome"})]),
     ])
-    agent = Agent(llm, build_default_registry(actions))
+    agent = Agent(llm, registry_with(actions=actions))
     agent.run("đóng chrome")
     reply = agent.run("có")
     actions.close_application.assert_called_once_with("chrome")
@@ -194,7 +196,7 @@ def test_confirmation_no_cancels():
     llm = FakeLLMClient([
         AssistantTurn(tool_calls=[ToolCall("t1", "close_app", {"app_name": "chrome"})]),
     ])
-    agent = Agent(llm, build_default_registry(actions))
+    agent = Agent(llm, registry_with(actions=actions))
     agent.run("đóng chrome")
     reply = agent.run("thôi không cần")
     actions.close_application.assert_not_called()
@@ -210,7 +212,7 @@ def test_unrelated_reply_drops_pending_and_handles_new_request():
         AssistantTurn(tool_calls=[ToolCall("t2", "open_app", {"app_name": "notepad"})]),
         AssistantTurn(text="Đã mở Notepad."),
     ])
-    agent = Agent(llm, build_default_registry(actions))
+    agent = Agent(llm, registry_with(actions=actions))
     agent.run("đóng chrome")
     reply = agent.run("mở notepad")
     actions.close_application.assert_not_called()           # KHÔNG đóng nhầm
@@ -222,9 +224,9 @@ def test_unrelated_reply_drops_pending_and_handles_new_request():
 
 def _mail_registry(sent):
     """Registry có một tool 'send_mail' destructive kèm preview kiểu email."""
-    from agent.tools import Tool, build_default_registry
+    from agent.tools import Tool
     from actions.email_draft import email_draft, say_draft
-    reg = build_default_registry(make_actions())
+    reg = registry_with(actions=make_actions())
     reg.register(Tool(
         name="send_mail",
         description="gửi mail",
@@ -286,7 +288,7 @@ def test_non_destructive_tool_with_draft_is_still_gated():
     from agent.tools import Tool
     from actions.email_draft import email_draft, say_draft
     saved = []
-    reg = build_default_registry(make_actions())
+    reg = registry_with(actions=make_actions())
     reg.register(Tool(
         name="mail_draft", description="lưu nháp",
         input_schema={"type": "object", "properties": {}},
@@ -312,7 +314,7 @@ def test_read_only_tool_with_null_preview_runs_normally():
     """Cổng duyệt mới KHÔNG được chặn nhầm tool chỉ đọc có gắn preview trả None."""
     from agent.tools import Tool
     ran = []
-    reg = build_default_registry(make_actions())
+    reg = registry_with(actions=make_actions())
     reg.register(Tool(
         name="list_mail", description="đọc mail",
         input_schema={"type": "object", "properties": {}},
@@ -365,7 +367,7 @@ def test_destructive_without_preview_asks_as_before():
     llm = FakeLLMClient([
         AssistantTurn(tool_calls=[ToolCall("t1", "close_app", {"app_name": "chrome"})]),
     ])
-    agent = Agent(llm, build_default_registry(actions), on_pending=shown.append)
+    agent = Agent(llm, registry_with(actions=actions), on_pending=shown.append)
     reply = agent.run("đóng chrome")
     assert shown == [None] and "màn hình" not in reply.text.lower()
     assert "chắc" in reply.text.lower()
@@ -373,7 +375,7 @@ def test_destructive_without_preview_asks_as_before():
 
 def test_broken_preview_does_not_break_confirmation():
     from agent.tools import Tool
-    reg = build_default_registry(make_actions())
+    reg = registry_with(actions=make_actions())
     reg.register(Tool(
         name="boom", description="x", input_schema={"type": "object", "properties": {}},
         handler=lambda **kw: "xong", destructive=True,
@@ -431,7 +433,7 @@ class _FakeProfile:
 
 def test_profile_summary_injected_into_system():
     llm = FakeLLMClient([AssistantTurn(text="Chào Nam!")])
-    agent = Agent(llm, build_default_registry(make_actions()),
+    agent = Agent(llm, registry_with(actions=make_actions()),
                   profile=_FakeProfile("Tên người dùng: Nam."))
     agent.run("chào")
     assert "Tên người dùng: Nam." in llm.last_system
@@ -439,7 +441,7 @@ def test_profile_summary_injected_into_system():
 
 def test_empty_profile_not_injected():
     llm = FakeLLMClient([AssistantTurn(text="Chào!")])
-    agent = Agent(llm, build_default_registry(make_actions()), profile=_FakeProfile(""))
+    agent = Agent(llm, registry_with(actions=make_actions()), profile=_FakeProfile(""))
     agent.run("chào")
     # Không có tóm tắt -> system không bị thêm tiền tố trống/xuống dòng
     assert llm.last_system and not llm.last_system.startswith("\n")
@@ -452,7 +454,7 @@ def test_persona_and_mood_injected_into_system():
     llm = FakeLLMClient([AssistantTurn(text="Chào bạn nhé!")])
     persona = PersonaState(provider="ollama", persist=False)
     mood = MoodState(baseline_valence=0.2)
-    agent = Agent(llm, build_default_registry(make_actions()), persona=persona, mood=mood)
+    agent = Agent(llm, registry_with(actions=make_actions()), persona=persona, mood=mood)
     agent.run("chào")
     assert "Văn phong" in llm.last_system and "Tâm trạng hiện tại" in llm.last_system
 
@@ -462,7 +464,7 @@ def test_mood_drives_reply_emotion_positive():
     # Thẻ #emotion=happy (làm được việc) + câu user tích cực -> mood đẩy pose 'happy'
     llm = FakeLLMClient([AssistantTurn(text="Xong rồi!\n#emotion: happy")])
     persona = PersonaState(provider="ollama", persist=False)
-    agent = Agent(llm, build_default_registry(make_actions()),
+    agent = Agent(llm, registry_with(actions=make_actions()),
                   persona=persona, mood=MoodState(baseline_valence=0.2))
     reply = agent.run("tuyệt quá cảm ơn bạn")
     assert reply.emotion == "happy"
@@ -473,7 +475,7 @@ def test_persona_familiarity_grows_with_interaction():
     persona = PersonaState(provider="ollama", persist=False)
     start = persona.familiarity()
     agent = Agent(FakeLLMClient([AssistantTurn(text=f"r{i}") for i in range(5)]),
-                  build_default_registry(make_actions()),
+                  registry_with(actions=make_actions()),
                   persona=persona, mood=MoodState())
     for i in range(3):
         agent.run(f"câu {i}")
@@ -502,7 +504,7 @@ def test_consolidation_extracts_facts_into_ltm():
     profile = _CapturingProfile()
     # Bộ trích giả: trả 1 sự thật, không cần LLM.
     agent = Agent(FakeLLMClient([AssistantTurn(text=f"trả lời {i}") for i in range(10)]),
-                  build_default_registry(make_actions()),
+                  registry_with(actions=make_actions()),
                   profile=profile, auto_extract=True, consolidate_every=1,
                   max_history_turns=1, extractor=lambda transcript: "Thích uống trà")
     agent.run("tôi hay uống trà buổi sáng")     # lượt 1: chưa đẩy ra
@@ -515,7 +517,7 @@ def test_auto_tune_nudges_persona_traits():
     persona = PersonaState(provider="ollama", persist=False)
     h0, f0 = persona._trait("humor"), persona._trait("formality")
     agent = Agent(FakeLLMClient([AssistantTurn(text=f"r{i}") for i in range(10)]),
-                  build_default_registry(make_actions()),
+                  registry_with(actions=make_actions()),
                   persona=persona, mood=MoodState(),
                   auto_tune=True, consolidate_every=1, max_history_turns=1,
                   persona_tuner=lambda transcript, traits: "humor: +\nformality: -")
@@ -528,7 +530,7 @@ def test_auto_tune_off_keeps_traits():
     persona = PersonaState(provider="ollama", persist=False)
     h0 = persona._trait("humor")
     agent = Agent(FakeLLMClient([AssistantTurn(text=f"r{i}") for i in range(10)]),
-                  build_default_registry(make_actions()),
+                  registry_with(actions=make_actions()),
                   persona=persona, mood=MoodState(), auto_tune=False,
                   consolidate_every=1, max_history_turns=1,
                   persona_tuner=lambda transcript, traits: "humor: +")
@@ -539,7 +541,7 @@ def test_auto_tune_off_keeps_traits():
 def test_no_consolidation_when_auto_extract_off():
     profile = _CapturingProfile()
     agent = Agent(FakeLLMClient([AssistantTurn(text=f"r{i}") for i in range(10)]),
-                  build_default_registry(make_actions()),
+                  registry_with(actions=make_actions()),
                   profile=profile, auto_extract=False, consolidate_every=1,
                   max_history_turns=1, extractor=lambda t: "Không nên lưu")
     agent.run("a"); agent.run("b"); agent.run("c")
@@ -552,7 +554,7 @@ def test_consolidation_survives_extractor_error():
     def _boom(transcript):
         raise RuntimeError("model lỗi")
     agent = Agent(FakeLLMClient([AssistantTurn(text=f"r{i}") for i in range(10)]),
-                  build_default_registry(make_actions()),
+                  registry_with(actions=make_actions()),
                   profile=profile, auto_extract=True, consolidate_every=1,
                   max_history_turns=1, extractor=_boom)
     agent.run("a"); reply = agent.run("b")       # trích lỗi KHÔNG được làm vỡ luồng
@@ -563,7 +565,7 @@ def test_consolidation_survives_extractor_error():
 
 def test_remembers_previous_turns():
     llm = FakeLLMClient([AssistantTurn(text="Chào Anh."), AssistantTurn(text="Bạn tên Anh.")])
-    agent = Agent(llm, build_default_registry(make_actions()))
+    agent = Agent(llm, registry_with(actions=make_actions()))
     agent.run("tôi tên Anh")
     agent.run("tôi tên gì?")
     texts = [m.text for m in llm.last_messages]
@@ -585,10 +587,10 @@ def test_memory_file_roundtrip():
     os.unlink(path)
     try:
         a1 = Agent(FakeLLMClient([AssistantTurn(text="ok1")]),
-                   build_default_registry(make_actions()), memory_path=path)
+                   registry_with(actions=make_actions()), memory_path=path)
         a1.run("câu ghi nhớ")
         a2 = Agent(FakeLLMClient([AssistantTurn(text="ok2")]),
-                   build_default_registry(make_actions()), memory_path=path)
+                   registry_with(actions=make_actions()), memory_path=path)
         assert any(m.text == "câu ghi nhớ" for m in a2.history)
     finally:
         if os.path.exists(path):
@@ -643,7 +645,7 @@ def _common_prefix_len(a, b):
 
 def test_system_prompt_starts_with_stable_block():
     """BASE+CASE phải nằm NGAY ĐẦU — mọi khối biến động xếp sau."""
-    agent = Agent(FakeLLMClient([]), build_default_registry(make_actions()),
+    agent = Agent(FakeLLMClient([]), registry_with(actions=make_actions()),
                   profile=_QueryProfile())
     system = agent._compose_system("BASE_VA_CASE_ON_DINH", "mở chrome")
     assert system.startswith("BASE_VA_CASE_ON_DINH")
@@ -653,7 +655,7 @@ def test_system_prompt_prefix_stable_across_turns():
     """Đổi phút VÀ đổi câu hỏi -> tiền tố chung vẫn phải > 95% khối ổn định."""
     from unittest.mock import patch
     stable = "HUONG DAN CO DINH. " * 60          # ~1.100 ký tự, cỡ BASE+CASE thật
-    agent = Agent(FakeLLMClient([]), build_default_registry(make_actions()),
+    agent = Agent(FakeLLMClient([]), registry_with(actions=make_actions()),
                   profile=_QueryProfile())
 
     with patch("agent.agent.format_now", return_value="Bây giờ là 21:45 thứ Sáu."):
@@ -672,7 +674,7 @@ def test_volatile_blocks_come_after_stable():
     """Thời gian và hồ sơ phải nằm SAU khối ổn định, không phải trước."""
     from unittest.mock import patch
     stable = "KHOI_ON_DINH"
-    agent = Agent(FakeLLMClient([]), build_default_registry(make_actions()),
+    agent = Agent(FakeLLMClient([]), registry_with(actions=make_actions()),
                   profile=_QueryProfile())
     with patch("agent.agent.format_now", return_value="MOC_THOI_GIAN"):
         system = agent._compose_system(stable, "xin chào")

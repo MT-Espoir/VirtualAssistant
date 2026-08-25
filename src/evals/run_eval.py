@@ -14,7 +14,8 @@ import time
 from agent.actions_facade import AssistantActions
 from llm.client import build_default_llm_client
 from agent.router import Router
-from agent.tools import build_default_registry
+from features.contract import FeatureContext
+from features.registry import build_registry
 from llm import prompts
 from utils.config import config
 from evals.cases import CASES
@@ -34,10 +35,11 @@ def _build_parts():
     llm = CountingLLM(build_default_llm_client())
     # Truyền phụ thuộc giả để MỌI nhóm tool được đăng ký (web/system/screen/browser/
     # schedule/weather) -> LLM thấy đúng bộ tool như lúc chạy thật.
-    registry = build_default_registry(AssistantActions(), scheduler=_StubDep(),
-                                      browser=_StubDep(), screen=_StubDep(),
-                                      tasks=_StubDep(), routines=_StubDep(),
-                                      places=_StubDep(), location=_StubDep())
+    registry, _ = build_registry(FeatureContext(
+        actions=AssistantActions(), scheduler=_StubDep(), browser=_StubDep(),
+        screen=_StubDep(), tasks=_StubDep(), routines=_StubDep(),
+        places=_StubDep(), location=_StubDep(), profile=_StubDep(),
+        contacts=_StubDep(), bus=_StubDep()))
     # Dùng CHUNG quyết định với app.py -> eval đo đúng cấu hình production sẽ chạy.
     router = Router(llm) if config.use_router() else None
     return llm, registry, router

@@ -17,7 +17,8 @@ from voice.speech_recognizer import SpeechRecognizer
 # Agent core (LLM tool-calling)
 from agent.agent import Agent
 from agent.actions_facade import AssistantActions
-from agent.tools import build_default_registry
+from features.contract import FeatureContext
+from features.registry import build_registry
 from llm.client import build_default_llm_client
 from services.scheduler import ReminderScheduler
 
@@ -47,7 +48,7 @@ def build_agent(scheduler):
     except RuntimeError as e:
         logger.error("Không khởi tạo được LLM: %s", e)
         return None
-    registry = build_default_registry(AssistantActions(), scheduler=scheduler)
+    registry = build_registry(FeatureContext(actions=AssistantActions(), scheduler=scheduler))[0]
     return Agent(llm=llm, registry=registry,
                  max_history_turns=config.MAX_HISTORY_TURNS,
                  memory_path=config.MEMORY_PATH or None)

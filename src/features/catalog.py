@@ -10,37 +10,39 @@ Danh mục feature của trợ lý — nguồn duy nhất trả lời "trợ lý
 2. Đọc được. Muốn biết trợ lý có những gì thì đọc đúng một danh sách, không phải suy ra
    từ cây thư mục.
 
-Tách khỏi `features/__init__.py` để `from features.contract import ...` không kéo theo
-toàn bộ feature (và mọi thứ chúng import) chỉ vì cần một dataclass.
+Tách khỏi `features/__init__.py` để việc nhập hợp đồng không kéo theo toàn bộ feature
+(và mọi thứ chúng import) chỉ vì cần một dataclass.
 
 Thêm feature = tạo package dưới `features/` rồi thêm một dòng vào đây.
 Gỡ feature  = xoá dòng đó, hoặc để `enabled` trả False.
 """
 
-from features.schedule.feature import FEATURE as SCHEDULE
 from features.browser.feature import FEATURE as BROWSER
-from features.web.feature import FEATURE as WEB
-from features.task.feature import FEATURE as TASK
-from features.profile.feature import FEATURE as PROFILE
-from features.screen.feature import FEATURE as SCREEN
 from features.pim.feature import FEATURE as PIM
 from features.places.feature import FEATURE as PLACE
+from features.profile.feature import FEATURE as PROFILE
+from features.schedule.feature import FEATURE as SCHEDULE
+from features.screen.feature import FEATURE as SCREEN
+from features.system.feature import FEATURE as SYSTEM
+from features.task.feature import FEATURE as TASK
+from features.weather.feature import FEATURE as WEATHER
+from features.web.feature import FEATURE as WEB
 
-# THỨ TỰ CÓ Ý NGHĨA — xem lý do 1 ở trên.
+# THỨ TỰ CÓ Ý NGHĨA — xem lý do 1 ở trên. Đây giờ là NGUỒN DUY NHẤT quyết định thứ tự
+# tool trong prompt; đổi thứ tự các dòng dưới đây là làm nguội KV cache của mọi người dùng.
 #
-# Trong lúc migrate, các feature CHƯA chuyển vẫn nằm ở `agent/tools.py::build_default_registry`
-# và được đăng ký TRƯỚC danh sách này. `place` vốn là khối đăng ký CUỐI CÙNG trong hàm đó,
-# nên rút nó ra trước rồi nạp lại ở đây cho ra đúng thứ tự tool như cũ — ảnh chụp
-# `tests/fixtures/tool_specs_baseline.json` không đổi một byte.
-#
-# Suy ra quy tắc cho các bước sau: MIGRATE NGƯỢC THỨ TỰ ĐĂNG KÝ (contacts -> routines ->
-# tasks -> profile -> screen -> web -> browser -> schedule -> nhóm lõi), mỗi lần rút khối
-# cuối cùng còn lại và thêm vào ĐẦU danh sách này. Làm vậy thì tiền tố prompt không xê
-# dịch một lần nào trong suốt đợt refactor.
+# Đợt migrate giữ nguyên thứ tự cũ bằng cách rút khối đăng ký CUỐI CÙNG trước (place ->
+# pim -> task -> profile -> screen -> web_search -> browser -> schedule). Riêng bước cuối
+# — nhóm lõi — BUỘC phải đổi thứ tự: system/web/weather cài răng lược trong một khối
+# `reg.register` liên tiếp (system x7, web x2, weather x1, web x4), tách theo case thì
+# không cách nào giữ nguyên. Đây là lần đổi DUY NHẤT và CÓ CHỦ ĐÍCH của cả đợt; ảnh chụp
+# `tests/fixtures/tool_specs_baseline.json` đã chụp lại tại commit đó.
 FEATURES = [
+    SYSTEM,
+    WEB,
+    WEATHER,
     SCHEDULE,
     BROWSER,
-    WEB,
     SCREEN,
     PROFILE,
     TASK,

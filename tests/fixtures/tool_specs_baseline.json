@@ -142,19 +142,6 @@
     }
   },
   {
-    "name": "get_weather",
-    "description": "Xem thời tiết hôm nay ở một địa điểm: mô tả trời, nhiệt độ, khả năng mưa, chỉ số tia UV, kèm khuyến nghị (che nắng, mang áo mưa...). Dùng khi người dùng hỏi 'thời tiết hôm nay', 'trời có mưa không', 'nắng không', 'tia UV mạnh không'. Không nói địa điểm thì để trống.",
-    "input_schema": {
-      "type": "object",
-      "properties": {
-        "location": {
-          "type": "string",
-          "description": "Tên thành phố/địa điểm; để trống nếu người dùng không nói (dùng địa điểm mặc định)"
-        }
-      }
-    }
-  },
-  {
     "name": "open_website",
     "description": "Mở một trang web trong trình duyệt.",
     "input_schema": {
@@ -230,6 +217,72 @@
         "query",
         "site"
       ]
+    }
+  },
+  {
+    "name": "web_search_list",
+    "description": "Tìm thông tin trên web rồi ĐỌC danh sách vài kết quả đầu để người dùng chọn (KHÔNG mở thẳng). Dùng khi người dùng muốn 'tìm thông tin về X', 'tra cứu X', 'tìm hiểu về X' — trừ YouTube/Wikipedia. Sau đó người dùng chọn số nào thì dùng open_search_result.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Nội dung cần tìm"
+        },
+        "engine": {
+          "type": "string",
+          "enum": [
+            "google",
+            "duckduckgo"
+          ],
+          "description": "Công cụ tìm (mặc định theo cấu hình)"
+        }
+      },
+      "required": [
+        "query"
+      ]
+    }
+  },
+  {
+    "name": "open_search_result",
+    "description": "Mở một kết quả trong danh sách VỪA tìm bằng web_search_list, theo SỐ THỨ TỰ. Dùng khi người dùng nói 'mở kết quả số 2', 'vào link 1', 'cái đầu tiên'...",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "index": {
+          "type": "integer",
+          "description": "Số thứ tự kết quả (1, 2, 3...)"
+        }
+      },
+      "required": [
+        "index"
+      ]
+    }
+  },
+  {
+    "name": "read_search_result",
+    "description": "Tải NỘI DUNG THẬT của một kết quả trong danh sách VỪA tìm bằng web_search_list, theo SỐ THỨ TỰ (mặc định số 1) — để ĐỌC rồi TRẢ LỜI CÂU HỎI của người dùng bằng nội dung đó. Dùng cho câu hỏi cần thông tin cụ thể (vd 'hôm nay có sự kiện gì...', 'vì sao...', 'X là ai'), KHÁC với open_search_result (chỉ mở tab, không đọc nội dung).",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "index": {
+          "type": "integer",
+          "description": "Số thứ tự kết quả cần đọc (mặc định 1)"
+        }
+      }
+    }
+  },
+  {
+    "name": "get_weather",
+    "description": "Xem thời tiết hôm nay ở một địa điểm: mô tả trời, nhiệt độ, khả năng mưa, chỉ số tia UV, kèm khuyến nghị (che nắng, mang áo mưa...). Dùng khi người dùng hỏi 'thời tiết hôm nay', 'trời có mưa không', 'nắng không', 'tia UV mạnh không'. Không nói địa điểm thì để trống.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "location": {
+          "type": "string",
+          "description": "Tên thành phố/địa điểm; để trống nếu người dùng không nói (dùng địa điểm mặc định)"
+        }
+      }
     }
   },
   {
@@ -380,59 +433,6 @@
       "required": [
         "action"
       ]
-    }
-  },
-  {
-    "name": "web_search_list",
-    "description": "Tìm thông tin trên web rồi ĐỌC danh sách vài kết quả đầu để người dùng chọn (KHÔNG mở thẳng). Dùng khi người dùng muốn 'tìm thông tin về X', 'tra cứu X', 'tìm hiểu về X' — trừ YouTube/Wikipedia. Sau đó người dùng chọn số nào thì dùng open_search_result.",
-    "input_schema": {
-      "type": "object",
-      "properties": {
-        "query": {
-          "type": "string",
-          "description": "Nội dung cần tìm"
-        },
-        "engine": {
-          "type": "string",
-          "enum": [
-            "google",
-            "duckduckgo"
-          ],
-          "description": "Công cụ tìm (mặc định theo cấu hình)"
-        }
-      },
-      "required": [
-        "query"
-      ]
-    }
-  },
-  {
-    "name": "open_search_result",
-    "description": "Mở một kết quả trong danh sách VỪA tìm bằng web_search_list, theo SỐ THỨ TỰ. Dùng khi người dùng nói 'mở kết quả số 2', 'vào link 1', 'cái đầu tiên'...",
-    "input_schema": {
-      "type": "object",
-      "properties": {
-        "index": {
-          "type": "integer",
-          "description": "Số thứ tự kết quả (1, 2, 3...)"
-        }
-      },
-      "required": [
-        "index"
-      ]
-    }
-  },
-  {
-    "name": "read_search_result",
-    "description": "Tải NỘI DUNG THẬT của một kết quả trong danh sách VỪA tìm bằng web_search_list, theo SỐ THỨ TỰ (mặc định số 1) — để ĐỌC rồi TRẢ LỜI CÂU HỎI của người dùng bằng nội dung đó. Dùng cho câu hỏi cần thông tin cụ thể (vd 'hôm nay có sự kiện gì...', 'vì sao...', 'X là ai'), KHÁC với open_search_result (chỉ mở tab, không đọc nội dung).",
-    "input_schema": {
-      "type": "object",
-      "properties": {
-        "index": {
-          "type": "integer",
-          "description": "Số thứ tự kết quả cần đọc (mặc định 1)"
-        }
-      }
     }
   },
   {

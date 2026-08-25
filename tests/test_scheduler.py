@@ -2,7 +2,7 @@
 Test ReminderScheduler + bộ tool lập lịch.
 
 Không chạy thread nền: gọi trực tiếp due()/_fire_due() với mốc thời gian tất định,
-dùng file tạm cho lưu trữ. Tool lập lịch test qua build_default_registry(scheduler).
+dùng file tạm cho lưu trữ. Tool lập lịch test qua registry_with(actions=scheduler).
 """
 
 import os
@@ -16,7 +16,7 @@ except ImportError:
     pytest = None
 
 from services.scheduler import ReminderScheduler
-from agent.tools import build_default_registry
+
 from conftest import registry_with
 from features.schedule.tools import _parse_fire_time
 
@@ -124,7 +124,7 @@ def test_parse_at_with_h_separator():
 # --------------------------- Tool lập lịch --------------------------- #
 
 def test_schedule_tools_registered_only_with_scheduler():
-    names_without = {s["name"] for s in build_default_registry(MagicMock()).specs()}
+    names_without = {s["name"] for s in registry_with(actions=MagicMock()).specs()}
     assert "schedule_reminder" not in names_without
 
     sched = ReminderScheduler(store_path=_temp_store())

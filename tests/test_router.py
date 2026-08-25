@@ -8,7 +8,7 @@ except ImportError:
 from llm import prompts
 from agent.router import Router, CASE_TOOLS
 from llm.client import AssistantTurn
-from agent.tools import build_default_registry
+
 from conftest import registry_with
 
 
@@ -29,7 +29,7 @@ class _FakeActions:
 
 
 def _registry():
-    return build_default_registry(_FakeActions())      # có nhóm web, system... (không browser/screen)
+    return registry_with(actions=_FakeActions())      # có nhóm web, system... (không browser/screen)
 
 
 # --------------------------- prompts ---------------------------
@@ -123,7 +123,7 @@ def test_pim_narrows_by_tool_prefix():
     # prefix phải ĐẶC THÙ để không nuốt tool sẵn có (vd 'g' sẽ dính get_weather)
     from features.contract import FeatureContext
     from features.pim.tools import register as register_pim
-    reg = build_default_registry(_FakeActions())
+    reg = registry_with(actions=_FakeActions())
     register_pim(reg, FeatureContext(mcp=_FakeMCP(["gws_list_events", "gws_send_mail"])))
     _, specs = Router(_FakeLLM("pim"), mcp_prefix="gws_").select("lịch hôm nay có gì", reg)
     assert {s["name"] for s in specs} == {"gws_list_events", "gws_send_mail"}

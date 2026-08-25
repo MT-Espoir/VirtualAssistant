@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from memory.profile import (UserProfile, apply_update, summarize,
                                           _relevant_facts)
-from agent.tools import build_default_registry
+
 from conftest import registry_with
 
 
@@ -152,7 +152,7 @@ def test_weather_uses_profile_default_location():
 
 
 def test_remember_tool_registered_only_with_profile():
-    reg_no = build_default_registry(MagicMock())
+    reg_no = registry_with(actions=MagicMock())
     assert not reg_no.has("remember_about_user")
 
     class _P:

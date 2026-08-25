@@ -1,5 +1,7 @@
 """Test feature `place` sau khi chuyển sang hợp đồng feature-module."""
 
+from conftest import registry_with
+
 from unittest.mock import MagicMock
 
 from agent.router import CASE_TOOLS

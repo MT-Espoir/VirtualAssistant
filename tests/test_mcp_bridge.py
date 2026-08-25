@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from services.mcp_bridge import is_destructive_tool, _extract_text
-from agent.tools import build_default_registry
+
 from conftest import registry_with
 
 
@@ -83,7 +83,7 @@ def test_mcp_duplicate_name_skipped_not_crash():
 
 
 def test_mcp_absent_without_client():
-    assert not build_default_registry(MagicMock()).has("gcal_list_events")
+    assert not registry_with(actions=MagicMock()).has("gcal_list_events")
 
 
 # --------------------------- nháp email -> panel xem trước --------------------------- #

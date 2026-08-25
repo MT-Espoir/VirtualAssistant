@@ -1,0 +1,13 @@
+"""Khai báo Feature `weather`."""
+
+from features.contract import Feature
+from features.weather import tools
+from features.weather.prompt import CASE_WEATHER
+
+FEATURE = Feature(
+    name="weather",
+    register=tools.register,
+    requires=('actions',),
+    prompt=CASE_WEATHER,
+    max_spec_chars=900,
+)

@@ -11,6 +11,8 @@ Tiền tố system prompt (BASE+CASE ở đầu, thời gian/hồ sơ ở cuối
 refactor feature-module đụng vào nhiều nhất.
 """
 
+from conftest import registry_with
+
 import json
 
 from conftest import full_registry
@@ -104,14 +106,18 @@ def test_khong_tool_nao_phinh_qua_muc():
 # --- ảnh chụp gốc: chứng minh refactor KHÔNG đổi hành vi ---------------------------
 
 def test_specs_khop_anh_chup_truoc_refactor():
-    """So với ảnh chụp `specs()` lấy TRƯỚC đợt refactor feature-module (2026-08-25).
+    """So với ảnh chụp `specs()` — bằng chứng refactor không đụng vào hành vi.
 
     Cùng cách làm đã dùng ở Phase 0.5 khi chuyển prompt từ JSON sang Python: so từng
-    byte với bản gốc thay vì "chạy thử thấy ổn". Refactor thuần thì file này không được
-    đổi; đổi tức là đã lỡ tay đụng vào hành vi — hoặc thứ tự nạp vừa xê dịch.
+    byte với bản gốc thay vì "chạy thử thấy ổn". Đổi tức là đã lỡ tay đụng vào hành vi —
+    hoặc thứ tự nạp feature vừa xê dịch.
 
-    Migrate NGƯỢC thứ tự đăng ký (places đang ở cuối -> rút ra trước) thì ảnh chụp này
-    giữ nguyên suốt cả đợt. Khi nào cần đổi thật, chụp lại và ghi rõ lý do trong commit.
+    ĐÃ CHỤP LẠI MỘT LẦN (2026-08-25, bước cuối việc 4). Suốt đợt migrate ảnh chụp giữ
+    nguyên nhờ rút khối đăng ký CUỐI CÙNG trước; riêng nhóm lõi thì không giữ được:
+    system/web/weather cài răng lược trong một khối `reg.register` liên tiếp, tách theo
+    case tất yếu đổi thứ tự. Đã kiểm trước khi chụp lại: vẫn đúng 47 tool, nội dung TỪNG
+    tool giống hệt, chỉ `get_weather` đổi vị trí. Prompt cũng nguyên vẹn — 11/11 case,
+    BASE và ROUTER giống từng byte so với bản trong git.
     """
     import pathlib
     goc = pathlib.Path(__file__).parent / "fixtures" / "tool_specs_baseline.json"

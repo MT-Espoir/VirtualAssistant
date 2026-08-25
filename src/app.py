@@ -12,9 +12,8 @@ import time
 
 from agent.agent import Agent
 from agent.actions_facade import AssistantActions
-from agent.tools import build_default_registry
-from features.catalog import FEATURES
-from features.contract import FeatureContext, load_features
+from features.contract import FeatureContext
+from features.registry import build_registry
 from features.places.service import PlacesService
 from services.location import LocationStore
 from memory.profile import UserProfile
@@ -548,16 +547,13 @@ def main():
         mood = MoodState(baseline_valence=persona.baseline_valence(),
                          baseline_arousal=persona.baseline_arousal())
 
-    # Registry dựng qua HAI đường trong lúc migrate feature-module: nhóm chưa chuyển vẫn
-    # nằm ở `build_default_registry`, nhóm đã chuyển nạp sau theo `FEATURES`. Thứ tự này
-    # giữ nguyên thứ tự tool cũ — xem ghi chú trong `features/catalog.py`.
+    # Toàn bộ tool đến từ danh mục feature — xem `features/catalog.py`.
     actions = AssistantActions()
-    registry = build_default_registry(actions, profile=profile)
     feature_ctx = FeatureContext(actions=actions, bus=bus, browser=browser,
                                  contacts=contacts, location=location, mcp=mcp,
                                  places=places, profile=profile, routines=routines,
                                  scheduler=scheduler, screen=screen, tasks=tasks)
-    load_features(registry, feature_ctx, FEATURES)
+    registry, _ = build_registry(feature_ctx)
 
     agent = Agent(llm=llm,
                   registry=registry,

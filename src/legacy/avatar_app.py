@@ -13,7 +13,8 @@ import threading
 
 from agent.agent import Agent
 from agent.actions_facade import AssistantActions
-from agent.tools import build_default_registry
+from features.contract import FeatureContext
+from features.registry import build_registry
 from llm.client import build_default_llm_client
 from utils.events import AssistantBus
 from services.scheduler import ReminderScheduler
@@ -83,7 +84,7 @@ def main():
 
     from utils.config import config
     agent = Agent(llm=llm,
-                  registry=build_default_registry(AssistantActions(), scheduler=scheduler),
+                  registry=build_registry(FeatureContext(actions=AssistantActions(), scheduler=scheduler))[0],
                   max_history_turns=config.MAX_HISTORY_TURNS,
                   memory_path=config.MEMORY_PATH or None)
 

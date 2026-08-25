@@ -12,6 +12,93 @@ from utils.config import config
 
 def register(reg, ctx):
     """Đăng ký tool của feature `web` theo đúng thứ tự đăng ký cũ."""
+    actions = ctx.actions
+
+    reg.register(Tool(
+        name="web_fetch",
+        description="Tải nội dung một trang web theo URL để đọc/tóm tắt. "
+                    "Dùng khi người dùng đưa link hoặc muốn tóm tắt một trang cụ thể.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "url": {"type": "string", "description": "URL đầy đủ (http/https)"},
+            },
+            "required": ["url"],
+        },
+        handler=lambda url: actions.web_fetch(url),
+    ))
+
+    reg.register(Tool(
+        name="wikipedia_lookup",
+        description="Tra cứu nhanh một chủ đề trên Wikipedia (trả đoạn tóm tắt). "
+                    "Dùng khi người dùng hỏi 'X là gì', tra cứu khái niệm/nhân vật.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "topic": {"type": "string", "description": "Chủ đề/từ khóa cần tra"},
+            },
+            "required": ["topic"],
+        },
+        handler=lambda topic: actions.wikipedia_lookup(topic),
+    ))
+
+    reg.register(Tool(
+        name="open_website",
+        description="Mở một trang web trong trình duyệt.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "website": {"type": "string", "description": "Tên hoặc URL trang web"},
+            },
+            "required": ["website"],
+        },
+        handler=lambda website: actions.open_website(website),
+    ))
+
+    reg.register(Tool(
+        name="web_search",
+        description="Tìm kiếm trên web với engine chỉ định.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Nội dung tìm kiếm"},
+                "engine": {"type": "string", "enum": ["google", "bing", "youtube"],
+                           "description": "Công cụ tìm kiếm (mặc định google)"},
+            },
+            "required": ["query"],
+        },
+        handler=lambda query, engine="google": actions.search_web(query, engine),
+    ))
+
+    reg.register(Tool(
+        name="play_youtube",
+        description="Tìm và phát một video/bài hát trên YouTube.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Tên video/bài hát"},
+            },
+            "required": ["query"],
+        },
+        handler=lambda query: actions.search_and_play_youtube_direct(query),
+    ))
+
+    reg.register(Tool(
+        name="search_on_site",
+        description="Tìm kiếm nội dung trên một trang cụ thể (facebook, youtube, github...).",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Nội dung tìm kiếm"},
+                "site": {"type": "string", "description": "Tên trang, vd facebook, youtube"},
+            },
+            "required": ["query", "site"],
+        },
+        handler=lambda query, site: actions.search_on_specific_site(query, site),
+    ))
+
+    # Nhóm đọc kết quả tìm kiếm cần cầu nối Chrome; thiếu thì bỏ qua,
+    # phần tìm kiếm cơ bản ở trên vẫn dùng được.
     if ctx.browser is not None:
         _register_web_search_tools(reg, ctx.browser, ctx.actions)
 

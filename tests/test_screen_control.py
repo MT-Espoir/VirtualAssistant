@@ -6,7 +6,7 @@ except ImportError:
     pytest = None
 
 from actions.screen_control import search_text, summarize_find
-from agent.tools import build_default_registry
+
 from conftest import registry_with
 
 

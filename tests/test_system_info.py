@@ -4,6 +4,8 @@ sys.modules trước khi import, và giả shutil.disk_usage. Nhờ vậy chạy
 máy và kiểm tra logic định dạng chuỗi + định tuyến theo `what`.
 """
 
+from conftest import registry_with
+
 import sys
 import types
 from unittest.mock import MagicMock
@@ -84,13 +86,13 @@ def test_system_info_tool_calls_correct_path():
     Dùng stub CHỈ có system_info nên nếu gọi sai đường sẽ ném AttributeError."""
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-    from agent.tools import build_default_registry
+    from conftest import registry_with
 
     class ActionsStub:
         def system_info(self, what="all"):
             return f"info:{what}"
 
-    reg = build_default_registry(ActionsStub())
+    reg = registry_with(actions=ActionsStub())
     assert reg.run("system_info", {"what": "cpu"}) == "info:cpu"
 
 

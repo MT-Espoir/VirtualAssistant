@@ -1,5 +1,7 @@
 """Test bộ khung eval (evals.harness) — LLM giả, không cần model thật/mạng."""
 
+from conftest import registry_with
+
 from unittest.mock import MagicMock
 
 try:
@@ -8,7 +10,7 @@ except ImportError:
     pytest = None
 
 from llm.client import AssistantTurn, ToolCall
-from agent.tools import build_default_registry
+
 from evals.harness import (
     RecordingRegistry, RecordingRouter, score_case, run_case, summarize, CountingLLM)
 
@@ -26,14 +28,14 @@ class _FakeLLM:
 
 
 def _registry():
-    return build_default_registry(MagicMock())
+    return registry_with(actions=MagicMock())
 
 
 # --------------------------- RecordingRegistry --------------------------- #
 
 def test_recording_registry_records_without_executing():
     actions = MagicMock()
-    rec = RecordingRegistry(build_default_registry(actions))
+    rec = RecordingRegistry(registry_with(actions=actions))
     out = rec.run("open_app", {"app_name": "chrome"})
     assert rec.calls == [("open_app", {"app_name": "chrome"})]
     assert "open_app" in out                           # stub nêu tên tool đã gọi
@@ -97,7 +99,7 @@ def test_run_case_captures_tool_call_no_side_effect():
         AssistantTurn(tool_calls=[ToolCall("t1", "open_app", {"app_name": "chrome"})]),
         AssistantTurn(text="Đã mở."),
     ])
-    r = run_case(llm, build_default_registry(actions), router=None,
+    r = run_case(llm, registry_with(actions=actions), router=None,
                  case={"id": "x", "text": "mở chrome", "expect": ["open_app"]})
     assert r["tool_ok"] is True and r["called"] == ["open_app"]
     actions.open_application.assert_not_called()       # tool KHÔNG chạy thật
@@ -110,7 +112,7 @@ def test_run_case_counts_deferred_destructive_as_selected():
     llm = _FakeLLM([
         AssistantTurn(tool_calls=[ToolCall("t1", "close_app", {"app_name": "chrome"})]),
     ])
-    r = run_case(llm, build_default_registry(actions), router=None,
+    r = run_case(llm, registry_with(actions=actions), router=None,
                  case={"id": "c", "text": "đóng chrome", "expect": ["close_app"]})
     assert r["tool_ok"] is True and r["called"] == ["close_app"]
     actions.close_application.assert_not_called()          # KHÔNG chạy (hoãn + không side effect)
@@ -125,7 +127,7 @@ def test_run_case_records_router_case():
         def select_for_case(self, case, registry):
             return "sys", registry.specs()
 
-    r = run_case(llm, build_default_registry(MagicMock()), router=_FakeRouter(),
+    r = run_case(llm, registry_with(actions=MagicMock()), router=_FakeRouter(),
                  case={"id": "g", "text": "chào", "expect": [], "case": "general"})
     assert r["got_case"] == "general" and r["case_ok"] is True and r["tool_ok"] is True
 
@@ -166,7 +168,7 @@ def test_run_case_reports_llm_calls():
         AssistantTurn(tool_calls=[ToolCall("t1", "open_app", {"app_name": "chrome"})]),
         AssistantTurn(text="Đã mở."),
     ])
-    r = run_case(llm, build_default_registry(MagicMock()), router=None,
+    r = run_case(llm, registry_with(actions=MagicMock()), router=None,
                  case={"id": "x", "text": "mở chrome", "expect": ["open_app"]})
     assert r["calls"] == 2 and r["seconds"] is not None
 
@@ -186,7 +188,7 @@ def test_run_case_shared_counter_includes_router_classify():
         def select_for_case(self, case, registry):
             return "sys", registry.specs()
 
-    r = run_case(shared, build_default_registry(MagicMock()),
+    r = run_case(shared, registry_with(actions=MagicMock()),
                  router=_RouterUsingSharedLLM(),
                  case={"id": "x", "text": "mở chrome", "expect": ["open_app"],
                        "case": "system"})
