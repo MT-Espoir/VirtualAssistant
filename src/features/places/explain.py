@@ -14,8 +14,8 @@ Vì sao siết chặt: tầng này SUY DIỄN, và câu suy diễn nghe thuyết
 dẫn. Không có luật thì đây là chỗ dễ biến trợ lý thành máy bịa có duyên nhất.
 """
 
-from actions.place_features import minutes_until_close
-from actions.place_ranking import INTENT_LEXICON
+from features.places.attributes import minutes_until_close
+from features.places.ranking import INTENT_LEXICON
 from utils.text_norm import strip_accents
 from utils.units import say_distance
 

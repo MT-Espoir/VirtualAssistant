@@ -13,7 +13,9 @@ import time
 from agent.agent import Agent
 from agent.actions_facade import AssistantActions
 from agent.tools import build_default_registry
-from actions.places import PlacesService
+from features.catalog import FEATURES
+from features.contract import FeatureContext, load_features
+from features.places.service import PlacesService
 from services.location import LocationStore
 from memory.profile import UserProfile
 from agent.persona import PersonaState, MoodState
@@ -546,13 +548,21 @@ def main():
         mood = MoodState(baseline_valence=persona.baseline_valence(),
                          baseline_arousal=persona.baseline_arousal())
 
+    # Registry dựng qua HAI đường trong lúc migrate feature-module: nhóm chưa chuyển vẫn
+    # nằm ở `build_default_registry`, nhóm đã chuyển nạp sau theo `FEATURES`. Thứ tự này
+    # giữ nguyên thứ tự tool cũ — xem ghi chú trong `features/catalog.py`.
+    actions = AssistantActions()
+    registry = build_default_registry(actions, scheduler=scheduler, browser=browser,
+                                      screen=screen, profile=profile, tasks=tasks,
+                                      routines=routines, contacts=contacts, mcp=mcp)
+    feature_ctx = FeatureContext(actions=actions, bus=bus, browser=browser,
+                                 contacts=contacts, location=location, mcp=mcp,
+                                 places=places, profile=profile, routines=routines,
+                                 scheduler=scheduler, screen=screen, tasks=tasks)
+    load_features(registry, feature_ctx, FEATURES)
+
     agent = Agent(llm=llm,
-                  registry=build_default_registry(AssistantActions(), scheduler=scheduler,
-                                                   browser=browser, screen=screen,
-                                                   profile=profile, tasks=tasks,
-                                                   routines=routines, contacts=contacts,
-                                                   mcp=mcp, places=places,
-                                                   location=location, bus=bus),
+                  registry=registry,
                   **({"system": system_prompt} if system_prompt else {}),
                   max_history_turns=config.MAX_HISTORY_TURNS,
                   memory_path=config.MEMORY_PATH or None, router=router, profile=profile,

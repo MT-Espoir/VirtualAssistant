@@ -13,8 +13,8 @@ Nguyên tắc:
   rồi trình bày như thể đó là câu trả lời cho câu hỏi cũ.
 """
 
-from actions.place_features import minutes_until_close
-from actions.place_ranking import INTENT_LEXICON
+from features.places.attributes import minutes_until_close
+from features.places.ranking import INTENT_LEXICON
 from utils.text_norm import strip_accents
 
 # Thu hẹp trên dữ liệu ĐÃ CÓ: chỉ những thuộc tính mà ta đã bóc được cho từng ứng viên.

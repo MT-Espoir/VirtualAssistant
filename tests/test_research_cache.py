@@ -15,7 +15,7 @@ Thời gian được tiêm qua `now=` nên không có test nào phải chờ.
 import json
 import urllib.parse
 
-from actions.place_research import cache_key, research, say_age, say_research
+from features.places.deep_research import cache_key, research, say_age, say_research
 from research.claim_cache import CACHE_VERSION, ClaimCache, merge_sources
 
 

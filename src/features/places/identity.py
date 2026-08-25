@@ -19,7 +19,7 @@ DRY: mọi thứ về so tên và khoảng cách lấy từ `actions/places.py`.
 danh tồn tại song song thì cùng một chuỗi cho hai kết quả khác nhau — không lặp lại ở đây.
 """
 
-from actions.places import GENERIC_TOKENS, haversine_km, name_score, tokens
+from features.places.service import GENERIC_TOKENS, haversine_km, name_score, tokens
 
 # Lưới toạ độ ~20 m: đủ mịn để không gộp hai quán cạnh nhau, đủ thô để cùng một quán
 # lấy từ hai nguồn vẫn rơi vào một ô.

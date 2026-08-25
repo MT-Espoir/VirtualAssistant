@@ -1,0 +1,830 @@
+[
+  {
+    "name": "open_app",
+    "description": "Mở một ứng dụng trên máy (ví dụ Chrome, Notepad, Word).",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "app_name": {
+          "type": "string",
+          "description": "Tên ứng dụng cần mở"
+        }
+      },
+      "required": [
+        "app_name"
+      ]
+    }
+  },
+  {
+    "name": "close_app",
+    "description": "Đóng một ứng dụng đang chạy. Trợ lý sẽ tự hỏi xác nhận trước khi đóng.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "app_name": {
+          "type": "string",
+          "description": "Tên ứng dụng cần đóng"
+        }
+      },
+      "required": [
+        "app_name"
+      ]
+    }
+  },
+  {
+    "name": "list_windows",
+    "description": "Liệt kê các cửa sổ/ứng dụng ĐANG MỞ trên máy (theo tiêu đề). Dùng khi người dùng hỏi 'đang mở những gì', 'có cửa sổ/ứng dụng nào đang chạy', hoặc để biết tên cửa sổ trước khi chuyển sang nó.",
+    "input_schema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "switch_window",
+    "description": "Chuyển sang (đưa RA TRƯỚC) một cửa sổ/ứng dụng ĐANG CHẠY SẴN theo tên, vd 'chuyển sang Chrome', 'qua cửa sổ Word', 'mở lại Claude đang mở'. KHÁC open_app (mở ứng dụng MỚI) — tool này chỉ focus cửa sổ đã chạy.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Tên/một phần tiêu đề cửa sổ cần chuyển sang"
+        }
+      },
+      "required": [
+        "name"
+      ]
+    }
+  },
+  {
+    "name": "set_volume",
+    "description": "Điều chỉnh âm lượng hệ thống. Dùng 'level' để đặt mức tuyệt đối (0-100), hoặc 'change' để tăng/giảm tương đối (số âm để giảm).",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "level": {
+          "type": "integer",
+          "description": "Mức âm lượng 0-100"
+        },
+        "change": {
+          "type": "integer",
+          "description": "Thay đổi tương đối, vd 10 hoặc -15"
+        }
+      }
+    }
+  },
+  {
+    "name": "set_brightness",
+    "description": "Điều chỉnh độ sáng màn hình. Dùng 'level' để đặt mức tuyệt đối (0-100), hoặc 'change' để tăng/giảm tương đối.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "level": {
+          "type": "integer",
+          "description": "Mức độ sáng 0-100"
+        },
+        "change": {
+          "type": "integer",
+          "description": "Thay đổi tương đối"
+        }
+      }
+    }
+  },
+  {
+    "name": "system_info",
+    "description": "Xem tình trạng máy tính: RAM, ổ đĩa, CPU, pin.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "what": {
+          "type": "string",
+          "enum": [
+            "all",
+            "memory",
+            "disk",
+            "cpu",
+            "battery"
+          ],
+          "description": "Mục cần xem (mặc định all)"
+        }
+      }
+    }
+  },
+  {
+    "name": "web_fetch",
+    "description": "Tải nội dung một trang web theo URL để đọc/tóm tắt. Dùng khi người dùng đưa link hoặc muốn tóm tắt một trang cụ thể.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "description": "URL đầy đủ (http/https)"
+        }
+      },
+      "required": [
+        "url"
+      ]
+    }
+  },
+  {
+    "name": "wikipedia_lookup",
+    "description": "Tra cứu nhanh một chủ đề trên Wikipedia (trả đoạn tóm tắt). Dùng khi người dùng hỏi 'X là gì', tra cứu khái niệm/nhân vật.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "topic": {
+          "type": "string",
+          "description": "Chủ đề/từ khóa cần tra"
+        }
+      },
+      "required": [
+        "topic"
+      ]
+    }
+  },
+  {
+    "name": "get_weather",
+    "description": "Xem thời tiết hôm nay ở một địa điểm: mô tả trời, nhiệt độ, khả năng mưa, chỉ số tia UV, kèm khuyến nghị (che nắng, mang áo mưa...). Dùng khi người dùng hỏi 'thời tiết hôm nay', 'trời có mưa không', 'nắng không', 'tia UV mạnh không'. Không nói địa điểm thì để trống.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "location": {
+          "type": "string",
+          "description": "Tên thành phố/địa điểm; để trống nếu người dùng không nói (dùng địa điểm mặc định)"
+        }
+      }
+    }
+  },
+  {
+    "name": "open_website",
+    "description": "Mở một trang web trong trình duyệt.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "website": {
+          "type": "string",
+          "description": "Tên hoặc URL trang web"
+        }
+      },
+      "required": [
+        "website"
+      ]
+    }
+  },
+  {
+    "name": "web_search",
+    "description": "Tìm kiếm trên web với engine chỉ định.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Nội dung tìm kiếm"
+        },
+        "engine": {
+          "type": "string",
+          "enum": [
+            "google",
+            "bing",
+            "youtube"
+          ],
+          "description": "Công cụ tìm kiếm (mặc định google)"
+        }
+      },
+      "required": [
+        "query"
+      ]
+    }
+  },
+  {
+    "name": "play_youtube",
+    "description": "Tìm và phát một video/bài hát trên YouTube.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Tên video/bài hát"
+        }
+      },
+      "required": [
+        "query"
+      ]
+    }
+  },
+  {
+    "name": "search_on_site",
+    "description": "Tìm kiếm nội dung trên một trang cụ thể (facebook, youtube, github...).",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Nội dung tìm kiếm"
+        },
+        "site": {
+          "type": "string",
+          "description": "Tên trang, vd facebook, youtube"
+        }
+      },
+      "required": [
+        "query",
+        "site"
+      ]
+    }
+  },
+  {
+    "name": "schedule_reminder",
+    "description": "Đặt một lời NHẮC (chỉ ĐỌC nhắc, KHÔNG tự làm) vào thời điểm sau. Dùng khi người dùng nói 'nhắc tôi X lúc...'. Cho 'delay_minutes' (số phút nữa) HOẶC 'at' (giờ HH:MM, hoặc ISO datetime).",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "message": {
+          "type": "string",
+          "description": "Nội dung cần nhắc"
+        },
+        "delay_minutes": {
+          "type": "number",
+          "description": "Nhắc sau bao nhiêu phút"
+        },
+        "at": {
+          "type": "string",
+          "description": "Giờ nhắc, vd '15:00' hoặc ISO datetime"
+        }
+      },
+      "required": [
+        "message"
+      ]
+    }
+  },
+  {
+    "name": "schedule_action",
+    "description": "Hẹn THỰC THI một lệnh vào thời điểm sau (trợ lý TỰ LÀM khi tới giờ, không chỉ nhắc). Dùng khi người dùng nói 'lúc X hãy mở/phát/làm Y', '22h30 mở youtube'. 'command' = câu lệnh sẽ chạy (vd 'mở youtube'). Cho 'delay_minutes' (số phút nữa) HOẶC 'at' (giờ HH:MM).",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string",
+          "description": "Lệnh cần thực thi khi tới giờ, vd 'mở youtube'"
+        },
+        "delay_minutes": {
+          "type": "number",
+          "description": "Làm sau bao nhiêu phút"
+        },
+        "at": {
+          "type": "string",
+          "description": "Giờ thực thi, vd '22:30'"
+        }
+      },
+      "required": [
+        "command"
+      ]
+    }
+  },
+  {
+    "name": "list_reminders",
+    "description": "Liệt kê các lịch nhắc đang có.",
+    "input_schema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "cancel_reminder",
+    "description": "Hủy một lịch nhắc theo mã (id).",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "task_id": {
+          "type": "string",
+          "description": "Mã lịch nhắc"
+        }
+      },
+      "required": [
+        "task_id"
+      ]
+    }
+  },
+  {
+    "name": "browser_list_tabs",
+    "description": "Liệt kê các tab Chrome đang mở (tiêu đề + trang). Dùng khi người dùng hỏi 'đang mở tab gì', hoặc để biết tab nào trước khi đóng.",
+    "input_schema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "browser_close_tab",
+    "description": "Đóng (các) tab Chrome có tiêu đề hoặc URL chứa 'keyword'. QUAN TRỌNG — đóng tab KHÓ HOÀN TÁC: BẮT BUỘC gọi lần đầu với confirm=false để xem danh sách tab sẽ đóng, ĐỌC danh sách đó cho người dùng và CHỜ họ đồng ý; chỉ gọi lại với confirm=true SAU KHI người dùng xác nhận. Không tự đặt confirm=true ngay lần đầu.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "keyword": {
+          "type": "string",
+          "description": "Từ khoá khớp tiêu đề/URL tab, vd 'facebook'"
+        },
+        "confirm": {
+          "type": "boolean",
+          "description": "false = chỉ xem trước; true = thật sự đóng (chỉ dùng sau khi người dùng đã đồng ý)"
+        }
+      },
+      "required": [
+        "keyword"
+      ]
+    }
+  },
+  {
+    "name": "browser_open_or_reuse",
+    "description": "Mở một URL trong Chrome, TÁI DÙNG tab cùng trang nếu đã mở (chuyển tab đó tới URL mới + đưa lên trước) thay vì tạo tab mới. Dùng khi mở/chuyển sang một trang có thể đã mở sẵn, vd mở video YouTube khác trong tab YouTube đang có.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "description": "URL đầy đủ cần mở"
+        },
+        "match_domain": {
+          "type": "string",
+          "description": "Tên miền để tìm tab tái dùng (mặc định tự suy từ url, vd youtube.com)"
+        }
+      },
+      "required": [
+        "url"
+      ]
+    }
+  },
+  {
+    "name": "browser_media_control",
+    "description": "Điều khiển trình phát media (video/nhạc) trên tab Chrome đang mở, ví dụ YouTube. Dùng khi người dùng nói 'tạm dừng/phát tiếp nhạc', 'tua', 'chỉnh âm lượng video', 'bài kế/trước'. 'action': play, pause, toggle (đảo phát/dừng), next, prev (trong playlist), set_volume (cần 'value' 0-100), adjust_volume (cần 'value' = mức thay đổi tương đối, vd +10/-10 để to/nhỏ hơn), seek (cần 'value' = số giây tua tới; số âm để tua lùi).",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "play",
+            "pause",
+            "toggle",
+            "next",
+            "prev",
+            "set_volume",
+            "adjust_volume",
+            "seek"
+          ],
+          "description": "Hành động điều khiển media"
+        },
+        "value": {
+          "type": "number",
+          "description": "set_volume (0-100), adjust_volume (±, vd 10/-10), hoặc seek (giây)"
+        }
+      },
+      "required": [
+        "action"
+      ]
+    }
+  },
+  {
+    "name": "web_search_list",
+    "description": "Tìm thông tin trên web rồi ĐỌC danh sách vài kết quả đầu để người dùng chọn (KHÔNG mở thẳng). Dùng khi người dùng muốn 'tìm thông tin về X', 'tra cứu X', 'tìm hiểu về X' — trừ YouTube/Wikipedia. Sau đó người dùng chọn số nào thì dùng open_search_result.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Nội dung cần tìm"
+        },
+        "engine": {
+          "type": "string",
+          "enum": [
+            "google",
+            "duckduckgo"
+          ],
+          "description": "Công cụ tìm (mặc định theo cấu hình)"
+        }
+      },
+      "required": [
+        "query"
+      ]
+    }
+  },
+  {
+    "name": "open_search_result",
+    "description": "Mở một kết quả trong danh sách VỪA tìm bằng web_search_list, theo SỐ THỨ TỰ. Dùng khi người dùng nói 'mở kết quả số 2', 'vào link 1', 'cái đầu tiên'...",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "index": {
+          "type": "integer",
+          "description": "Số thứ tự kết quả (1, 2, 3...)"
+        }
+      },
+      "required": [
+        "index"
+      ]
+    }
+  },
+  {
+    "name": "read_search_result",
+    "description": "Tải NỘI DUNG THẬT của một kết quả trong danh sách VỪA tìm bằng web_search_list, theo SỐ THỨ TỰ (mặc định số 1) — để ĐỌC rồi TRẢ LỜI CÂU HỎI của người dùng bằng nội dung đó. Dùng cho câu hỏi cần thông tin cụ thể (vd 'hôm nay có sự kiện gì...', 'vì sao...', 'X là ai'), KHÁC với open_search_result (chỉ mở tab, không đọc nội dung).",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "index": {
+          "type": "integer",
+          "description": "Số thứ tự kết quả cần đọc (mặc định 1)"
+        }
+      }
+    }
+  },
+  {
+    "name": "take_screenshot",
+    "description": "Chụp lại toàn bộ màn hình và lưu vào máy (local). Dùng khi người dùng yêu cầu 'chụp màn hình', 'chụp lại màn hình'.",
+    "input_schema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "find_on_screen",
+    "description": "Tìm một từ/cụm từ đang HIỂN THỊ trên màn hình (đọc chữ bằng OCR, chạy local). Trả về các dòng chứa từ khóa. Dùng khi người dùng hỏi 'trên màn hình có ... không', 'tìm ... trên màn hình'.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Từ/cụm từ cần tìm trên màn hình"
+        }
+      },
+      "required": [
+        "query"
+      ]
+    }
+  },
+  {
+    "name": "scroll_screen",
+    "description": "Cuộn màn hình lên hoặc xuống (tại cửa sổ đang trỏ chuột). Dùng khi người dùng nói 'cuộn xuống', 'lướt lên', 'kéo xuống tiếp'.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "direction": {
+          "type": "string",
+          "enum": [
+            "up",
+            "down"
+          ],
+          "description": "Hướng cuộn: up (lên) / down (xuống)"
+        },
+        "amount": {
+          "type": "integer",
+          "description": "Số nấc cuộn (mặc định 3)"
+        }
+      },
+      "required": [
+        "direction"
+      ]
+    }
+  },
+  {
+    "name": "remember_about_user",
+    "description": "Ghi nhớ thông tin cá nhân LÂU DÀI về người dùng khi họ cho biết, để cá nhân hoá về sau. Dùng khi người dùng nói 'tôi tên là...', 'gọi tôi là...', 'tôi ở/sống ở...', 'nhớ giúp tôi rằng...'. CHỈ truyền trường người dùng thực sự nói (bỏ trống các trường khác). QUAN TRỌNG: nếu điều cần nhớ là một SỰ KIỆN có thời điểm (phỏng vấn, cuộc hẹn, deadline) thì truyền thêm 'when' — nhờ đó sau khi qua giờ trợ lý biết việc đã xong, không nhắc lại như sắp diễn ra.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Tên người dùng"
+        },
+        "address_form": {
+          "type": "string",
+          "description": "Cách xưng hô muốn được gọi, vd 'sếp', 'anh Nam'"
+        },
+        "location": {
+          "type": "string",
+          "description": "Địa điểm mặc định (để hỏi thời tiết), vd 'Đà Nẵng'"
+        },
+        "note": {
+          "type": "string",
+          "description": "Một điều khác cần nhớ lâu dài"
+        },
+        "when": {
+          "type": "string",
+          "description": "CHỈ khi 'note' là sự kiện có thời điểm: thời điểm diễn ra dạng ISO 'YYYY-MM-DDTHH:MM' (suy từ ngày giờ hiện tại đã cho ở đầu prompt, vd 'chiều nay 3h')"
+        }
+      }
+    }
+  },
+  {
+    "name": "forget_about_user",
+    "description": "QUÊN một điều đã ghi nhớ về người dùng (ghi chú, quan sát, hoặc sự kiện), khớp theo từ khoá. Dùng khi người dùng nói 'quên chuyện... đi', 'đừng nhớ... nữa', 'bỏ ghi chú...'. Trợ lý sẽ tự hỏi xác nhận trước khi quên.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "keyword": {
+          "type": "string",
+          "description": "Từ khoá của điều cần quên, vd 'phỏng vấn'"
+        }
+      },
+      "required": [
+        "keyword"
+      ]
+    }
+  },
+  {
+    "name": "add_task",
+    "description": "Thêm một việc cần làm (to-do) KHÔNG gắn giờ cụ thể. Dùng khi người dùng nói 'thêm việc...', 'ghi chú việc...', 'tôi cần làm...'. (Nếu có GIỜ cụ thể để nhắc thì dùng schedule_reminder, không phải tool này.)",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "Nội dung việc cần làm"
+        },
+        "due": {
+          "type": "string",
+          "description": "Hạn (tuỳ chọn), vd 'thứ 6'"
+        }
+      },
+      "required": [
+        "text"
+      ]
+    }
+  },
+  {
+    "name": "list_tasks",
+    "description": "Liệt kê các việc cần làm. Dùng khi người dùng hỏi 'còn việc gì', 'việc hôm nay', 'danh sách việc'. Mặc định chỉ việc chưa xong.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "include_done": {
+          "type": "boolean",
+          "description": "true = liệt kê cả việc đã xong"
+        }
+      }
+    }
+  },
+  {
+    "name": "complete_task",
+    "description": "Đánh dấu một việc là ĐÃ XONG (không xoá), khớp theo từ khoá trong nội dung. Dùng khi người dùng nói 'xong việc...', 'làm xong...', 'hoàn thành...'.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "keyword": {
+          "type": "string",
+          "description": "Từ khoá nội dung việc, vd 'mua sữa'"
+        }
+      },
+      "required": [
+        "keyword"
+      ]
+    }
+  },
+  {
+    "name": "remove_task",
+    "description": "Xoá hẳn một việc khỏi danh sách, khớp theo từ khoá. Trợ lý sẽ tự hỏi xác nhận trước khi xoá. Dùng khi người dùng nói 'xoá việc...', 'bỏ việc...'.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "keyword": {
+          "type": "string",
+          "description": "Từ khoá nội dung việc cần xoá"
+        }
+      },
+      "required": [
+        "keyword"
+      ]
+    }
+  },
+  {
+    "name": "create_routine",
+    "description": "Tạo một QUY TRÌNH (routine) có tên gồm nhiều bước, để chạy lại bằng một câu. Dùng khi người dùng nói 'tạo routine X gồm A, B, C', 'đặt routine...'. Tách mỗi việc thành một phần tử trong 'steps' (câu lệnh tiếng Việt).",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Tên routine, vd 'buổi sáng'"
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Danh sách bước, mỗi bước là một câu lệnh, vd ['mở chrome', 'đọc thời tiết']"
+        }
+      },
+      "required": [
+        "name",
+        "steps"
+      ]
+    }
+  },
+  {
+    "name": "list_routines",
+    "description": "Liệt kê các routine đã có. Dùng khi người dùng hỏi 'có routine nào', 'các quy trình của tôi'.",
+    "input_schema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "delete_routine",
+    "description": "Xoá một routine theo tên. Trợ lý sẽ tự hỏi xác nhận trước khi xoá.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Tên routine cần xoá"
+        }
+      },
+      "required": [
+        "name"
+      ]
+    }
+  },
+  {
+    "name": "save_contact",
+    "description": "Lưu một liên hệ (tên -> email) vào sổ danh bạ để lần sau chỉ cần gọi tên. Dùng khi người dùng nói 'lưu liên hệ...', 'số/mail của X là...', 'ghi nhớ email của...'.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Tên hoặc biệt danh, vd 'sếp', 'mẹ'"
+        },
+        "email": {
+          "type": "string",
+          "description": "Địa chỉ email của liên hệ"
+        }
+      },
+      "required": [
+        "name",
+        "email"
+      ]
+    }
+  },
+  {
+    "name": "find_contact",
+    "description": "Tra địa chỉ email của một liên hệ đã lưu trong sổ danh bạ CỤC BỘ theo tên. Dùng để lấy email trước khi soạn/gửi mail khi người dùng chỉ nói tên.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Tên liên hệ cần tra, vd 'sếp'"
+        }
+      },
+      "required": [
+        "name"
+      ]
+    }
+  },
+  {
+    "name": "list_contacts",
+    "description": "Liệt kê toàn bộ liên hệ trong sổ danh bạ cục bộ. Dùng khi người dùng hỏi 'danh bạ có ai', 'tôi lưu những liên hệ nào'.",
+    "input_schema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "remove_contact",
+    "description": "Xoá một liên hệ khỏi sổ danh bạ, khớp theo tên. Trợ lý sẽ tự hỏi xác nhận trước khi xoá.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Tên liên hệ cần xoá"
+        }
+      },
+      "required": [
+        "name"
+      ]
+    }
+  },
+  {
+    "name": "find_nearby",
+    "description": "Tìm địa điểm theo LOẠI ở gần một vị trí (quán ăn, cà phê, ATM, hiệu thuốc, cây xăng...). Dùng khi người dùng hỏi 'quanh đây có...', 'gần đây có...', 'chỗ nào gần tôi...'. KHÔNG dùng khi người dùng nêu TÊN RIÊNG của một chỗ cụ thể mà không kèm 'gần đây' — khi đó dùng find_place.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Loại địa điểm, ví dụ 'quán cà phê'"
+        },
+        "near": {
+          "type": "string",
+          "description": "Khu vực người dùng nêu; để trống = vị trí hiện tại"
+        },
+        "radius_km": {
+          "type": "number",
+          "description": "Chỉ đặt khi người dùng nói rõ, ví dụ 'trong 2 km'"
+        }
+      },
+      "required": [
+        "query"
+      ]
+    }
+  },
+  {
+    "name": "find_place",
+    "description": "Tìm ĐÚNG MỘT địa điểm mà người dùng gọi TÊN (ví dụ 'nhà sách Fahasa Nguyễn Văn Cừ', 'quán Highlands Trần Duy Hưng'). KHÔNG giới hạn khoảng cách trừ khi người dùng nêu khu vực trong `in_area`. Nếu câu có 'gần đây/quanh đây' thì dùng find_nearby thay vì tool này.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Tên chỗ cần tìm"
+        },
+        "in_area": {
+          "type": "string",
+          "description": "Khu vực người dùng nêu, ví dụ 'quận 9'; để trống nếu không nêu"
+        }
+      },
+      "required": [
+        "name"
+      ]
+    }
+  },
+  {
+    "name": "research_places",
+    "description": "Tìm địa điểm theo MÔ TẢ/CẢM GIÁC mà bản đồ không có trường dữ liệu: 'quán cà phê nhiều cây xanh', 'quán phong cách cổ', 'quán view đẹp để dẫn người yêu đi', 'chỗ nào decor xinh'. Tool này ĐỌC BÁO/BLOG (khoảng 5 giây) và trả về chỗ được NHIỀU NGUỒN nhắc tới, kèm ảnh và trích dẫn — nhưng KHÔNG lọc theo khoảng cách. Chỉ dùng khi yêu cầu KHÔNG diễn đạt được bằng loại địa điểm + khoảng cách; hỏi 'quán cà phê gần đây' thì dùng find_nearby.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "need": {
+          "type": "string",
+          "description": "Nguyên văn mô tả của người dùng, ví dụ 'quán cà phê nhiều cây xanh'"
+        },
+        "in_area": {
+          "type": "string",
+          "description": "Khu vực người dùng nêu; để trống = khu vực đang ở"
+        }
+      },
+      "required": [
+        "need"
+      ]
+    }
+  },
+  {
+    "name": "open_place_result",
+    "description": "Mở một chỗ trong danh sách vừa đọc, theo SỐ THỨ TỰ (1, 2, 3...). Dùng sau find_nearby hoặc find_place.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "index": {
+          "type": "integer",
+          "description": "Số thứ tự"
+        }
+      },
+      "required": [
+        "index"
+      ]
+    }
+  },
+  {
+    "name": "refine_places",
+    "description": "Lọc lại DANH SÁCH ĐỊA ĐIỂM vừa đọc theo một yêu cầu mới, KHÔNG tìm lại từ đầu. Dùng khi người dùng nói kiểu 'có chỗ nào mở muộn hơn không', 'gần hơn nữa đi', 'rẻ hơn', 'chỗ nào yên tĩnh hơn', 'chỗ nào điểm cao hơn', 'tìm rộng ra'. KHÔNG được đưa những từ này vào find_nearby như từ khoá tìm kiếm — chúng là RÀNG BUỘC, không phải tên quán.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "change": {
+          "type": "string",
+          "enum": [
+            "open_later",
+            "open_now",
+            "closer",
+            "cheaper",
+            "better_rated",
+            "quieter",
+            "farther"
+          ],
+          "description": "Hướng tinh chỉnh"
+        },
+        "value": {
+          "type": "string",
+          "description": "Mốc cụ thể nếu người dùng nói rõ, vd '23' cho 'mở tới 23 giờ'; để trống nếu không nói"
+        }
+      },
+      "required": [
+        "change"
+      ]
+    }
+  },
+  {
+    "name": "set_my_location",
+    "description": "Ghi nhớ khu vực người dùng đang ở (quận/thành phố) để lần sau hỏi 'quanh đây' là biết. Dùng khi người dùng nói họ đang ở đâu.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "place": {
+          "type": "string",
+          "description": "Tên quận/thành phố"
+        }
+      },
+      "required": [
+        "place"
+      ]
+    }
+  }
+]

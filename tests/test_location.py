@@ -3,9 +3,11 @@
 import json
 import os
 
-from actions.places import PlacesService
+from features.places.service import PlacesService
 from agent.router import CASE_TOOLS, Router
-from agent.tools import ToolRegistry, _register_place_tools
+from agent.tools import ToolRegistry
+from features.contract import FeatureContext
+from features.places.tools import register as register_place_tools
 from services.location import LocationStore
 
 CAU_GIAY = {"latitude": 21.0313, "longitude": 105.7908, "name": "Cầu Giấy",
@@ -92,7 +94,7 @@ class _FakePlaces:
 
 def _reg(places, location):
     reg = ToolRegistry()
-    _register_place_tools(reg, places, location, browser=None)
+    register_place_tools(reg, FeatureContext(places=places, location=location))
     return reg
 
 

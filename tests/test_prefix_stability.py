@@ -16,16 +16,28 @@ import json
 from unittest.mock import MagicMock
 
 from agent.tools import build_default_registry
-from features.contract import SPEC_CHARS_BUDGET
+from features.catalog import FEATURES
+from features.contract import SPEC_CHARS_BUDGET, FeatureContext, load_features
 from llm import prompts
 
 
 def _registry():
-    """Registry ĐẦY ĐỦ — mọi dịch vụ đều có mặt, để đếm đúng tổng payload thật."""
-    return build_default_registry(MagicMock(), scheduler=MagicMock(), browser=MagicMock(),
-                                  screen=MagicMock(), profile=MagicMock(), tasks=MagicMock(),
-                                  routines=MagicMock(), contacts=MagicMock(), mcp=None,
-                                  places=MagicMock(), location=MagicMock(), bus=MagicMock())
+    """Registry ĐẦY ĐỦ — mọi dịch vụ đều có mặt, để đếm đúng tổng payload thật.
+
+    Dựng qua CẢ HAI đường trong lúc migrate: các feature chưa chuyển vẫn nằm ở
+    `build_default_registry`, các feature đã chuyển nạp sau qua `load_features`. Thứ tự
+    này giữ đúng thứ tự tool cũ vì mỗi bước migrate rút khối đăng ký CUỐI CÙNG còn lại —
+    xem ghi chú trong `features/catalog.py`.
+    """
+    reg = build_default_registry(MagicMock(), scheduler=MagicMock(), browser=MagicMock(),
+                                 screen=MagicMock(), profile=MagicMock(), tasks=MagicMock(),
+                                 routines=MagicMock(), contacts=MagicMock(), mcp=None)
+    ctx = FeatureContext(actions=MagicMock(), bus=MagicMock(), browser=MagicMock(),
+                         contacts=MagicMock(), location=MagicMock(), places=MagicMock(),
+                         profile=MagicMock(), routines=MagicMock(), scheduler=MagicMock(),
+                         screen=MagicMock(), tasks=MagicMock())
+    load_features(reg, ctx, FEATURES)
+    return reg
 
 
 def _specs_json(reg):
@@ -104,3 +116,25 @@ def test_khong_tool_nao_phinh_qua_muc():
            for name in reg.names()}
     qua_beo = {n: c for n, c in beo.items() if c > 1_200}
     assert not qua_beo, f"tool có spec quá dài: {qua_beo}"
+
+
+# --- ảnh chụp gốc: chứng minh refactor KHÔNG đổi hành vi ---------------------------
+
+def test_specs_khop_anh_chup_truoc_refactor():
+    """So với ảnh chụp `specs()` lấy TRƯỚC đợt refactor feature-module (2026-08-25).
+
+    Cùng cách làm đã dùng ở Phase 0.5 khi chuyển prompt từ JSON sang Python: so từng
+    byte với bản gốc thay vì "chạy thử thấy ổn". Refactor thuần thì file này không được
+    đổi; đổi tức là đã lỡ tay đụng vào hành vi — hoặc thứ tự nạp vừa xê dịch.
+
+    Migrate NGƯỢC thứ tự đăng ký (places đang ở cuối -> rút ra trước) thì ảnh chụp này
+    giữ nguyên suốt cả đợt. Khi nào cần đổi thật, chụp lại và ghi rõ lý do trong commit.
+    """
+    import pathlib
+    goc = pathlib.Path(__file__).parent / "fixtures" / "tool_specs_baseline.json"
+    mong_doi = json.loads(goc.read_text(encoding="utf-8"))
+
+    assert _registry().specs() == mong_doi, (
+        "specs() lệch khỏi ảnh chụp trước refactor. Nếu KHÔNG cố ý đổi tool nào, đây là "
+        "dấu hiệu thứ tự nạp feature vừa xê dịch -> mất KV cache mỗi lượt."
+    )

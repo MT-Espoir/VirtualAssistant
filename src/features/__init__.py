@@ -1,23 +1,13 @@
 """
-Danh mục feature của trợ lý.
+Kiến trúc feature-module của trợ lý.
 
-`FEATURES` là DANH SÁCH TƯỜNG MINH, cố ý không dò thư mục tự động. Hai lý do:
+    contract.py   hợp đồng `Feature` + bộ nạp `load_features`
+    catalog.py    danh sách `FEATURES` — nạp gì, theo thứ tự nào
+    <tên>/        một feature: service, tool, prompt, panel gom về một chỗ
 
-1. Hiệu suất. Thứ tự nạp quyết định thứ tự tool specs trong prompt, mà Ollama tái dùng
-   KV cache theo tiền tố — thứ tự đổi giữa hai lần chạy là mất ~16-20s mỗi lượt
-   (`docs/latency_optimization_spec.md`). `os.listdir()` không hứa thứ tự ổn định.
-2. Đọc được. Muốn biết trợ lý có những gì thì đọc đúng một danh sách, không phải suy
-   ra từ cây thư mục.
+Package này CỐ Ý để trống. Danh mục nằm ở `catalog.py` chứ không ở đây, để
+`from features.contract import Feature` không kéo theo toàn bộ feature (và mọi thứ
+chúng import) chỉ vì cần một dataclass.
 
-Thêm feature = tạo package dưới `features/` rồi thêm một dòng vào đây.
-Gỡ feature = xoá dòng đó (hoặc để `enabled` trả False).
+Xem `docs/module_refactor_sprint.md`.
 """
-
-from features.contract import (Feature, FeatureContext, LoadedFeature, LoadReport,
-                               SPEC_CHARS_BUDGET, load_features)
-
-# Thứ tự có ý nghĩa — xem lý do 1 ở trên. Thêm vào CUỐI để không xáo tiền tố sẵn có.
-FEATURES = []
-
-__all__ = ["Feature", "FeatureContext", "LoadedFeature", "LoadReport",
-           "SPEC_CHARS_BUDGET", "load_features", "FEATURES"]

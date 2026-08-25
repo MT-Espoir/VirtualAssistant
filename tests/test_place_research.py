@@ -8,7 +8,7 @@ ra chỗ thật thì phải trả `INSUFFICIENT_EVIDENCE`, không được nhậ
 Không test nào chạm mạng: `http_get` và `places` đều tiêm vào.
 """
 
-from actions.place_research import build_queries, research
+from features.places.deep_research import build_queries, research
 from research.harvest import (clean_candidate, harvest_names, harvest_per_source, is_noise,
                               page_ordinals)
 
@@ -54,7 +54,7 @@ def test_harvest_names_dedupes_within_page():
 
 def test_harvest_names_uses_domain_key_for_dedupe():
     """Tầng miền truyền hàm chuẩn hoá vào -> 'Quán cà phê Trill' và 'Trill' là MỘT."""
-    from actions.place_research import _name_key
+    from features.places.deep_research import _name_key
     body = "<h2>Quán cà phê Trill</h2><h2>Trill</h2>"
     assert len(harvest_names(body, key_of=_name_key)) == 1
 
@@ -234,7 +234,7 @@ def test_research_empty_need_safe():
 
 def test_say_research_never_asserts_the_quality():
     """KHOÁ RÀNG BUỘC: chỉ được nói 'nguồn nhắc tới', không được khẳng định."""
-    from actions.place_research import say_research
+    from features.places.deep_research import say_research
     out = {"outcome": "OK",
            "results": [{"name": "Tropical Forest", "sources": 3, "distance_km": 1.2}],
            "diagnostics": {"consensus": {"independent_sources": 6}}}
@@ -246,7 +246,7 @@ def test_say_research_never_asserts_the_quality():
 
 
 def test_say_research_no_consensus_is_honest():
-    from actions.place_research import say_research
+    from features.places.deep_research import say_research
     out = {"outcome": "NO_CONSENSUS", "results": [],
            "diagnostics": {"single_source_candidates": ["Bagang Café", "Annamoi"]}}
     text = say_research(out, "quán yên tĩnh")
@@ -254,13 +254,13 @@ def test_say_research_no_consensus_is_honest():
 
 
 def test_say_research_insufficient_evidence_does_not_claim():
-    from actions.place_research import say_research
+    from features.places.deep_research import say_research
     text = say_research({"outcome": "INSUFFICIENT_EVIDENCE", "results": []}, "quán cổ")
     assert "chưa tra ra được" in text
 
 
 def test_say_research_sources_unusable():
-    from actions.place_research import say_research
+    from features.places.deep_research import say_research
     text = say_research({"outcome": "SOURCES_UNUSABLE", "results": []}, "quán cổ")
     assert "không đọc được nội dung" in text
 
@@ -273,7 +273,7 @@ def test_say_research_omits_distance_when_unknown():
     thứ người dùng nhận, mà giọng nói thì không có thẻ nào để nhìn.
     """
     import re
-    from actions.place_research import say_research
+    from features.places.deep_research import say_research
     out = {"outcome": "OK",
            "results": [{"name": "KAT Coffee", "sources": 2, "resolved": False}],
            "diagnostics": {}}
@@ -343,7 +343,7 @@ def test_say_research_search_failed_does_not_claim_pages_were_read():
 
     Nói sai chuyện đã xảy ra cũng là một kiểu bịa.
     """
-    from actions.place_research import say_research
+    from features.places.deep_research import say_research
     text = say_research({"outcome": "SEARCH_FAILED", "results": []}, "quán cà phê retro")
     assert "không tìm kiếm được" in text
     assert "trang lấy được" not in text
@@ -435,7 +435,7 @@ def test_clean_candidate_cuts_description_before_measuring_length():
 
 def test_canonicalize_merges_name_variants():
     """Khớp khoá bằng dấu BẰNG quá chặt: cùng quán, hai cách viết -> hai ứng viên."""
-    from actions.place_research import canonicalize_keys
+    from features.places.deep_research import canonicalize_keys
     alias = canonicalize_keys({
         "a.vn": ["Last Minute Cafe", "Ngôi Nhà Gỗ"],
         "b.vn": ["Last Minute Premium Cafe", "Yana Coffee Tea"],
@@ -449,7 +449,7 @@ def test_canonicalize_refuses_single_token_keys():
     "Cafe Thanh" (khoá `thanh`) mà gộp mọi quán có chữ "thanh" thì bằng chứng dính vào sai
     chỗ — hỏng im lặng, đúng thứ phải tránh nhất.
     """
-    from actions.place_research import canonicalize_keys
+    from features.places.deep_research import canonicalize_keys
     alias = canonicalize_keys({"a.vn": ["Cafe Thanh"], "b.vn": ["Thanh Xuân Coffee House"]})
     assert alias == {}
 
@@ -481,7 +481,7 @@ def _listicle_prose(entries):
 
 def test_quote_terms_drops_category_and_area_words():
     """Từ tả THỂ LOẠI có mặt ở mọi đoạn nên vô dụng để tìm bằng chứng; khu vực cũng vậy."""
-    from actions.place_research import quote_terms
+    from features.places.deep_research import quote_terms
     assert quote_terms("quán cà phê view hồ", "Hà Nội") == {"view", "hồ"}
     assert quote_terms("quán cà phê", "Hà Nội") == set(), "chỉ có thể loại -> không từ nào"
 
@@ -527,7 +527,7 @@ def test_quote_terms_drops_quantifiers():
     phẩm nghệ thuật..."* — khớp đúng chữ "nhiều" và nói về TRANH. Lượng từ chỉ đo danh
     từ đứng sau nó, tự nó không phải thuộc tính nào cả.
     """
-    from actions.place_research import quote_terms
+    from features.places.deep_research import quote_terms
     assert quote_terms("quán cà phê nhiều cây xanh", "Hà Nội") == {"cây", "xanh"}
     assert quote_terms("quán rất yên tĩnh") == {"yên", "tĩnh"}
 
@@ -632,26 +632,26 @@ def test_harvest_records_strips_bare_ordinals_too():
 def test_sparse_note_fires_when_answer_looks_thin_but_many_were_seen():
     """Thủ Đức: 34 ứng viên, 1 đạt ngưỡng. Im lặng ở đây bị hiểu thành "khu vực này chỉ
     có ngần đó quán", trong khi sự thật là các bài viết không đồng thuận với nhau."""
-    from actions.place_research import say_sparse_note
+    from features.places.deep_research import say_sparse_note
     note = say_sparse_note({"candidates": 34, "passed": 1})
     assert "ít trùng nhau" in note and "34" in note
 
 
 def test_sparse_note_silent_on_a_healthy_answer():
     """Hà Nội: ~40 ứng viên, 8 đạt ngưỡng — tỉ lệ thấp y hệt, nhưng 8 chỗ thì không mỏng."""
-    from actions.place_research import say_sparse_note
+    from features.places.deep_research import say_sparse_note
     assert say_sparse_note({"candidates": 40, "passed": 8}) == ""
 
 
 def test_sparse_note_silent_when_few_candidates_were_seen():
     """Thấy ít mà đạt ít thì đúng là tìm được ít, không phải các nguồn bất đồng."""
-    from actions.place_research import say_sparse_note
+    from features.places.deep_research import say_sparse_note
     assert say_sparse_note({"candidates": 6, "passed": 1}) == ""
     assert say_sparse_note({}) == ""
 
 
 def test_say_research_carries_the_sparse_note():
-    from actions.place_research import say_research
+    from features.places.deep_research import say_research
     out = {"outcome": "OK",
            "results": [{"name": "KAT Coffee", "sources": 2, "resolved": False}],
            "diagnostics": {"consensus": {"candidates": 34, "passed": 1,

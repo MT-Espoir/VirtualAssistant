@@ -158,12 +158,24 @@ def _full_registry():
 
     `_registry()` ở trên cố tình thiếu browser/screen/places để test phần thu hẹp; ở đây
     cần bản đầy đủ mới đối chiếu được CASE_TOOLS với registry.
+
+    Dựng qua CẢ HAI đường trong lúc migrate feature-module: feature chưa chuyển vẫn ở
+    `build_default_registry`, feature đã chuyển nạp qua `load_features`.
     """
     from unittest.mock import MagicMock
-    return build_default_registry(
+    from features.catalog import FEATURES
+    from features.contract import FeatureContext, load_features
+
+    reg = build_default_registry(
         _FakeActions(), scheduler=MagicMock(), browser=MagicMock(), screen=MagicMock(),
-        profile=MagicMock(), tasks=MagicMock(), routines=MagicMock(),
-        contacts=MagicMock(), places=MagicMock(), location=MagicMock())
+        profile=MagicMock(), tasks=MagicMock(), routines=MagicMock(), contacts=MagicMock())
+    load_features(reg, FeatureContext(actions=_FakeActions(), bus=MagicMock(),
+                                      browser=MagicMock(), contacts=MagicMock(),
+                                      location=MagicMock(), places=MagicMock(),
+                                      profile=MagicMock(), routines=MagicMock(),
+                                      scheduler=MagicMock(), screen=MagicMock(),
+                                      tasks=MagicMock()), FEATURES)
+    return reg
 
 
 def test_case_tools_only_names_registered_tools():

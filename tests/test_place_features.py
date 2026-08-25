@@ -8,7 +8,7 @@ import datetime as dt
 
 import pytest
 
-from actions.place_features import (extract_features, minutes_until_close,
+from features.places.attributes import (extract_features, minutes_until_close,
                                     parse_category_address, parse_opening, parse_price,
                                     parse_quote, parse_rating)
 

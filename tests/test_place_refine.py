@@ -10,7 +10,7 @@ import datetime as dt
 
 import pytest
 
-from actions.place_refine import CHANGES, EXPANDING, apply_refinement, needs_requery
+from features.places.refine import CHANGES, EXPANDING, apply_refinement, needs_requery
 
 NOW = dt.datetime(2026, 8, 21, 21, 40)
 
@@ -80,7 +80,7 @@ def test_gan_hon_phai_TRA_LAI_o_khung_hep_hon_chu_khong_chi_loc():
     nào dưới 500 m; khung 1 km trả 6 chỗ cách 0,20-0,63 km — hai tập KHÔNG trùng nhau một
     cái tên. Lọc 'nửa gần hơn' của tập cũ không thể tìm ra quán cách 200 m vì nó chưa bao
     giờ được lấy về."""
-    from actions.place_refine import radius_factor
+    from features.places.refine import radius_factor
     assert needs_requery("closer") is True
     assert radius_factor("closer") < 1.0        # thu hẹp khung nhìn
     assert radius_factor("farther") > 1.0
@@ -131,8 +131,12 @@ def test_huong_tinh_chinh_la_thi_khong_lam_gi_ca():
 
 # ============ Tầng tool: phiên nhớ ngữ cảnh lượt trước ============
 
-from actions.places import PlacesService          # noqa: E402
-from agent.tools import ToolRegistry, _register_place_tools   # noqa: E402
+from features.places.service import PlacesService          # noqa: E402
+from agent.tools import ToolRegistry                          # noqa: E402
+from features.contract import FeatureContext                  # noqa: E402
+from features.places.tools import register as register_place_tools  # noqa: E402
+from unittest.mock import patch                               # noqa: E402
+from utils.config import config                               # noqa: E402
 from services.location import LocationStore       # noqa: E402
 
 _LINES = {
@@ -177,7 +181,12 @@ def _setup():
                                             "name": "Vinhomes Grand Park"})
     loc.set_place("Vinhomes Grand Park")
     reg = ToolRegistry()
-    _register_place_tools(reg, PlacesService(bridge=bridge, source="maps"), loc, speak_limit=3)
+    # Ghim PLACES_LIMIT lúc đăng ký: `register` đọc config một lần rồi đóng gói vào
+    # closure, nên test khỏi phụ thuộc biến môi trường của máy chạy.
+    with patch.object(config, "PLACES_LIMIT", 3):
+        register_place_tools(reg, FeatureContext(places=PlacesService(bridge=bridge,
+                                                                     source="maps"),
+                                                 location=loc))
     return reg, bridge
 
 

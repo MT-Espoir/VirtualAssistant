@@ -4,8 +4,8 @@ import datetime as dt
 
 import pytest
 
-from actions.place_explain import build_evidence, explain
-from actions.place_ranking import (DEFAULT_WEIGHTS, RATING_PRIOR_MEAN, bayesian_quality,
+from features.places.explain import build_evidence, explain
+from features.places.ranking import (DEFAULT_WEIGHTS, RATING_PRIOR_MEAN, bayesian_quality,
                                    distance_score, evidence_score, intent_keys,
                                    open_score, rank, score_place)
 

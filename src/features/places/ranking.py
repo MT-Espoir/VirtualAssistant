@@ -10,7 +10,7 @@ THIẾU DỮ LIỆU KHÁC VỚI KÉM: thành phần không có dữ liệu nhậ
 `known` là thứ tầng giải thích dùng để biết cái gì được phép nói ra.
 """
 
-from actions.place_features import minutes_until_close
+from features.places.attributes import minutes_until_close
 from utils.text_norm import strip_accents
 
 NEUTRAL = 0.5

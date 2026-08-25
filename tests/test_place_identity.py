@@ -7,7 +7,7 @@ dạng "<Thương hiệu> <Tên đường>" viết liền, và điều đó ph�
 không nấp trong docstring.
 """
 
-from actions.place_identity import (brand_key, canonical_id, coord_cell, merge_duplicates,
+from features.places.identity import (brand_key, canonical_id, coord_cell, merge_duplicates,
                                     normalize_name, same_place)
 
 

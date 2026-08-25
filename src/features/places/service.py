@@ -21,8 +21,8 @@ dù là chuỗi khác). Không kiểm chứng thì bộ trích chạy đúng mà
 import math
 
 from utils.logger import get_logger
-from actions.place_features import extract_features
-from actions.place_ranking import intent_keys, rank
+from features.places.attributes import extract_features
+from features.places.ranking import intent_keys, rank
 from utils.text_norm import strip_accents
 
 logger = get_logger(__name__)

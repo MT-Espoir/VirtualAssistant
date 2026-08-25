@@ -19,7 +19,7 @@ tới, bởi mấy nguồn độc lập".
 
 import time
 
-from actions.place_identity import merge_duplicates, normalize_name
+from features.places.identity import merge_duplicates, normalize_name
 from research.acquire import acquire, fetch_images
 from research.claim_cache import merge_sources
 from research.consensus import MIN_SOURCES, consensus

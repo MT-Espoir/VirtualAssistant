@@ -8,7 +8,7 @@ Mọi ca ở đây đều bắt nguồn từ dữ liệu thật, không phải t
 
 import pytest
 
-from actions.places import (GENERIC_TOKENS, PlacesService, apply_policy,
+from features.places.service import (GENERIC_TOKENS, PlacesService, apply_policy,
                             build_overpass_query, haversine_km, name_score,
                             osm_filters, parse_overpass, tokens)
 from services.browser_protocol import (SAYS_CANNOT_LOOK_UP, SAYS_NOTHING_FOUND,
