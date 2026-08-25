@@ -77,8 +77,25 @@ class BrowserBridge:
         return True
 
     def stop(self):
-        if self.loop is not None:
-            self.loop.call_soon_threadsafe(self.loop.stop)
+        """Đóng socket lắng nghe RỒI mới dừng vòng lặp.
+
+        Chỉ gọi `loop.stop()` thì socket lắng nghe không bao giờ được đóng và cổng vẫn bị
+        giữ tới khi tiến trình thoát hẳn — dựng lại bridge trên cùng cổng trong cùng một
+        tiến trình sẽ hỏng với 'address already in use', và hỏng ÂM THẦM vì lỗi chỉ nằm
+        trong log còn `connected` thì vẫn là False như lúc chưa có ai nối vào.
+        """
+        if self.loop is None:
+            return
+        if self._server is not None:
+            async def _close():
+                self._server.close()
+                await self._server.wait_closed()
+
+            try:
+                asyncio.run_coroutine_threadsafe(_close(), self.loop).result(timeout=3)
+            except Exception as e:
+                logger.warning("Không đóng gọn được cầu nối Chrome: %s", e)
+        self.loop.call_soon_threadsafe(self.loop.stop)
 
     def _run(self):
         self.loop = asyncio.new_event_loop()
