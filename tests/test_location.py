@@ -4,7 +4,10 @@ import json
 import os
 
 from features.places.service import PlacesService
-from agent.router import CASE_TOOLS, Router
+from agent.router import Router
+from conftest import full_case_tools
+
+CT = full_case_tools()
 from agent.tools import ToolRegistry
 from features.contract import FeatureContext
 from features.places.tools import register as register_place_tools
@@ -192,27 +195,36 @@ def test_set_my_location_that_bai_thi_KHONG_noi_da_nho():
 # --------------------------- router ---------------------------
 
 def test_case_place_ton_tai_va_thu_hep_dung_tool():
-    assert "place" in CASE_TOOLS
-    assert set(CASE_TOOLS["place"]) == {"find_nearby", "find_place", "research_places",
+    assert "place" in CT
+    assert set(CT["place"]) == {"find_nearby", "find_place", "research_places",
                                         "refine_places", "open_place_result",
                                         "set_my_location"}
 
 
-def test_place_dung_truoc_web_vi_classify_khop_bang_chuoi_con():
-    names = list(CASE_TOOLS)
-    assert names.index("place") < names.index("web")
+def test_classify_khong_con_phu_thuoc_thu_tu_case():
+    """Trước đây `place` PHẢI đứng trước `web` trong bảng vì classify khớp chuỗi con.
+
+    Ràng buộc đó đã gỡ: `match_case` khớp tên DÀI NHẤT trước. Kiểm bằng cách đảo ngược
+    hẳn bảng — kết quả phải không đổi. Nhờ vậy thứ tự `FEATURES` được tự do phục vụ
+    hiệu suất (thứ tự tool trong prompt) mà không kéo theo hệ quả đúng/sai nào.
+    """
+    xuoi = Router(llm=None, case_tools=CT)
+    nguoc = Router(llm=None, case_tools=dict(reversed(list(CT.items()))))
+    for cau in ("place", "web", "weather", "Nhóm: place ạ", "khong-biet-gi"):
+        assert xuoi.match_case(cau) == nguoc.match_case(cau)
 
 
-def test_khong_case_nao_la_chuoi_con_cua_case_khac():
-    names = [n for n in CASE_TOOLS]
-    assert not [(a, b) for a in names for b in names if a != b and a in b]
+def test_match_case_uu_tien_ten_dai_hon():
+    """Bộ tên hiện tại không có cặp chuỗi con nào, nên dựng cặp giả để khoá hành vi."""
+    r = Router(llm=None, case_tools={"mail": [], "email": [], "general": None})
+    assert r.match_case("email") == "email"      # không bị 'mail' nuốt
 
 
 def test_router_thu_hep_xuong_dung_bo_tool_place():
     places, loc = _FakePlaces(), _store()
     reg = _reg(places, loc)
-    _, specs = Router(llm=None).select_for_case("place", reg)
-    assert {s["name"] for s in specs} == set(CASE_TOOLS["place"])
+    _, specs = Router(llm=None, case_tools=CT).select_for_case("place", reg)
+    assert {s["name"] for s in specs} == set(CT["place"])
 
 
 # --------------------------- xuyên tầng ---------------------------

@@ -49,3 +49,17 @@ def registry_with(actions=None, **ctx_kwargs):
     # ctx bằng tay, nếu không feature `web` thấy ctx.actions is None rồi nổ lúc chạy tool.
     ctx.setdefault("actions", actions or MagicMock())
     return build_registry(FeatureContext(**ctx))[0]
+
+
+def full_case_tools():
+    """Bảng {case -> [tool]} suy ra từ registry đầy đủ — thay cho hằng `CASE_TOOLS` cũ."""
+    import dataclasses
+    from unittest.mock import MagicMock
+
+    from agent.router import case_tools_from
+    from features.contract import FeatureContext
+    from features.registry import build_registry
+
+    ctx = {f.name: MagicMock() for f in dataclasses.fields(FeatureContext)}
+    ctx["mcp"] = None
+    return case_tools_from(build_registry(FeatureContext(**ctx))[1])

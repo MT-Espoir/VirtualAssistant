@@ -16,7 +16,9 @@ _SRC = Path(__file__).resolve().parents[1] / "src"
 sys.path.insert(0, str(_SRC))
 
 from llm import prompt_texts, prompts          # noqa: E402
-from agent.router import CASE_TOOLS            # noqa: E402
+from conftest import full_case_tools          # noqa: E402
+
+CT = full_case_tools()
 
 _LEGACY_JSON = _SRC / "components" / "data" / "system_prompt.json"
 
@@ -56,8 +58,8 @@ def test_load_returns_fresh_cases_copy():
 
 
 def test_case_keys_match_router_case_tools():
-    """Khoá fragment phải khớp CASE_TOOLS — lệch = có case không bao giờ được dùng."""
-    assert set(prompt_texts.CASES) == set(CASE_TOOLS)
+    """Mỗi case suy ra từ registry phải có fragment prompt — lệch = case không dùng được."""
+    assert set(prompt_texts.CASES) == set(CT)
 
 
 def test_prompts_not_empty():
@@ -103,5 +105,5 @@ def test_merged_skips_empty_fragment():
 def test_router_prompt_lists_every_case():
     """Prompt phân loại phải nhắc tới mọi case (trừ 'general' là mặc định)."""
     router_text = prompt_texts.ROUTER
-    for name in CASE_TOOLS:
+    for name in CT:
         assert f"- {name}:" in router_text, f"ROUTER thiếu mô tả case '{name}'"

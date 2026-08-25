@@ -513,19 +513,6 @@ def main():
             logger.warning("MCP không kết nối được — bỏ qua (kiểm tra MCP_COMMAND/server/OAuth).")
             mcp = None
 
-    # Router thu hẹp prompt+tool bằng 1 lượt LLM phân loại. Provider mạnh không cần (đo
-    # được: bỏ router vẫn 100% chọn đúng tool, bớt 1 call/lượt) -> ROUTER_MODE=auto tắt.
-    # Khi TẮT phải dùng prompt GỘP: không có ai chọn fragment theo case nữa, dùng base
-    # trần sẽ mất sạch chỉ dẫn riêng (đọc nguyên văn kết quả web, tra danh bạ, ...).
-    router, system_prompt = None, None
-    if config.use_router():
-        from agent.router import Router
-        router = Router(llm, mcp_prefix=config.MCP_TOOL_PREFIX)
-    else:
-        from llm import prompts
-        system_prompt = prompts.merged()
-    logger.info("🧭 router: %s", "bật" if router else "tắt (prompt gộp)")
-
     profile = UserProfile(config.USER_PROFILE_PATH or None)
     tasks = TaskStore(config.TASKS_PATH or None)
     routines = RoutineStore(config.ROUTINES_PATH or None)
@@ -553,7 +540,23 @@ def main():
                                  contacts=contacts, location=location, mcp=mcp,
                                  places=places, profile=profile, routines=routines,
                                  scheduler=scheduler, screen=screen, tasks=tasks)
-    registry, _ = build_registry(feature_ctx)
+    registry, report = build_registry(feature_ctx)
+
+    # Router thu hẹp prompt+tool bằng 1 lượt LLM phân loại. Provider mạnh không cần (đo
+    # được: bỏ router vẫn 100% chọn đúng tool, bớt 1 call/lượt) -> ROUTER_MODE=auto tắt.
+    # Khi TẮT phải dùng prompt GỘP: không có ai chọn fragment theo case nữa, dùng base
+    # trần sẽ mất sạch chỉ dẫn riêng (đọc nguyên văn kết quả web, tra danh bạ, ...).
+    #
+    # Dựng SAU registry vì bảng case->tool nay suy ra từ `report` chứ không còn là hằng
+    # số chép tay — router không thể biết case nào tồn tại trước khi feature nạp xong.
+    router, system_prompt = None, None
+    if config.use_router():
+        from agent.router import Router, case_tools_from
+        router = Router(llm, case_tools_from(report), mcp_prefix=config.MCP_TOOL_PREFIX)
+    else:
+        from llm import prompts
+        system_prompt = prompts.merged()
+    logger.info("🧭 router: %s", "bật" if router else "tắt (prompt gộp)")
 
     agent = Agent(llm=llm,
                   registry=registry,

@@ -16,60 +16,59 @@ from utils.logger import get_logger
 from utils.text_norm import norm
 
 logger = get_logger(__name__)
+# Case "general" = không thu hẹp tool. Không đến từ feature nào (nó là "mọi thứ còn
+# lại") nên phải khai ở đây; mọi case khác suy ra từ registry qua LoadReport.case_tools().
+GENERAL = "general"
 
-# Ánh xạ case -> tên tool. Đặt trong code (cạnh nơi biết tool) để không lệch với
-# registry; None = dùng tất cả. Chỉ các tool THỰC SỰ đăng ký mới được dùng.
-# LƯU Ý thứ tự: classify() khớp tên case bằng substring, mà "web" là con của "weather"
-# -> phải đặt "weather" TRƯỚC "web" để "weather" không bị "web" nuốt nhầm.
-CASE_TOOLS = {
-    "weather": ["get_weather"],
-    # 'place' đặt TRƯỚC 'web': classify() khớp case bằng SUBSTRING, và tra địa điểm rất dễ
-    # bị nuốt sang 'web' (cùng là "tìm ..."). Cùng lý do đã phải đặt 'weather' trước 'web'.
-    "place": ["find_nearby", "find_place", "research_places", "refine_places",
-              "open_place_result", "set_my_location"],
-    "web": ["open_website", "web_search", "web_search_list", "open_search_result",
-            "read_search_result", "play_youtube", "search_on_site", "web_fetch",
-            "wikipedia_lookup"],
-    "system": ["open_app", "close_app", "list_windows", "switch_window",
-               "set_volume", "set_brightness", "system_info"],
-    "screen": ["take_screenshot", "find_on_screen", "scroll_screen"],
-    "browser": ["browser_media_control", "browser_list_tabs", "browser_close_tab",
-                "browser_open_or_reuse"],
-    "schedule": ["schedule_reminder", "schedule_action", "list_reminders", "cancel_reminder"],
-    "task": ["add_task", "list_tasks", "complete_task", "remove_task",
-             "create_routine", "list_routines", "delete_routine"],
-    "profile": ["remember_about_user", "forget_about_user"],
-    # pim (lịch/email/danh bạ qua MCP): thu hẹp theo TIỀN TỐ tên tool MCP (tool động, không
-    # liệt kê cứng được) -> xem Router.mcp_prefix. NGOÀI RA cho phép các tool danh bạ CỤC BỘ
-    # dưới đây (không phải MCP) để soạn/gửi mail theo tên mà không cần đọc cả địa chỉ.
-    "pim": ["save_contact", "find_contact", "list_contacts", "remove_contact"],
-    "general": None,
-}
+
+def case_tools_from(report):
+    """{case -> [tool]} suy ra từ ĐÚNG thứ registry đã nhận, cộng case 'general'.
+
+    Thay cho bảng `CASE_TOOLS` chép tay trước đây. Bảng đó là nguồn sự thật THỨ HAI bên
+    cạnh registry: sai một tên là tool biến mất khỏi tầm nhìn của model mà không có lỗi
+    nào — đúng lỗi đã xảy ra với `research_places`.
+    """
+    bang = report.case_tools()
+    bang[GENERAL] = None
+    return bang
 
 
 class Router:
-    def __init__(self, llm, data=None, case_tools=None, mcp_prefix=None):
+    def __init__(self, llm, case_tools, data=None, mcp_prefix=None):
         self.llm = llm
         self.data = data or prompts.load()
-        self.case_tools = case_tools or CASE_TOOLS
+        # BẮT BUỘC truyền vào, dựng bằng `case_tools_from(report)` — không còn hằng số
+        # mặc định nào để rơi về, vì "mặc định" chính là nguồn sự thật thứ hai đã gây lỗi.
+        self.case_tools = case_tools
         self.mcp_prefix = mcp_prefix or ""      # tiền tố tên tool MCP để thu hẹp case 'pim'
 
     def classify(self, text):
         """Một lượt LLM -> tên case. Lỗi/không nhận ra -> 'general'."""
         router_prompt = self.data.get("router", "")
         if not router_prompt:
-            return "general"
+            return GENERAL
         try:
             turn = self.llm.generate(system=router_prompt,
                                      messages=[Message(role="user", text=text)], tools=[])
         except Exception as e:
             logger.warning("Router phân loại lỗi: %s — dùng 'general'.", e)
-            return "general"
-        raw = norm(turn.text or "")
-        for name in self.case_tools:
-            if name != "general" and name in raw:
-                return name
-        return "general"
+            return GENERAL
+        return self.match_case(turn.text or "")
+
+    def match_case(self, text):
+        """Tìm tên case trong câu model trả về. DÀI TRƯỚC, nên không phụ thuộc thứ tự dict.
+
+        Trước đây hàm này duyệt `CASE_TOOLS` theo thứ tự khai báo, nên thứ tự đó vừa là
+        chuyện hiệu suất (thứ tự đăng ký tool) vừa là chuyện đúng/sai (case nào được khớp
+        trước). Nay tách hẳn: khớp tên DÀI NHẤT trước thì một case là tiền tố/khúc con của
+        case khác cũng không nuốt nhầm, dù `FEATURES` xếp kiểu gì.
+
+        (Bộ tên hiện tại không có cặp nào là khúc con của nhau — đã kiểm. Nhưng chỉ cần
+        thêm một case tên 'mail' cạnh 'email' là hiểm hoạ thành thật.)
+        """
+        raw = norm(text)
+        ung_vien = [n for n in self.case_tools if n != GENERAL and n in raw]
+        return max(ung_vien, key=len) if ung_vien else GENERAL
 
     def select(self, text, registry):
         """Trả (system_prompt, tool_specs) cho lượt này theo case đã phân loại."""

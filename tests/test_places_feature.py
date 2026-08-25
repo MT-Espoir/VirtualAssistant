@@ -4,7 +4,9 @@ from conftest import registry_with
 
 from unittest.mock import MagicMock
 
-from agent.router import CASE_TOOLS
+from conftest import full_case_tools
+
+CT = full_case_tools()
 from agent.tools import ToolRegistry
 from features.contract import FeatureContext, load_features
 from features.places.feature import FEATURE
@@ -29,7 +31,7 @@ def _load(ctx=None):
 def test_ten_feature_khop_ten_router_case():
     """Tên feature DÙNG LUÔN làm tên case; lệch là router không tìm ra fragment prompt."""
     assert FEATURE.name == "place"
-    assert FEATURE.name in CASE_TOOLS
+    assert FEATURE.name in CT
 
 
 def test_dang_ky_du_sau_tool():
@@ -62,14 +64,14 @@ def test_thieu_browser_van_chay():
 # --- bắc cầu sang việc xoá CASE_TOOLS viết tay ---------------------------------------
 
 def test_tool_suy_ra_trung_khop_bang_case_tools_viet_tay():
-    """Bảng `CASE_TOOLS["place"]` chép tay phải khớp thứ registry thật nhận.
+    """Bảng `CT["place"]` chép tay phải khớp thứ registry thật nhận.
 
     Đây là bằng chứng để xoá bảng đó (việc 5): nếu hai bên đã trùng thì thay bảng chép
     tay bằng bảng suy ra không đổi hành vi. So bằng TẬP HỢP vì bảng cũ liệt kê theo thứ
     tự khác thứ tự đăng ký.
     """
     _, report = _load()
-    assert set(report.case_tools()["place"]) == set(CASE_TOOLS["place"])
+    assert set(report.case_tools()["place"]) == set(CT["place"])
 
 
 def test_doan_prompt_giu_nguyen_van():
