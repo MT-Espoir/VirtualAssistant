@@ -116,6 +116,14 @@ class ToolRegistry:
     def has(self, name: str) -> bool:
         return name in self._tools
 
+    def names(self) -> List[str]:
+        """Tên tool THEO ĐÚNG thứ tự đăng ký (dict giữ thứ tự chèn).
+
+        Bộ nạp feature so tên trước/sau khi gọi `register` để biết feature nào đăng ký
+        tool nào — nhờ vậy `CASE_TOOLS` suy ra được thay vì chép tay.
+        """
+        return list(self._tools)
+
     def specs(self) -> List[dict]:
         return [t.spec() for t in self._tools.values()]
 
