@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from services.contacts import ContactStore
 from agent.tools import build_default_registry
+from conftest import registry_with
 
 
 def _store():
@@ -79,7 +80,7 @@ def test_persist_across_instances():
 
 def _registry_with_contacts():
     s, path = _store()
-    reg = build_default_registry(MagicMock(), contacts=s)
+    reg = registry_with(contacts=s)
     return reg, s, path
 
 

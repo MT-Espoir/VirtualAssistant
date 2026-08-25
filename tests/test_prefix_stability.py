@@ -13,31 +13,14 @@ refactor feature-module đụng vào nhiều nhất.
 
 import json
 
-from unittest.mock import MagicMock
-
-from agent.tools import build_default_registry
-from features.catalog import FEATURES
-from features.contract import SPEC_CHARS_BUDGET, FeatureContext, load_features
+from conftest import full_registry
+from features.contract import SPEC_CHARS_BUDGET
 from llm import prompts
 
 
 def _registry():
-    """Registry ĐẦY ĐỦ — mọi dịch vụ đều có mặt, để đếm đúng tổng payload thật.
-
-    Dựng qua CẢ HAI đường trong lúc migrate: các feature chưa chuyển vẫn nằm ở
-    `build_default_registry`, các feature đã chuyển nạp sau qua `load_features`. Thứ tự
-    này giữ đúng thứ tự tool cũ vì mỗi bước migrate rút khối đăng ký CUỐI CÙNG còn lại —
-    xem ghi chú trong `features/catalog.py`.
-    """
-    reg = build_default_registry(MagicMock(), scheduler=MagicMock(), browser=MagicMock(),
-                                 screen=MagicMock(), profile=MagicMock(), tasks=MagicMock(),
-                                 routines=MagicMock(), contacts=MagicMock(), mcp=None)
-    ctx = FeatureContext(actions=MagicMock(), bus=MagicMock(), browser=MagicMock(),
-                         contacts=MagicMock(), location=MagicMock(), places=MagicMock(),
-                         profile=MagicMock(), routines=MagicMock(), scheduler=MagicMock(),
-                         screen=MagicMock(), tasks=MagicMock())
-    load_features(reg, ctx, FEATURES)
-    return reg
+    """Registry đầy đủ — xem `conftest.full_registry` (tự suy tham số còn lại)."""
+    return full_registry()
 
 
 def _specs_json(reg):

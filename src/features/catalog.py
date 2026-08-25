@@ -17,6 +17,7 @@ Thêm feature = tạo package dưới `features/` rồi thêm một dòng vào �
 Gỡ feature  = xoá dòng đó, hoặc để `enabled` trả False.
 """
 
+from features.pim.feature import FEATURE as PIM
 from features.places.feature import FEATURE as PLACE
 
 # THỨ TỰ CÓ Ý NGHĨA — xem lý do 1 ở trên.
@@ -31,5 +32,6 @@ from features.places.feature import FEATURE as PLACE
 # cuối cùng còn lại và thêm vào ĐẦU danh sách này. Làm vậy thì tiền tố prompt không xê
 # dịch một lần nào trong suốt đợt refactor.
 FEATURES = [
+    PIM,
     PLACE,
 ]

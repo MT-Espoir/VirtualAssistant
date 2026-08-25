@@ -554,7 +554,7 @@ def main():
     actions = AssistantActions()
     registry = build_default_registry(actions, scheduler=scheduler, browser=browser,
                                       screen=screen, profile=profile, tasks=tasks,
-                                      routines=routines, contacts=contacts, mcp=mcp)
+                                      routines=routines)
     feature_ctx = FeatureContext(actions=actions, bus=bus, browser=browser,
                                  contacts=contacts, location=location, mcp=mcp,
                                  places=places, profile=profile, routines=routines,

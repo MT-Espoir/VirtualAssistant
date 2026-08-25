@@ -120,7 +120,10 @@ class _FakeMCP:
 
 def test_pim_narrows_by_tool_prefix():
     # prefix phải ĐẶC THÙ để không nuốt tool sẵn có (vd 'g' sẽ dính get_weather)
-    reg = build_default_registry(_FakeActions(), mcp=_FakeMCP(["gws_list_events", "gws_send_mail"]))
+    from features.contract import FeatureContext
+    from features.pim.tools import register as register_pim
+    reg = build_default_registry(_FakeActions())
+    register_pim(reg, FeatureContext(mcp=_FakeMCP(["gws_list_events", "gws_send_mail"])))
     _, specs = Router(_FakeLLM("pim"), mcp_prefix="gws_").select("lịch hôm nay có gì", reg)
     assert {s["name"] for s in specs} == {"gws_list_events", "gws_send_mail"}
 
@@ -154,28 +157,9 @@ if __name__ == "__main__":
 # case, nên model KHÔNG BAO GIỜ nhìn thấy tool đó — tính năng chết lặng, test cũ vẫn xanh.
 
 def _full_registry():
-    """Registry có ĐỦ mọi nhóm tool (tiêm mock cho các phụ thuộc tuỳ chọn).
-
-    `_registry()` ở trên cố tình thiếu browser/screen/places để test phần thu hẹp; ở đây
-    cần bản đầy đủ mới đối chiếu được CASE_TOOLS với registry.
-
-    Dựng qua CẢ HAI đường trong lúc migrate feature-module: feature chưa chuyển vẫn ở
-    `build_default_registry`, feature đã chuyển nạp qua `load_features`.
-    """
-    from unittest.mock import MagicMock
-    from features.catalog import FEATURES
-    from features.contract import FeatureContext, load_features
-
-    reg = build_default_registry(
-        _FakeActions(), scheduler=MagicMock(), browser=MagicMock(), screen=MagicMock(),
-        profile=MagicMock(), tasks=MagicMock(), routines=MagicMock(), contacts=MagicMock())
-    load_features(reg, FeatureContext(actions=_FakeActions(), bus=MagicMock(),
-                                      browser=MagicMock(), contacts=MagicMock(),
-                                      location=MagicMock(), places=MagicMock(),
-                                      profile=MagicMock(), routines=MagicMock(),
-                                      scheduler=MagicMock(), screen=MagicMock(),
-                                      tasks=MagicMock()), FEATURES)
-    return reg
+    """Registry có ĐỦ mọi nhóm tool — xem `conftest.full_registry`."""
+    from conftest import full_registry
+    return full_registry(_FakeActions())
 
 
 def test_case_tools_only_names_registered_tools():
