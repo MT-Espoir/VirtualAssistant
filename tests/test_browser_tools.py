@@ -6,6 +6,7 @@ except ImportError:
     pytest = None
 
 from agent.tools import build_default_registry
+from conftest import registry_with
 
 
 class _FakeActions:
@@ -38,7 +39,7 @@ class _ScriptBrowser:
 
 
 def _registry(browser):
-    return build_default_registry(_FakeActions(), scheduler=None, browser=browser)
+    return registry_with(actions=_FakeActions(), scheduler=None, browser=browser)
 
 
 def test_browser_tool_registered_only_with_browser():
@@ -218,9 +219,8 @@ class _FakeActionsWithFetch(_FakeActions):
 
 
 def _registry_with_fetch(browser, actions=None):
-    from agent.tools import build_default_registry
-    return build_default_registry(actions or _FakeActionsWithFetch(), scheduler=None,
-                                  browser=browser)
+    from conftest import registry_with
+    return registry_with(actions=actions or _FakeActionsWithFetch(), browser=browser)
 
 
 def test_read_search_result_registered_only_with_browser():

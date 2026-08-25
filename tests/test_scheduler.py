@@ -16,7 +16,9 @@ except ImportError:
     pytest = None
 
 from services.scheduler import ReminderScheduler
-from agent.tools import build_default_registry, _parse_fire_time
+from agent.tools import build_default_registry
+from conftest import registry_with
+from features.schedule.tools import _parse_fire_time
 
 
 def _temp_store():
@@ -126,13 +128,13 @@ def test_schedule_tools_registered_only_with_scheduler():
     assert "schedule_reminder" not in names_without
 
     sched = ReminderScheduler(store_path=_temp_store())
-    names_with = {s["name"] for s in build_default_registry(MagicMock(), scheduler=sched).specs()}
+    names_with = {s["name"] for s in registry_with(actions=MagicMock(), scheduler=sched).specs()}
     assert {"schedule_reminder", "list_reminders", "cancel_reminder"} <= names_with
 
 
 def test_schedule_reminder_tool_adds_task():
     sched = ReminderScheduler(store_path=_temp_store())
-    reg = build_default_registry(MagicMock(), scheduler=sched)
+    reg = registry_with(actions=MagicMock(), scheduler=sched)
     out = reg.run("schedule_reminder", {"message": "gọi mẹ", "delay_minutes": 30})
     assert "Đã đặt nhắc" in out
     assert len(sched.list()) == 1 and sched.list()[0]["message"] == "gọi mẹ"
@@ -140,7 +142,7 @@ def test_schedule_reminder_tool_adds_task():
 
 def test_schedule_action_tool_adds_do_task():
     sched = ReminderScheduler(store_path=_temp_store())
-    reg = build_default_registry(MagicMock(), scheduler=sched)
+    reg = registry_with(actions=MagicMock(), scheduler=sched)
     out = reg.run("schedule_action", {"command": "mở youtube", "at": "22:30"})
     assert "tự làm" in out.lower()
     t = sched.list()[0]
@@ -149,7 +151,7 @@ def test_schedule_action_tool_adds_do_task():
 
 def test_cancel_reminder_tool():
     sched = ReminderScheduler(store_path=_temp_store())
-    reg = build_default_registry(MagicMock(), scheduler=sched)
+    reg = registry_with(actions=MagicMock(), scheduler=sched)
     task = sched.add("việc", datetime(2030, 1, 1, 9, 0))
     out = reg.run("cancel_reminder", {"task_id": task["id"]})
     assert "Đã hủy" in out and sched.list() == []

@@ -123,23 +123,10 @@ CASE_SYSTEM = (
 )
 # CASE_SCREEN đã chuyển sang `features/screen/prompt.py` (gom về đúng feature).
 from features.screen.prompt import CASE_SCREEN  # noqa: E402
-
-CASE_BROWSER = (
-    'Yêu cầu thuộc nhóm ĐIỀU KHIỂN CHROME. Điều khiển video/nhạc ĐANG phát (tạm dừng, phát '
-    'tiếp, phát lại, tua, chỉnh âm lượng video, bài kế/trước): BẮT BUỘC gọi tool '
-    "browser_media_control với 'action' phù hợp "
-    "(pause/play/toggle/next/prev/set_volume/seek) — TUYỆT ĐỐI không chỉ trả lời 'đã dừng' "
-    'mà không gọi tool. Khi đóng tab (browser_close_tab): BẮT BUỘC gọi confirm=false trước '
-    'để xem danh sách tab, đọc cho người dùng và chờ họ đồng ý, chỉ gọi lại confirm=true '
-    'sau khi được đồng ý.'
-)
-
-CASE_SCHEDULE = (
-    "Yêu cầu thuộc nhóm HẸN GIỜ. PHÂN BIỆT: 'nhắc tôi X lúc T' -> schedule_reminder (chỉ "
-    "NHẮC, và nói đúng là 'tôi sẽ NHẮC bạn...', ĐỪNG hứa tự làm). Còn 'lúc T hãy "
-    "mở/phát/làm Y', '22h30 mở youtube' -> schedule_action với command=Y (trợ lý sẽ TỰ THỰC "
-    "THI khi tới giờ). Cả hai dùng 'delay_minutes' (số phút nữa) HOẶC 'at' (giờ HH:MM)."
-)
+# CASE_BROWSER đã chuyển sang `features/browser/prompt.py` (gom về đúng feature).
+from features.browser.prompt import CASE_BROWSER  # noqa: E402
+# CASE_SCHEDULE đã chuyển sang `features/schedule/prompt.py` (gom về đúng feature).
+from features.schedule.prompt import CASE_SCHEDULE  # noqa: E402
 # CASE_TASK đã chuyển sang `features/task/prompt.py` (gom về đúng feature).
 from features.task.prompt import CASE_TASK  # noqa: E402
 # CASE_PROFILE đã chuyển sang `features/profile/prompt.py` (gom về đúng feature).

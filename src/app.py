@@ -552,8 +552,7 @@ def main():
     # nằm ở `build_default_registry`, nhóm đã chuyển nạp sau theo `FEATURES`. Thứ tự này
     # giữ nguyên thứ tự tool cũ — xem ghi chú trong `features/catalog.py`.
     actions = AssistantActions()
-    registry = build_default_registry(actions, scheduler=scheduler, browser=browser,
-                                      profile=profile)
+    registry = build_default_registry(actions, profile=profile)
     feature_ctx = FeatureContext(actions=actions, bus=bus, browser=browser,
                                  contacts=contacts, location=location, mcp=mcp,
                                  places=places, profile=profile, routines=routines,

@@ -62,9 +62,13 @@ def registry_with(actions=None, **ctx_kwargs):
     con_lai = set(inspect.signature(build_default_registry).parameters)
     truong_ctx = {f.name for f in dataclasses.fields(FeatureContext)}
 
+    actions = actions or MagicMock()
     reg = build_default_registry(
-        actions or MagicMock(),
-        **{k: v for k, v in ctx_kwargs.items() if k in con_lai})
-    load_features(reg, FeatureContext(
-        **{k: v for k, v in ctx_kwargs.items() if k in truong_ctx}), FEATURES)
+        actions, **{k: v for k, v in ctx_kwargs.items() if k in con_lai})
+
+    # `actions` là tham số riêng của helper nên không rơi vào **ctx_kwargs — phải đưa vào
+    # ctx bằng tay, nếu không feature `web` sẽ thấy ctx.actions is None rồi nổ lúc chạy tool.
+    ctx = {k: v for k, v in ctx_kwargs.items() if k in truong_ctx}
+    ctx.setdefault("actions", actions)
+    load_features(reg, FeatureContext(**ctx), FEATURES)
     return reg
