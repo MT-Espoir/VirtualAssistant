@@ -1,7 +1,8 @@
 """Đoạn prompt riêng của feature `weather` (router case "weather").
 
-Chuyển nguyên văn từ `llm/prompt_texts.py::CASE_WEATHER`. `prompt_texts` nhập ngược lại
-để `CASES` và `merged()` không đổi một byte.
+Chuyển nguyên văn từ `llm/prompt_texts.py::CASE_WEATHER` (2026-08-25).
+Hai hằng ở đây phục vụ hai lượt LLM khác nhau — xem chú thích ở
+`ROUTER_HINT` bên dưới.
 """
 
 CASE_WEATHER = (

@@ -4,8 +4,9 @@ Hợp đồng cho một "feature" (tính năng) và bộ nạp chúng.
 Một feature gom TOÀN BỘ mảnh của một tính năng vào một chỗ: service, tool, đoạn
 prompt riêng, panel giao diện. Trước đây các mảnh này nằm rải ở `agent/tools.py`,
 `agent/router.py`, `llm/prompt_texts.py` và `app.py` — thêm một tính năng phải sờ
-5-6 file ở 5 thư mục, và bảng `CASE_TOOLS` chép lại tên tool đã khai trong registry
-(hai nguồn sự thật, đã sinh lỗi thứ tự substring "weather trước web").
+5-6 file ở 5 thư mục. Bảng `CASE_TOOLS` còn chép lại tên tool đã khai trong registry
+(hai nguồn sự thật) — và đã sinh lỗi thật: `research_places` từng có trong registry
+nhưng thiếu trong bảng, nên với router bật thì model không bao giờ nhìn thấy nó.
 
 Xem `docs/module_refactor_sprint.md`.
 """

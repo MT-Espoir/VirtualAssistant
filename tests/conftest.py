@@ -32,10 +32,8 @@ def full_registry(actions=None):
 def registry_with(actions=None, **ctx_kwargs):
     """Registry lõi + các feature nạp bằng ĐÚNG những dependency truyền vào.
 
-    Thay cho lối cũ `build_default_registry(mock, contacts=..., mcp=...)`: các dịch vụ đó
-    không còn là tham số của hàm dựng nữa mà nằm trong `FeatureContext`. Feature nào
-    thiếu dependency sẽ tự bỏ qua, nên chỉ tool của phần truyền vào được đăng ký — đúng
-    ý các test gọi kiểu này.
+    Feature nào thiếu dependency sẽ tự bỏ qua, nên chỉ tool của phần truyền vào được
+    đăng ký — đúng ý các test muốn một registry hẹp.
     """
     import dataclasses
     from unittest.mock import MagicMock

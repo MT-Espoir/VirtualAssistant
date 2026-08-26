@@ -1,7 +1,8 @@
 """Đoạn prompt riêng của feature `schedule` (router case "schedule").
 
-Chuyển nguyên văn từ `llm/prompt_texts.py::CASE_SCHEDULE`. `prompt_texts` nhập
-ngược lại để `CASES` và `merged()` không đổi một byte trong lúc migrate.
+Chuyển nguyên văn từ `llm/prompt_texts.py::CASE_SCHEDULE` (2026-08-25).
+Hai hằng ở đây phục vụ hai lượt LLM khác nhau — xem chú thích ở
+`ROUTER_HINT` bên dưới.
 """
 
 CASE_SCHEDULE = (
