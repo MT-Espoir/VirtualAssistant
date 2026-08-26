@@ -26,9 +26,10 @@ from services.mcp_bridge import MCPClient
 from llm.client import build_default_llm_client
 from utils.events import AssistantBus
 from voice.wake_word import match_wake_word, parse_wake_words, wake_words_not_in
-from voice.fast_commands import (match_fast_command, match_avatar_command,
-                                 match_mode_command, match_confirmation,
-                                 match_persona_command, match_routine_command)
+from features import fast as feature_fast
+from voice.fast_commands import (match_avatar_command, match_mode_command,
+                                 match_confirmation, match_persona_command,
+                                 match_routine_command)
 from services.scheduler import ReminderScheduler
 from ui.avatar import AvatarWindow
 from ui.avatar_face import guess_emotion
@@ -189,7 +190,7 @@ def _next_input(voice_io, bus):
 _AGENT_LOCK = threading.Lock()
 
 
-def _dispatch(agent, text, bus):
+def _dispatch(agent, text, bus, fast_match=None):
     """Xử lý MỘT câu lệnh -> (response, emotion). KHÔNG tự nói (người gọi lo phần NÓI).
 
     Cùng đường với lượt thường: fast-path giao diện/cuộn/chụp, hoặc agent. Tách ra để
@@ -199,7 +200,7 @@ def _dispatch(agent, text, bus):
     # Lệnh TOOL tất định (âm lượng/media/cuộn/chụp) ưu tiên TRƯỚC lệnh giao diện avatar:
     # cụm cỡ chữ chung ("to lên/nhỏ hơn") vừa là chỉnh avatar vừa xuất hiện trong "âm lượng
     # video to lên" -> phải để fast_command (đòi từ khoá đặc thù 'âm lượng') giành trước.
-    fast = match_fast_command(text) if config.FAST_COMMANDS else None
+    fast = fast_match(text) if (fast_match and config.FAST_COMMANDS) else None
     ui_cmd = match_avatar_command(text) if (config.FAST_COMMANDS and fast is None) else None
     if fast is not None and agent.registry.has(fast[0]):
         return _run_fast(agent, fast), "happy"
@@ -216,7 +217,7 @@ def _dispatch(agent, text, bus):
         return "Xin lỗi, có lỗi khi xử lý yêu cầu.", "sad"
 
 
-def _run_routine(agent, routines, name, bus, synth, voice_io):
+def _run_routine(agent, routines, name, bus, synth, voice_io, fast_match=None):
     """Chạy một routine: lặp từng bước qua _dispatch, ĐỌC kết quả mỗi bước. Bước lỗi -> tiếp
     tục (đếm lỗi). Bỏ qua bước 'chạy routine ...' để chống đệ quy (v1)."""
     r = routines.get(name)
@@ -228,7 +229,7 @@ def _run_routine(agent, routines, name, bus, synth, voice_io):
         if match_routine_command(step):        # chống đệ quy: không cho routine gọi routine
             continue
         try:
-            response, emotion = _dispatch(agent, step, bus)
+            response, emotion = _dispatch(agent, step, bus, fast_match)
         except Exception as e:                 # phòng fast-path ném lỗi -> không vỡ cả routine
             logger.error("Bước routine lỗi (%s): %s", step, e)
             errors += 1
@@ -242,7 +243,7 @@ def _run_routine(agent, routines, name, bus, synth, voice_io):
     _say(synth, bus, tail, "happy")
 
 
-def _assistant_loop(agent, bus, synth, voice_io, routines=None):
+def _assistant_loop(agent, bus, synth, voice_io, routines=None, fast_match=None):
     """Vòng xử lý (thread nền): nghe/gõ -> agent -> phát trạng thái cho avatar + nói.
 
     Chu trình half-duplex nghiêm ngặt cho từng lượt: NGHE -> NGHĨ -> NÓI (chặn) ->
@@ -352,12 +353,12 @@ def _assistant_loop(agent, bus, synth, voice_io, routines=None):
         if routines is not None:
             rname = match_routine_command(text)
             if rname is not None:
-                _run_routine(agent, routines, rname, bus, synth, voice_io)
+                _run_routine(agent, routines, rname, bus, synth, voice_io, fast_match)
                 bus.emit(state="idle")
                 continue
 
         # 2) NGHĨ — qua _dispatch (fast-path giao diện/cuộn/chụp, hoặc agent)
-        response, emotion = _dispatch(agent, text, bus)
+        response, emotion = _dispatch(agent, text, bus, fast_match)
 
         # 3) NÓI — có barge-in (vừa nói vừa nghe wake word) hoặc chặn như cũ
         print(f"Trợ lý: {response}\n")
@@ -474,12 +475,12 @@ def _compose_brief(profile, tasks):
     return " ".join(parts)
 
 
-def _run_scheduled(bus, synth, agent, message, kind):
+def _run_scheduled(bus, synth, agent, message, kind, fast_match=None):
     """Callback khi một mục lịch tới hạn. kind='do' -> THỰC THI lệnh qua _dispatch (có khoá
     trong _dispatch chống chạy song song vòng lặp chính); 'remind' -> chỉ đọc lời nhắc."""
     if kind == "do":
         print(f"\n⏰ Thực thi theo lịch: {message}")
-        response, emotion = _dispatch(agent, message, bus)
+        response, emotion = _dispatch(agent, message, bus, fast_match)
         _say(synth, bus, response, emotion or guess_emotion(response))
     else:
         print(f"\n🔔 Nhắc: {message}")
@@ -542,6 +543,11 @@ def main():
                                  scheduler=scheduler, screen=screen, tasks=tasks)
     registry, report = build_registry(feature_ctx)
 
+    # Fast-path (tầng 0, không tốn lượt LLM nào) gom từ chính các feature ĐÃ nạp —
+    # feature bị bỏ qua thì luật của nó cũng vắng mặt. Xem `features/fast.py`.
+    def fast_match(text):
+        return feature_fast.match(text, report)
+
     # Router thu hẹp prompt+tool bằng 1 lượt LLM phân loại. Provider mạnh không cần (đo
     # được: bỏ router vẫn 100% chọn đúng tool, bớt 1 call/lượt) -> ROUTER_MODE=auto tắt.
     # Khi TẮT phải dùng prompt GỘP: không có ai chọn fragment theo case nữa, dùng base
@@ -572,7 +578,8 @@ def main():
                   on_pending=bus.emit_draft)
 
     # Giờ đã có agent -> nối callback lịch (remind đọc / do thực thi) rồi chạy scheduler.
-    scheduler.notify = lambda msg, kind="remind": _run_scheduled(bus, synth, agent, msg, kind)
+    scheduler.notify = lambda msg, kind="remind": _run_scheduled(bus, synth, agent, msg,
+                                                                 kind, fast_match)
     scheduler.start()
 
     # Chủ động: bản tin sáng + theo dõi pin (vòng nền).
@@ -600,7 +607,8 @@ def main():
     voice_io = _make_voice_input()
 
     worker = threading.Thread(target=_assistant_loop,
-                              args=(agent, bus, synth, voice_io, routines), daemon=True)
+                              args=(agent, bus, synth, voice_io, routines, fast_match),
+                              daemon=True)
     worker.start()
 
     # Persona bật -> tâm trạng dẫn khuôn mặt: tắt tự reset về neutral (emotion_hold_ms=0).

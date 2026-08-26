@@ -97,11 +97,19 @@ class Feature:
     # SPEC_CHARS_BUDGET. Đặt sát mức thật để một tool phình ra là thấy ngay.
     max_spec_chars: int = 2_000
 
-    # Chỗ dành sẵn cho việc 9 và 10 của sprint (dựng service lười, fast-path theo
-    # feature). Khai trong hợp đồng từ đầu để hai việc đó không phải sửa lại chữ ký.
-    build: Optional[Callable] = None          # (ctx) -> service, gọi ở lần dùng đầu
-    fast_paths: Tuple = ()                    # regex 0-call LLM
-    panel: Optional[Callable] = None          # hook dựng panel UI
+    # Fast-path: các mẫu khớp thẳng ra tool, KHÔNG tốn lượt LLM nào. Xem `features/fast.py`.
+    fast_paths: Tuple = ()
+
+    # Hook dựng panel UI. CHƯA CÓ AI DÙNG — `_open_place_from_panel` vẫn ở `app.py` vì gom
+    # được nó đòi thiết kế hook UI chung. Giữ trường ở đây là ghi nợ có tên, không phải
+    # thiết kế đã chốt.
+    panel: Optional[Callable] = None
+
+    # ĐÃ CÂN NHẮC VÀ BỎ: trường `build` dựng service kiểu lười. Đo 2026-08-25 cho thấy
+    # tiền đề sai — dựng mọi service tốn <= 1ms, nạp cả 10 feature + 47 tool tốn 14ms, và
+    # những thứ thật sự đắt (`bridge.start()` mở WebSocket, `mcp.start()` spawn tiến trình)
+    # đã được cổng bằng config sẵn. Làm lười chúng còn ĐÁNH ĐỔI một tính chất đang có:
+    # thiếu dependency thì feature vắng mặt, model không bao giờ thấy tool dùng không được.
 
     def __post_init__(self):
         # `requires` gõ sai tên trường sẽ làm feature TẮT VĨNH VIỄN trong im lặng —
@@ -125,6 +133,7 @@ class LoadedFeature:
     spec_chars: int = 0
     prompt: str = ""
     router_hint: str = ""
+    fast_paths: Tuple = ()
 
 
 @dataclass
@@ -156,6 +165,14 @@ class LoadReport:
     def router_hints(self) -> List[str]:
         """Dòng mô tả case của từng feature, theo thứ tự nạp."""
         return [f.router_hint for f in self.loaded if f.router_hint.strip()]
+
+    def fast_paths(self) -> List[Callable]:
+        """Luật fast-path của các feature ĐÃ NẠP, theo thứ tự nạp.
+
+        Feature bị bỏ qua thì luật của nó không có mặt — đúng ý: luật khớp ra một tool
+        không tồn tại chỉ tổ làm người dùng tưởng lệnh chạy rồi.
+        """
+        return [rule for f in self.loaded for rule in f.fast_paths]
 
     def case_names(self) -> List[str]:
         """Tên các case đến từ feature, theo thứ tự nạp (chưa gồm 'general')."""
@@ -202,7 +219,8 @@ def load_features(registry, ctx: FeatureContext, features) -> LoadReport:
 
         report.loaded.append(LoadedFeature(name=feature.name, tools=added,
                                            spec_chars=spec_chars, prompt=feature.prompt,
-                                           router_hint=feature.router_hint))
+                                           router_hint=feature.router_hint,
+                                           fast_paths=feature.fast_paths))
         logger.debug("feature %s: %d tool, %d chars", feature.name, len(added), spec_chars)
 
     if report.spec_chars > SPEC_CHARS_BUDGET:

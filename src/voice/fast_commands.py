@@ -30,78 +30,10 @@ _RULES = [
 ]
 
 
-_VOL_UP = ("tang", "len", "to hon", "cao hon", "to len", "to ra", "lon hon")
-_VOL_DOWN = ("giam", "xuong", "nho hon", "nho di", "bot", "thap hon", "nho lai")
-
-
-def _match_volume(text):
-    """Lệnh chỉnh âm lượng -> (tool, args). Có số -> mức tuyệt đối; không -> ±10.
-
-    Chạy thẳng tool (không qua LLM) để đảm bảo đổi mọi lần — model 3B hay ngừng gọi
-    tool sau lần đầu. Có từ 'video/youtube/nhạc' -> âm lượng TRÌNH PHÁT (Chrome): số ->
-    đặt mức, tăng/giảm -> adjust_volume ±10 (extension tự đọc mức hiện tại rồi cộng/trừ).
-    """
-    t = _norm(text)
-    if "am luong" not in t and "volume" not in t:
-        return None
-    num = re.search(r"\d+", t)
-    if any(w in t for w in ("video", "youtube", "clip", "nhac", "phim")):
-        if num:
-            return "browser_media_control", {"action": "set_volume", "value": int(num.group())}
-        if any(w in t for w in _VOL_UP):
-            return "browser_media_control", {"action": "adjust_volume", "value": 10}
-        if any(w in t for w in _VOL_DOWN):
-            return "browser_media_control", {"action": "adjust_volume", "value": -10}
-        return None
-    if num:
-        return "set_volume", {"level": int(num.group())}
-    if any(w in t for w in _VOL_UP):
-        return "set_volume", {"change": 10}
-    if any(w in t for w in _VOL_DOWN):
-        return "set_volume", {"change": -10}
-    return None
-
-
-_MEDIA_CONTEXT = ("video", "youtube", "nhac", "clip", "phim", "bai hat", "bai nhac")
-
-_MEDIA_RULES = [
-    (["bai tiep theo", "video tiep theo", "bai ke tiep", "bai ke", "chuyen bai",
-      "qua bai", "bai sau", "video sau", "clip sau"], "next", False),
-    (["bai truoc", "video truoc", "quay lai bai", "lui bai", "bai ke truoc"], "prev", False),
-    (["phat tiep", "tiep tuc", "choi tiep", "phat lai", "chay tiep"], "play", True),
-    (["tam dung", "tam ngung", "ngung", "dung phat", "dung video", "dung nhac",
-      "dung lai", "dung phim", "dung clip"], "pause", True),
-]
-
-
-def _match_media(text):
-    """Lệnh điều khiển trình phát media (video/nhạc) -> (tool, args). None nếu không khớp."""
-    t = _norm(text)
-    if not t:
-        return None
-    has_context = any(c in t for c in _MEDIA_CONTEXT)
-    for kws, action, needs_context in _MEDIA_RULES:
-        if any(k in t for k in kws) and (has_context or not needs_context):
-            return "browser_media_control", {"action": action}
-    return None
-
-
-def match_fast_command(text):
-    """Trả (tool_name, args) nếu `text` là lệnh trực tiếp đã biết; ngược lại None.
-
-    Chỉ dành cho lệnh TẤT ĐỊNH, đơn giản (âm lượng, media, cuộn, chụp) — chạy thẳng tool
-    cho tức thì + đảm bảo chạy. Yêu cầu phức tạp (tìm YouTube, web...) để ROUTER + LLM
-    lo, tránh 'hijack' bằng luật cứng.
-    """
-    vol = _match_volume(text)
-    if vol is not None:
-        return vol
-    media = _match_media(text)
-    if media is not None:
-        return media
-    m = _first_match(text, _RULES)
-    return (m[1], dict(m[2])) if m else None
-
+# ĐÃ CHUYỂN ĐI: luật fast-path nhắm vào TOOL (âm lượng, media, cuộn, chụp) nay nằm ở
+# `features/<tên>/fast.py` và khai qua `Feature.fast_paths` — xem `features/fast.py`.
+# File này chỉ còn các lệnh KHÔNG phải tool: giao diện avatar, chế độ, xác nhận, tính
+# cách, routine. Chúng thuộc về chính trợ lý chứ không thuộc tính năng nào.
 
 # Lệnh chỉnh GIAO DIỆN avatar (đổi kích thước / độ mờ) — trả dict lệnh UI cho bus.
 _UI_RULES = [

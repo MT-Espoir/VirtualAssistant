@@ -2,11 +2,13 @@
 
 from features.contract import Feature
 from features.browser import tools
+from features.browser.fast import FAST_PATHS
 from features.browser.prompt import CASE_BROWSER, ROUTER_HINT
 
 FEATURE = Feature(
     name="browser",
     register=tools.register,
+    fast_paths=FAST_PATHS,
     requires=('browser',),
     prompt=CASE_BROWSER,
     router_hint=ROUTER_HINT,

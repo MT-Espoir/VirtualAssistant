@@ -5,9 +5,24 @@ try:
 except ImportError:
     pytest = None
 
-from voice.fast_commands import (match_fast_command, match_avatar_command,
+from conftest import full_report
+from features import fast as feature_fast
+from voice.fast_commands import (match_avatar_command,
                                  match_mode_command, match_confirmation,
                                  match_persona_command, match_routine_command)
+
+
+_REPORT = full_report()
+
+
+def match_fast_command(text):
+    """Fast-path GHÉP từ các feature đã nạp — thay hàm tập trung cũ.
+
+    Giữ nguyên chữ ký để các khẳng định bên dưới không phải sửa: chúng vẫn kiểm đúng
+    hành vi người dùng thấy, chỉ khác là luật nay đến từ `features/<tên>/fast.py`.
+    """
+    return feature_fast.match(text, _REPORT)
+
 
 
 def test_scroll_down_variants():
@@ -253,3 +268,36 @@ if __name__ == "__main__":
                 print("FAIL", _name, "->", repr(_e))
     print(f"\n{'ALL PASS' if not failures else str(failures) + ' FAILED'}")
     raise SystemExit(1 if failures else 0)
+
+
+# --------------------------- fast-path theo feature --------------------------- #
+
+def test_feature_bi_bo_qua_thi_luat_cua_no_khong_khop():
+    """Luật khớp ra một tool KHÔNG tồn tại chỉ tổ làm người dùng tưởng lệnh đã chạy.
+
+    Trước đây luật nằm tập trung nên luôn khớp, rồi `app.py` mới phải chặn bằng
+    `registry.has(...)`. Nay feature bị bỏ qua (thiếu dependency / tắt bằng config) thì
+    luật của nó cũng vắng mặt ngay từ đầu.
+    """
+    from unittest.mock import MagicMock
+
+    from features.contract import FeatureContext
+    from features.registry import build_registry
+
+    # Không có `screen` -> feature screen tự tắt -> mất luôn fast-path cuộn/chụp.
+    khong_screen = build_registry(FeatureContext(actions=MagicMock(), browser=MagicMock()))[1]
+    assert feature_fast.match("cuộn xuống", khong_screen) is None
+    assert feature_fast.match("tạm dừng video", khong_screen) is not None   # browser vẫn còn
+
+
+def test_am_luong_may_va_am_luong_trinh_phat_tach_dung_feature():
+    """`_match_volume` cũ trả về tool của HAI feature khác nhau tuỳ ngữ cảnh.
+
+    Tách đôi theo điều kiện loại trừ nhau (có/không có từ chỉ media) nên thứ tự nạp
+    feature không đổi kết quả — khoá lại để lần tách này không âm thầm lệch.
+    """
+    assert match_fast_command("tăng âm lượng")[0] == "set_volume"
+    assert match_fast_command("tăng âm lượng video")[0] == "browser_media_control"
+    assert match_fast_command("âm lượng 50") == ("set_volume", {"level": 50})
+    assert match_fast_command("âm lượng video 50") == (
+        "browser_media_control", {"action": "set_volume", "value": 50})
