@@ -9,7 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from utils.config import Config                        # noqa: E402
+from utils.config import Config, STRONG_PROVIDERS       # noqa: E402
 
 
 def _cfg(mode, provider):
@@ -19,24 +19,25 @@ def _cfg(mode, provider):
     return c
 
 
-# --------------------------- auto: bật cho mọi provider --------------------------- #
+# --------------------------- auto: theo sức provider --------------------------- #
 
-def test_auto_bat_router_cho_moi_provider():
-    """Đổi 2026-08-26: `auto` bật router cho CẢ provider mạnh.
-
-    Lý do cũ để tắt (đo 2026-08-08: bỏ router giảm 35% số call mà vẫn 100% đúng tool) chỉ
-    nhìn SỐ CALL. Sau refactor feature-module, thứ quyết định là payload MỖI call: router
-    TẮT gửi trọn bộ tool nên chi phí tăng tuyến tính theo số tính năng (đo 2026-08-26:
-    57.568 vs 10.529 ký tự/lượt, và thêm 10 feature là ~97.865 vs ~12.428).
-    Xem `docs/router_local_classifier_spec.md`.
-    """
-    for provider in ("gemini", "claude", "ollama", "mot-provider-la", ""):
-        assert _cfg("auto", provider).use_router() is True, provider
+def test_auto_disables_router_for_strong_providers():
+    for provider in STRONG_PROVIDERS:
+        assert _cfg("auto", provider).use_router() is False, provider
 
 
 def test_auto_keeps_router_for_local_model():
     """R1: bỏ router với model local đã THỬ và HỎNG -> không được tự tắt."""
     assert _cfg("auto", "ollama").use_router() is True
+
+
+def test_auto_keeps_router_for_unknown_provider():
+    """Provider lạ -> mặc định AN TOÀN là giữ router (đừng đoán là nó mạnh)."""
+    assert _cfg("auto", "mot-provider-la").use_router() is True
+
+
+def test_auto_handles_empty_provider():
+    assert _cfg("auto", "").use_router() is True
 
 
 # --------------------------- on / off: ép cứng --------------------------- #
@@ -52,13 +53,7 @@ def test_off_forces_no_router_even_for_local():
 def test_unknown_mode_falls_back_to_auto():
     """Gõ sai chế độ -> xử như 'auto', không được vỡ."""
     assert _cfg("bat-dai", "ollama").use_router() is True
-    assert _cfg("bat-dai", "gemini").use_router() is True
-
-
-def test_off_van_la_duong_lui_duy_nhat():
-    """`off` phải còn dùng được: đây là đường lui tức thì nếu eval cho kết quả xấu."""
-    for provider in ("gemini", "claude", "ollama"):
-        assert _cfg("off", provider).use_router() is False, provider
+    assert _cfg("bat-dai", "gemini").use_router() is False
 
 
 # --------------------------- đọc từ biến môi trường --------------------------- #
