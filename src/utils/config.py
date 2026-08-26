@@ -45,9 +45,8 @@ def _get_float(name: str, default: float) -> float:
         return default
 
 
-# Provider đủ mạnh để tự chọn tool giữa TOÀN BỘ tool mà không cần router thu hẹp.
-# Provider mạnh vẫn chọn đúng tool khi bỏ router; model local thì KHÔNG.
-STRONG_PROVIDERS = ("gemini", "claude")
+# (Đã gỡ `STRONG_PROVIDERS` 2026-08-26: `auto` nay bật router cho mọi provider nên không
+# còn chỗ nào phân biệt "mạnh"/"yếu" ở tầng này. `persona.py` giữ danh sách riêng của nó.)
 
 
 def _get_bool(name: str, default: bool) -> bool:
@@ -117,10 +116,19 @@ class Config:
     FAST_COMMANDS = _get_bool("FAST_COMMANDS", True)
     # Router: 1 lượt LLM phân loại yêu cầu -> thu hẹp prompt+tool trước khi model chọn.
     # ROUTER_MODE: "auto" (mặc định) | "on" (luôn bật) | "off" (luôn tắt).
-    #   auto = TẮT với provider mạnh, BẬT với model local (provider mạnh vẫn chọn đúng
-    #   gemini-3.1-flash-lite): tắt router vẫn 100% chọn đúng tool mà giảm 35% số call
-    #   (2.86 -> 1.86 call/lượt). Ngược lại qwen 7B từng bỏ router và HỎNG (không gọi
-    #   tool khi thấy toàn bộ bộ tool, model local thì lạc).
+    #
+    #   auto = BẬT cho MỌI provider (đổi 2026-08-26 — trước đây tắt với provider mạnh).
+    #
+    #   Lý do cũ để tắt: đo 2026-08-08 thấy bỏ router vẫn 100% chọn đúng tool mà giảm 35%
+    #   số call (2.86 -> 1.86 call/lượt). Đo đó vẫn đúng, nhưng nó chỉ nhìn SỐ CALL.
+    #   Sau đợt refactor feature-module, thứ quan trọng hơn là payload MỖI call: router
+    #   TẮT gửi trọn bộ tool nên chi phí tăng TUYẾN TÍNH theo số tính năng, còn router BẬT
+    #   chỉ gửi tool của một case nên chi phí là O(1).
+    #     đo 2026-08-26:  TẮT 57.568 ký tự/lượt  |  BẬT 10.529  (5,5 lần)
+    #     thêm 10 feature: TẮT ~97.865           |  BẬT ~12.428
+    #   Xem `docs/router_local_classifier_spec.md`.
+    #
+    #   Model local thì vốn đã cần router: qwen 7B bỏ router là gần như không gọi tool nữa.
     ROUTER_MODE = _get("ROUTER_MODE", "auto").strip().lower()
     # Đọc THẲNG kết quả tool khi tool đó đã trả câu hoàn chỉnh (thời tiết, thông tin máy,
     # "Đã mở Chrome") -> bớt 1 lượt LLM soạn lời.
@@ -266,12 +274,15 @@ class Config:
     LOG_FILE = _get("LOG_FILE", "")   # rỗng = chỉ log ra console
 
     def use_router(self) -> bool:
-        """Lượt này có chạy router không. Tính lúc gọi vì 'auto' phụ thuộc LLM_PROVIDER."""
-        if self.ROUTER_MODE == "on":
-            return True
+        """Lượt này có chạy router không.
+
+        `auto` nay BẬT cho mọi provider — xem lý do ở chỗ khai `ROUTER_MODE`. Giữ nguyên
+        ba chế độ (thay vì bỏ luôn `auto`) để `ROUTER_MODE=off` còn dùng được làm đường
+        lui tức thì nếu eval cho kết quả xấu.
+        """
         if self.ROUTER_MODE == "off":
             return False
-        return (self.LLM_PROVIDER or "").strip().lower() not in STRONG_PROVIDERS
+        return True
 
 
 # Instance dùng chung toàn dự án
