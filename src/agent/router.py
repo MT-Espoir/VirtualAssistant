@@ -10,15 +10,13 @@ KHÔNG bị "hijack" như fast-path. Không rõ case / lỗi -> dùng full tool 
 gọi được tool nữa, nên GIỮ NGUYÊN lượt LLM phân loại.)
 """
 
+from features.contract import GENERAL_CASE as GENERAL
 from llm import prompts
 from llm.client import Message
 from utils.logger import get_logger
 from utils.text_norm import norm
 
 logger = get_logger(__name__)
-# Case "general" = không thu hẹp tool. Không đến từ feature nào (nó là "mọi thứ còn
-# lại") nên phải khai ở đây; mọi case khác suy ra từ registry qua LoadReport.case_tools().
-GENERAL = "general"
 
 
 def case_tools_from(report):
@@ -34,13 +32,19 @@ def case_tools_from(report):
 
 
 class Router:
-    def __init__(self, llm, case_tools, data=None, mcp_prefix=None):
+    def __init__(self, llm, case_tools, data, mcp_prefix=None):
         self.llm = llm
-        self.data = data or prompts.load()
-        # BẮT BUỘC truyền vào, dựng bằng `case_tools_from(report)` — không còn hằng số
-        # mặc định nào để rơi về, vì "mặc định" chính là nguồn sự thật thứ hai đã gây lỗi.
+        # CẢ HAI đều bắt buộc, và cả hai đều suy ra từ feature đã nạp — dùng
+        # `Router.from_report(...)`. Không còn hằng số mặc định nào để rơi về, vì "mặc
+        # định" chính là nguồn sự thật thứ hai đã gây lỗi `research_places`.
         self.case_tools = case_tools
+        self.data = data
         self.mcp_prefix = mcp_prefix or ""      # tiền tố tên tool MCP để thu hẹp case 'pim'
+
+    @classmethod
+    def from_report(cls, llm, report, mcp_prefix=None):
+        """Dựng router từ `LoadReport` — đường dùng thật, mọi thứ đến từ feature đã nạp."""
+        return cls(llm, case_tools_from(report), prompts.load(report), mcp_prefix=mcp_prefix)
 
     def classify(self, text):
         """Một lượt LLM -> tên case. Lỗi/không nhận ra -> 'general'."""

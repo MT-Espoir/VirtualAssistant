@@ -5,7 +5,7 @@ import os
 
 from features.places.service import PlacesService
 from agent.router import Router
-from conftest import full_case_tools
+from conftest import full_case_tools, full_report, full_router
 
 CT = full_case_tools()
 from agent.tools import ToolRegistry
@@ -208,22 +208,24 @@ def test_classify_khong_con_phu_thuoc_thu_tu_case():
     hẳn bảng — kết quả phải không đổi. Nhờ vậy thứ tự `FEATURES` được tự do phục vụ
     hiệu suất (thứ tự tool trong prompt) mà không kéo theo hệ quả đúng/sai nào.
     """
-    xuoi = Router(llm=None, case_tools=CT)
-    nguoc = Router(llm=None, case_tools=dict(reversed(list(CT.items()))))
+    from llm import prompts
+    data = prompts.load(full_report())
+    xuoi = Router(None, CT, data)
+    nguoc = Router(None, dict(reversed(list(CT.items()))), data)
     for cau in ("place", "web", "weather", "Nhóm: place ạ", "khong-biet-gi"):
         assert xuoi.match_case(cau) == nguoc.match_case(cau)
 
 
 def test_match_case_uu_tien_ten_dai_hon():
     """Bộ tên hiện tại không có cặp chuỗi con nào, nên dựng cặp giả để khoá hành vi."""
-    r = Router(llm=None, case_tools={"mail": [], "email": [], "general": None})
+    r = Router(None, {"mail": [], "email": [], "general": None}, {})
     assert r.match_case("email") == "email"      # không bị 'mail' nuốt
 
 
 def test_router_thu_hep_xuong_dung_bo_tool_place():
     places, loc = _FakePlaces(), _store()
     reg = _reg(places, loc)
-    _, specs = Router(llm=None, case_tools=CT).select_for_case("place", reg)
+    _, specs = full_router().select_for_case("place", reg)
     assert {s["name"] for s in specs} == set(CT["place"])
 
 

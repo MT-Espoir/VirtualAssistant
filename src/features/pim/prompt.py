@@ -33,3 +33,7 @@ CASE_PIM = (
     'lời, cũng đừng hỏi "bạn có muốn tôi gửi không?" rồi ngồi chờ mà không gọi công cụ. '
     'Phần xác nhận đã có cơ chế riêng lo.'
 )
+
+# Dòng mô tả case gửi cho BỘ PHÂN LOẠI (prompt ROUTER), khác `CASE_*` ở trên là
+# chỉ dẫn gửi cho lượt LÀM VIỆC. Hai vai trò khác nhau nên tách hẳn hai hằng.
+ROUTER_HINT = "- pim: LỊCH (Google Calendar — 'lịch hôm nay có gì'), EMAIL (đọc/tóm tắt/SOẠN/GỬI Gmail — 'có email mới không', 'gửi mail cho...', 'soạn mail...') và DANH BẠ/LIÊN HỆ (lưu/tra email theo tên — 'lưu liên hệ sếp là...', 'email của X là gì', 'danh bạ có ai'). LƯU Ý: 'lịch Google/sự kiện/email/liên hệ' = pim; còn 'nhắc tôi.../hẹn giờ' nội bộ = schedule"

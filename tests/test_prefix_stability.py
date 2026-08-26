@@ -13,7 +13,7 @@ refactor feature-module đụng vào nhiều nhất.
 
 import json
 
-from conftest import full_registry
+from conftest import full_registry, full_report
 from llm import prompts
 
 
@@ -56,18 +56,18 @@ def test_prompt_gop_on_dinh_giua_cac_luot():
     Prompt gộp là đường chạy khi router TẮT (provider mạnh), tức đường chạy mặc định
     hiện nay. Nó đứng ở ĐẦU system prompt nên lệch một ký tự là mất cache cả lượt.
     """
-    assert prompts.merged() == prompts.merged()
+    assert prompts.merged(full_report()) == prompts.merged(full_report())
 
 
 def test_prompt_gop_bat_dau_bang_base():
     """BASE phải ở ngay đầu; các fragment case xếp sau."""
-    assert prompts.merged().startswith(prompts.base())
+    assert prompts.merged(full_report()).startswith(prompts.base())
 
 
 def test_moi_case_deu_co_mat_trong_prompt_gop():
     """Router tắt thì không ai chọn fragment nữa -> gộp thiếu case là mất chỉ dẫn riêng."""
-    merged = prompts.merged()
-    for name, fragment in prompts.load()["cases"].items():
+    merged = prompts.merged(full_report())
+    for name, fragment in prompts.load(full_report())["cases"].items():
         if fragment.strip():
             assert f"[{name}]" in merged, f"case {name} rơi khỏi prompt gộp"
 

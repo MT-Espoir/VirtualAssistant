@@ -12,3 +12,7 @@ CASE_TASK = (
     "delete_routine khi 'xoá routine X'. remove_task/delete_routine sẽ tự hỏi xác nhận. "
     'Khớp theo từ khoá.'
 )
+
+# Dòng mô tả case gửi cho BỘ PHÂN LOẠI (prompt ROUTER), khác `CASE_*` ở trên là
+# chỉ dẫn gửi cho lượt LÀM VIỆC. Hai vai trò khác nhau nên tách hẳn hai hằng.
+ROUTER_HINT = "- task: VIỆC CẦN LÀM không gắn giờ — thêm việc ('thêm việc mua sữa'), xem việc ('còn việc gì', 'việc hôm nay', 'danh sách việc'), đánh dấu xong ('xong việc...'), xoá việc; HOẶC quản lý QUY TRÌNH có tên (routine) — tạo ('tạo routine buổi sáng gồm...'), xem ('có routine nào'), xoá routine"

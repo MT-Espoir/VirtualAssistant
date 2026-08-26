@@ -37,3 +37,7 @@ CASE_PLACE = (
     "quận/thành phố cụ thể. TUYỆT ĐỐI KHÔNG dùng web_search_list để thay thế rồi đọc "
     "tiêu đề bài viết như thể đó là danh sách quán — đó là bài blog, không phải địa điểm."
 )
+
+# Dòng mô tả case gửi cho BỘ PHÂN LOẠI (prompt ROUTER), khác `CASE_*` ở trên là
+# chỉ dẫn gửi cho lượt LÀM VIỆC. Hai vai trò khác nhau nên tách hẳn hai hằng.
+ROUTER_HINT = "- place: tìm ĐỊA ĐIỂM THẬT ngoài đời — quán ăn/cà phê/ATM/hiệu thuốc/cây xăng gần đây, hoặc hỏi một chỗ cụ thể ở đâu ('nhà sách Fahasa Nguyễn Văn Cừ ở đâu'), hoặc người dùng cho biết họ đang ở khu vực nào"

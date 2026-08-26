@@ -10,3 +10,7 @@ CASE_SCHEDULE = (
     "mở/phát/làm Y', '22h30 mở youtube' -> schedule_action với command=Y (trợ lý sẽ TỰ THỰC "
     "THI khi tới giờ). Cả hai dùng 'delay_minutes' (số phút nữa) HOẶC 'at' (giờ HH:MM)."
 )
+
+# Dòng mô tả case gửi cho BỘ PHÂN LOẠI (prompt ROUTER), khác `CASE_*` ở trên là
+# chỉ dẫn gửi cho lượt LÀM VIỆC. Hai vai trò khác nhau nên tách hẳn hai hằng.
+ROUTER_HINT = "- schedule: hẹn GIỜ cụ thể — đặt/xem/huỷ lời nhắc ('nhắc tôi... lúc...'), HOẶC hẹn trợ lý TỰ LÀM một việc vào giờ đó ('22h30 mở youtube', 'lúc 8h phát nhạc')"

@@ -51,15 +51,26 @@ def registry_with(actions=None, **ctx_kwargs):
     return build_registry(FeatureContext(**ctx))[0]
 
 
-def full_case_tools():
-    """Bảng {case -> [tool]} suy ra từ registry đầy đủ — thay cho hằng `CASE_TOOLS` cũ."""
+def full_report():
+    """`LoadReport` của registry đầy đủ — nguồn cho bảng case->tool VÀ cho prompt."""
     import dataclasses
     from unittest.mock import MagicMock
 
-    from agent.router import case_tools_from
     from features.contract import FeatureContext
     from features.registry import build_registry
 
     ctx = {f.name: MagicMock() for f in dataclasses.fields(FeatureContext)}
     ctx["mcp"] = None
-    return case_tools_from(build_registry(FeatureContext(**ctx))[1])
+    return build_registry(FeatureContext(**ctx))[1]
+
+
+def full_case_tools():
+    """Bảng {case -> [tool]} suy ra từ registry đầy đủ — thay cho hằng `CASE_TOOLS` cũ."""
+    from agent.router import case_tools_from
+    return case_tools_from(full_report())
+
+
+def full_router(llm=None, **kwargs):
+    """Router dựng từ toàn bộ feature — thay lối cũ `Router(llm)` không tham số."""
+    from agent.router import Router
+    return Router.from_report(llm, full_report(), **kwargs)

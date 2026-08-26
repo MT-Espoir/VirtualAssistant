@@ -13,7 +13,7 @@ import time
 
 from agent.actions_facade import AssistantActions
 from llm.client import build_default_llm_client
-from agent.router import Router, case_tools_from
+from agent.router import Router
 from features.contract import FeatureContext
 from features.registry import build_registry
 from llm import prompts
@@ -41,7 +41,7 @@ def _build_parts():
         places=_StubDep(), location=_StubDep(), profile=_StubDep(),
         contacts=_StubDep(), bus=_StubDep()))
     # Dùng CHUNG quyết định với app.py -> eval đo đúng cấu hình production sẽ chạy.
-    router = Router(llm, case_tools_from(report)) if config.use_router() else None
+    router = Router.from_report(llm, report) if config.use_router() else None
     return llm, registry, router
 
 
@@ -97,7 +97,7 @@ def main(argv=None):
 
     # Không router -> dùng prompt GỘP (base + mọi fragment case), KHÔNG phải base trần:
     # đo đúng thứ production sẽ chạy, nếu không sẽ chấm thiệt cho chế độ không-router.
-    system = None if router else prompts.merged()
+    system = None if router else prompts.merged(report)
 
     results = []
     dt = 0.0                      # CHỈ cộng thời gian chạy ca, KHÔNG tính lúc nghỉ

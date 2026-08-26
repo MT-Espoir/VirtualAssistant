@@ -36,89 +36,24 @@ BASE = (
 
 # Prompt cho lượt PHÂN LOẠI của router (chỉ trả về đúng một từ khoá case).
 # LƯU Ý thứ tự: 'weather' phải đứng trước 'web' vì classify khớp bằng chuỗi con
-# ('web' là con của 'weather') — xem CASE_TOOLS trong agent/router.py.
-ROUTER = (
-    'Nhiệm vụ: phân loại yêu cầu của người dùng vào ĐÚNG MỘT nhóm dưới đây. CHỈ trả về đúng '
-    'một từ khoá tiếng Anh '
-    '(web/weather/place/system/screen/browser/schedule/task/profile/general), KHÔNG giải thích, '
-    'KHÔNG thêm gì khác.\n'
-    '- web: MỞ MỚI trang web, tìm kiếm Google, tìm/PHÁT một video hoặc bài hát MỚI trên '
-    'YouTube, tra cứu Wikipedia, đọc trang\n'
-    '- weather: hỏi thời tiết, trời nắng/mưa, nhiệt độ, khả năng mưa, tia UV\n'
-    '- place: tìm ĐỊA ĐIỂM THẬT ngoài đời — quán ăn/cà phê/ATM/hiệu thuốc/cây xăng gần '
-    "đây, hoặc hỏi một chỗ cụ thể ở đâu ('nhà sách Fahasa Nguyễn Văn Cừ ở đâu'), hoặc "
-    'người dùng cho biết họ đang ở khu vực nào\n'
-    '- system: mở/đóng ứng dụng, LIỆT KÊ cửa sổ đang mở, CHUYỂN sang một cửa sổ/ứng dụng '
-    'đang chạy (đưa ra trước), chỉnh âm lượng, độ sáng, xem thông tin máy\n'
-    '- screen: chụp màn hình, tìm chữ trên màn hình, cuộn màn hình\n'
-    '- browser: điều khiển video/nhạc ĐANG phát sẵn trên Chrome — tạm dừng, phát tiếp, PHÁT '
-    'LẠI, tua tới/lùi, chỉnh âm lượng video, chuyển bài kế/trước; hoặc quản lý TAB CHROME '
-    '(liệt kê/đóng/chuyển tab TRONG Chrome)\n'
-    "- schedule: hẹn GIỜ cụ thể — đặt/xem/huỷ lời nhắc ('nhắc tôi... lúc...'), HOẶC hẹn trợ "
-    "lý TỰ LÀM một việc vào giờ đó ('22h30 mở youtube', 'lúc 8h phát nhạc')\n"
-    "- task: VIỆC CẦN LÀM không gắn giờ — thêm việc ('thêm việc mua sữa'), xem việc ('còn "
-    "việc gì', 'việc hôm nay', 'danh sách việc'), đánh dấu xong ('xong việc...'), xoá việc; "
-    "HOẶC quản lý QUY TRÌNH có tên (routine) — tạo ('tạo routine buổi sáng gồm...'), xem "
-    "('có routine nào'), xoá routine\n"
-    "- profile: người dùng cho biết THÔNG TIN CÁ NHÂN cần nhớ lâu dài, hoặc bảo trợ lý "
-    "QUÊN một điều đã nhớ ('quên chuyện... đi', 'đừng nhớ... nữa') — tên ('tôi tên "
-    "là...'), cách xưng hô ('gọi tôi là...'), nơi ở/địa điểm mặc định ('tôi ở...'), hoặc "
-    "điều muốn trợ lý ghi nhớ ('nhớ giúp tôi...')\n"
-    "- pim: LỊCH (Google Calendar — 'lịch hôm nay có gì'), EMAIL (đọc/tóm tắt/SOẠN/GỬI "
-    "Gmail — 'có email mới không', 'gửi mail cho...', 'soạn mail...') và DANH BẠ/LIÊN HỆ "
-    "(lưu/tra email theo tên — 'lưu liên hệ sếp là...', 'email của X là gì', 'danh bạ có "
-    "ai'). LƯU Ý: 'lịch Google/sự kiện/email/liên hệ' = pim; còn 'nhắc tôi.../hẹn giờ' nội "
-    'bộ = schedule\n'
-    '- general: chào hỏi, hỏi đáp thông thường, hoặc không thuộc nhóm nào\n'
-    "LƯU Ý phân biệt: 'mở/phát bài X trên YouTube' (mở nội dung mới) = web; còn 'tạm "
-    "dừng/phát tiếp/phát lại/tua video (đang xem)' = browser. Cửa sổ/ỨNG DỤNG đang chạy "
-    '(Chrome, Word, Claude...) = system; còn TAB bên trong Chrome = browser. Việc cần làm '
-    "KHÔNG có giờ cụ thể (mua sữa, nộp báo cáo) = task; còn có GIỜ để nhắc ('nhắc tôi 3h "
-    "chiều') = schedule. Tìm ĐỊA ĐIỂM ngoài đời (quán xá, cửa hàng, chỗ nào đó ở đâu) = "
-    "place; còn tìm THÔNG TIN trên mạng ('tìm hiểu về X', 'X là gì') = web."
-)
+# ('web' là con của 'weather') — xem CASE_TOOLS trong agent/router.py.# Prompt ROUTER được LẮP RÁP từ ba mảnh, không còn viết liền một khối:
+#   ROUTER_HEADER  (đây)          — nhiệm vụ + danh sách từ khoá, sinh từ FEATURES
+#   Feature.router_hint           — mỗi feature một dòng mô tả case của mình
+#   ROUTER_TAIL    (đây)          — các cặp dễ lẫn, vốn là chuyện LIÊN case
+#
+# Trước đây cả ba nằm chung một hằng viết tay, và danh sách từ khoá đã LỆCH: nó liệt
+# kê 10 nhóm nhưng thiếu `pim`, dù `pim` được mô tả ngay bên dưới — model được bảo
+# "chỉ trả về một trong các từ này" mà từ đó không có trong danh sách. Sinh từ
+# FEATURES thì kiểu lệch đó không xảy ra được nữa.
+ROUTER_HEADER = 'Nhiệm vụ: phân loại yêu cầu của người dùng vào ĐÚNG MỘT nhóm dưới đây. CHỈ trả về đúng một từ khoá tiếng Anh ({cases}), KHÔNG giải thích, KHÔNG thêm gì khác.'
 
-# --------------------------------------------------------------------------- #
-# Fragment theo CASE — ghép sau BASE. Rỗng = không thêm gì (dùng BASE trần).
-# --------------------------------------------------------------------------- #
+# Case "general" không thuộc feature nào (nó là "mọi thứ còn lại") nên hint ở đây.
+GENERAL_HINT = '- general: chào hỏi, hỏi đáp thông thường, hoặc không thuộc nhóm nào'
 
-# CASE_WEB đã chuyển sang `features/web/prompt.py` (gom về đúng feature).
-from features.web.prompt import CASE_WEB  # noqa: E402
+ROUTER_TAIL = "LƯU Ý phân biệt: 'mở/phát bài X trên YouTube' (mở nội dung mới) = web; còn 'tạm dừng/phát tiếp/phát lại/tua video (đang xem)' = browser. Cửa sổ/ỨNG DỤNG đang chạy (Chrome, Word, Claude...) = system; còn TAB bên trong Chrome = browser. Việc cần làm KHÔNG có giờ cụ thể (mua sữa, nộp báo cáo) = task; còn có GIỜ để nhắc ('nhắc tôi 3h chiều') = schedule. Tìm ĐỊA ĐIỂM ngoài đời (quán xá, cửa hàng, chỗ nào đó ở đâu) = place; còn tìm THÔNG TIN trên mạng ('tìm hiểu về X', 'X là gì') = web."
 
-# CASE_WEATHER đã chuyển sang `features/weather/prompt.py` (gom về đúng feature).
-from features.weather.prompt import CASE_WEATHER  # noqa: E402
 
-# CASE_SYSTEM đã chuyển sang `features/system/prompt.py` (gom về đúng feature).
-from features.system.prompt import CASE_SYSTEM  # noqa: E402
-# CASE_SCREEN đã chuyển sang `features/screen/prompt.py` (gom về đúng feature).
-from features.screen.prompt import CASE_SCREEN  # noqa: E402
-# CASE_BROWSER đã chuyển sang `features/browser/prompt.py` (gom về đúng feature).
-from features.browser.prompt import CASE_BROWSER  # noqa: E402
-# CASE_SCHEDULE đã chuyển sang `features/schedule/prompt.py` (gom về đúng feature).
-from features.schedule.prompt import CASE_SCHEDULE  # noqa: E402
-# CASE_TASK đã chuyển sang `features/task/prompt.py` (gom về đúng feature).
-from features.task.prompt import CASE_TASK  # noqa: E402
-# CASE_PROFILE đã chuyển sang `features/profile/prompt.py` (gom về đúng feature).
-from features.profile.prompt import CASE_PROFILE  # noqa: E402
-# CASE_PIM đã chuyển sang `features/pim/prompt.py` (gom về đúng feature).
-from features.pim.prompt import CASE_PIM  # noqa: E402
-
-CASE_GENERAL = ""
-
-# Bản đồ case -> fragment. Khoá phải khớp CASE_TOOLS trong agent/router.py.# CASE_PLACE đã chuyển sang `features/places/prompt.py` (gom về đúng feature của nó).
-# Nhập ngược để `CASES` bên dưới và `merged()` không đổi một byte trong lúc migrate.
-from features.places.prompt import CASE_PLACE  # noqa: E402
-
-CASES = {
-    "web": CASE_WEB,
-    "weather": CASE_WEATHER,
-    "place": CASE_PLACE,
-    "system": CASE_SYSTEM,
-    "screen": CASE_SCREEN,
-    "browser": CASE_BROWSER,
-    "schedule": CASE_SCHEDULE,
-    "task": CASE_TASK,
-    "profile": CASE_PROFILE,
-    "pim": CASE_PIM,
-    "general": CASE_GENERAL,
-}
+# CÁC ĐOẠN PROMPT THEO NHÓM ĐÃ RỜI KHỎI ĐÂY. Mỗi feature giữ đoạn của mình trong
+# `features/<tên>/prompt.py` (CASE_* dạy model LÀM, ROUTER_HINT dạy model NHẬN RA);
+# `llm/prompts.py` ghép chúng lại từ LoadReport. File này chỉ còn những mảnh KHÔNG
+# thuộc feature nào.

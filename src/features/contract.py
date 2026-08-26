@@ -33,6 +33,11 @@ logger = get_logger(__name__)
 # cái (đang dùng 96% ngân sách), tức đỏ mỗi lần sửa câu chữ mô tả — vô dụng.
 SPEC_CHARS_BUDGET = 20_000
 
+# Case "mọi thứ còn lại": không thu hẹp tool, không thuộc feature nào. Đặt ở hợp đồng
+# (chứ không ở router hay prompts) vì cả hai nơi đó đều cần, và cả hai đều nói về cùng
+# một khái niệm — case không do feature nào sinh ra.
+GENERAL_CASE = "general"
+
 
 @dataclass
 class FeatureContext:
@@ -79,8 +84,14 @@ class Feature:
     # Cổng bật/tắt bằng config: () -> bool. None = luôn bật (khi đủ `requires`).
     enabled: Optional[Callable] = None
 
-    # Đoạn prompt riêng của feature, thay cho `llm/prompt_texts.CASES[name]`.
+    # Đoạn prompt riêng của feature, gửi kèm ở lượt LÀM VIỆC (thay `prompt_texts.CASES`).
     prompt: str = ""
+
+    # MỘT DÒNG mô tả case, gửi cho lượt PHÂN LOẠI (thay phần thân của `prompt_texts.ROUTER`).
+    # Khác `prompt` ở trên về cả người đọc lẫn mục đích: `prompt` dạy model LÀM, dòng này
+    # dạy model NHẬN RA. Feature có tool mà thiếu dòng này thì bộ phân loại không bao giờ
+    # chọn tới nó — `test_prompt_derived.py` bắt trường hợp đó.
+    router_hint: str = ""
 
     # Trần ký tự cho phần tool specs của RIÊNG feature này. Cộng dồn phải nằm trong
     # SPEC_CHARS_BUDGET. Đặt sát mức thật để một tool phình ra là thấy ngay.
@@ -113,6 +124,7 @@ class LoadedFeature:
     tools: Tuple[str, ...] = ()      # tên tool feature này đăng ký, THEO THỨ TỰ đăng ký
     spec_chars: int = 0
     prompt: str = ""
+    router_hint: str = ""
 
 
 @dataclass
@@ -136,6 +148,18 @@ class LoadReport:
     def prompt_fragments(self) -> List[Tuple[str, str]]:
         """[(tên case, đoạn prompt)] theo thứ tự nạp — thứ tự này phải ỔN ĐỊNH."""
         return [(f.name, f.prompt) for f in self.loaded if f.prompt.strip()]
+
+    def cases(self) -> dict:
+        """{tên case -> đoạn prompt} cho lượt làm việc. Thay `prompt_texts.CASES`."""
+        return {f.name: f.prompt for f in self.loaded}
+
+    def router_hints(self) -> List[str]:
+        """Dòng mô tả case của từng feature, theo thứ tự nạp."""
+        return [f.router_hint for f in self.loaded if f.router_hint.strip()]
+
+    def case_names(self) -> List[str]:
+        """Tên các case đến từ feature, theo thứ tự nạp (chưa gồm 'general')."""
+        return [f.name for f in self.loaded]
 
 
 def load_features(registry, ctx: FeatureContext, features) -> LoadReport:
@@ -177,7 +201,8 @@ def load_features(registry, ctx: FeatureContext, features) -> LoadReport:
                            feature.name, spec_chars, feature.max_spec_chars)
 
         report.loaded.append(LoadedFeature(name=feature.name, tools=added,
-                                           spec_chars=spec_chars, prompt=feature.prompt))
+                                           spec_chars=spec_chars, prompt=feature.prompt,
+                                           router_hint=feature.router_hint))
         logger.debug("feature %s: %d tool, %d chars", feature.name, len(added), spec_chars)
 
     if report.spec_chars > SPEC_CHARS_BUDGET:

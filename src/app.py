@@ -551,11 +551,11 @@ def main():
     # số chép tay — router không thể biết case nào tồn tại trước khi feature nạp xong.
     router, system_prompt = None, None
     if config.use_router():
-        from agent.router import Router, case_tools_from
-        router = Router(llm, case_tools_from(report), mcp_prefix=config.MCP_TOOL_PREFIX)
+        from agent.router import Router
+        router = Router.from_report(llm, report, mcp_prefix=config.MCP_TOOL_PREFIX)
     else:
         from llm import prompts
-        system_prompt = prompts.merged()
+        system_prompt = prompts.merged(report)
     logger.info("🧭 router: %s", "bật" if router else "tắt (prompt gộp)")
 
     agent = Agent(llm=llm,

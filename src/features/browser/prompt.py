@@ -13,3 +13,7 @@ CASE_BROWSER = (
     'để xem danh sách tab, đọc cho người dùng và chờ họ đồng ý, chỉ gọi lại confirm=true '
     'sau khi được đồng ý.'
 )
+
+# Dòng mô tả case gửi cho BỘ PHÂN LOẠI (prompt ROUTER), khác `CASE_*` ở trên là
+# chỉ dẫn gửi cho lượt LÀM VIỆC. Hai vai trò khác nhau nên tách hẳn hai hằng.
+ROUTER_HINT = '- browser: điều khiển video/nhạc ĐANG phát sẵn trên Chrome — tạm dừng, phát tiếp, PHÁT LẠI, tua tới/lùi, chỉnh âm lượng video, chuyển bài kế/trước; hoặc quản lý TAB CHROME (liệt kê/đóng/chuyển tab TRONG Chrome)'

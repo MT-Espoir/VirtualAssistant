@@ -1,6 +1,6 @@
 """Test feature `place` sau khi chuyển sang hợp đồng feature-module."""
 
-from conftest import registry_with
+from conftest import registry_with, full_report
 
 from unittest.mock import MagicMock
 
@@ -76,7 +76,7 @@ def test_tool_suy_ra_trung_khop_bang_case_tools_viet_tay():
 
 def test_doan_prompt_giu_nguyen_van():
     """Text đã chuyển sang `features/places/prompt.py`; `CASES` nhập ngược nên phải y hệt."""
-    assert FEATURE.prompt == prompts.load()["cases"]["place"]
+    assert FEATURE.prompt == prompts.load(full_report())["cases"]["place"]
     assert FEATURE.prompt.strip(), "fragment rỗng -> router mất chỉ dẫn riêng cho case place"
 
 

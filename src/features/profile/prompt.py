@@ -13,3 +13,7 @@ CASE_PROFILE = (
     'với từ khoá. Sau đó xác nhận ngắn gọn, thân '
     'thiện.'
 )
+
+# Dòng mô tả case gửi cho BỘ PHÂN LOẠI (prompt ROUTER), khác `CASE_*` ở trên là
+# chỉ dẫn gửi cho lượt LÀM VIỆC. Hai vai trò khác nhau nên tách hẳn hai hằng.
+ROUTER_HINT = "- profile: người dùng cho biết THÔNG TIN CÁ NHÂN cần nhớ lâu dài, hoặc bảo trợ lý QUÊN một điều đã nhớ ('quên chuyện... đi', 'đừng nhớ... nữa') — tên ('tôi tên là...'), cách xưng hô ('gọi tôi là...'), nơi ở/địa điểm mặc định ('tôi ở...'), hoặc điều muốn trợ lý ghi nhớ ('nhớ giúp tôi...')"

@@ -7,7 +7,7 @@ except ImportError:
 
 from llm import prompts
 from agent.router import Router
-from conftest import full_case_tools
+from conftest import full_case_tools, full_report, full_router
 
 CT = full_case_tools()
 from llm.client import AssistantTurn
@@ -38,47 +38,47 @@ def _registry():
 # --------------------------- prompts ---------------------------
 
 def test_prompts_load_has_base_and_cases():
-    data = prompts.load()
+    data = prompts.load(full_report())
     assert data["base"] and "web" in data["cases"] and data["router"]
 
 
 def test_prompts_base_shortcut():
-    assert prompts.base() == prompts.load()["base"]
+    assert prompts.base() == prompts.load(full_report())["base"]
 
 
 # --------------------------- classify ---------------------------
 
 def test_classify_returns_known_case():
-    assert Router(_FakeLLM("web"), CT).classify("tìm youtube") == "web"
-    assert Router(_FakeLLM("system"), CT).classify("tăng âm lượng") == "system"
+    assert full_router(_FakeLLM("web")).classify("tìm youtube") == "web"
+    assert full_router(_FakeLLM("system")).classify("tăng âm lượng") == "system"
 
 
 def test_classify_parses_label_within_noise():
     # model trả kèm chữ thừa vẫn nhận ra case
-    assert Router(_FakeLLM("Nhóm: schedule ạ"), CT).classify("nhắc tôi") == "schedule"
+    assert full_router(_FakeLLM("Nhóm: schedule ạ")).classify("nhắc tôi") == "schedule"
 
 
 def test_classify_weather_not_swallowed_by_web():
     # "web" là con của "weather" -> phải nhận đúng weather, không nuốt thành web
-    assert Router(_FakeLLM("weather"), CT).classify("thời tiết hôm nay") == "weather"
-    assert Router(_FakeLLM("web"), CT).classify("mở google") == "web"
+    assert full_router(_FakeLLM("weather")).classify("thời tiết hôm nay") == "weather"
+    assert full_router(_FakeLLM("web")).classify("mở google") == "web"
 
 
 def test_classify_unknown_falls_back_general():
-    assert Router(_FakeLLM("khong-biet-gi"), CT).classify("abc") == "general"
+    assert full_router(_FakeLLM("khong-biet-gi")).classify("abc") == "general"
 
 
 def test_classify_error_falls_back_general():
     class Boom:
         def generate(self, **k): raise RuntimeError("x")
-    assert Router(Boom(), CT).classify("abc") == "general"
+    assert full_router(Boom()).classify("abc") == "general"
 
 
 # --------------------------- select: thu hẹp tool ---------------------------
 
 def test_select_narrows_tools_to_case():
     reg = _registry()
-    system, specs = Router(_FakeLLM("system"), CT).select("tăng âm lượng", reg)
+    system, specs = full_router(_FakeLLM("system")).select("tăng âm lượng", reg)
     names = {s["name"] for s in specs}
     assert names == set(CT["system"])           # đúng nhóm system
     assert "web_search" not in names                     # đã loại tool ngoài nhóm
@@ -87,20 +87,20 @@ def test_select_narrows_tools_to_case():
 
 def test_select_general_uses_all_tools():
     reg = _registry()
-    _, specs = Router(_FakeLLM("general"), CT).select("chào bạn", reg)
+    _, specs = full_router(_FakeLLM("general")).select("chào bạn", reg)
     assert len(specs) == len(reg.specs())                # không thu hẹp
 
 
 def test_select_empty_case_falls_back_full():
     # case 'browser' nhưng registry KHÔNG có tool browser -> dùng full thay vì rỗng
     reg = _registry()
-    _, specs = Router(_FakeLLM("browser"), CT).select("dừng video", reg)
+    _, specs = full_router(_FakeLLM("browser")).select("dừng video", reg)
     assert len(specs) == len(reg.specs())
 
 
 def test_classify_task_case():
     # "task" không bị nuốt và không nuốt case khác
-    assert Router(_FakeLLM("task"), CT).classify("thêm việc mua sữa") == "task"
+    assert full_router(_FakeLLM("task")).classify("thêm việc mua sữa") == "task"
 
 
 def test_select_narrows_to_task_case():
@@ -108,7 +108,7 @@ def test_select_narrows_to_task_case():
     from services.routines import RoutineStore
     reg = registry_with(actions=_FakeActions(), tasks=TaskStore(path="__none__.json"),
                                  routines=RoutineStore(path="__none__.json"))
-    _, specs = Router(_FakeLLM("task"), CT).select("thêm việc mua sữa", reg)
+    _, specs = full_router(_FakeLLM("task")).select("thêm việc mua sữa", reg)
     names = {s["name"] for s in specs}
     assert names == set(CT["task"])
     assert "open_app" not in names and "schedule_reminder" not in names
@@ -128,13 +128,13 @@ def test_pim_narrows_by_tool_prefix():
     from features.pim.tools import register as register_pim
     reg = registry_with(actions=_FakeActions())
     register_pim(reg, FeatureContext(mcp=_FakeMCP(["gws_list_events", "gws_send_mail"])))
-    _, specs = Router(_FakeLLM("pim"), CT, mcp_prefix="gws_").select("lịch hôm nay có gì", reg)
+    _, specs = full_router(_FakeLLM("pim"), mcp_prefix="gws_").select("lịch hôm nay có gì", reg)
     assert {s["name"] for s in specs} == {"gws_list_events", "gws_send_mail"}
 
 
 def test_pim_without_prefix_uses_full():
     reg = _registry()      # không có MCP + không prefix -> pim giữ full tool
-    _, specs = Router(_FakeLLM("pim"), CT).select("lịch", reg)
+    _, specs = full_router(_FakeLLM("pim")).select("lịch", reg)
     assert len(specs) == len(reg.specs())
 
 
@@ -184,7 +184,7 @@ def test_place_case_exposes_research_places():
 
 def test_place_case_prompt_mentions_research_places():
     """Có tool trong danh sách chưa đủ: prompt phải nói KHI NÀO chọn nó."""
-    frag = prompts.load()["cases"]["place"]
+    frag = prompts.load(full_report())["cases"]["place"]
     assert "research_places" in frag
 
 

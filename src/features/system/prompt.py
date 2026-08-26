@@ -10,3 +10,7 @@ CASE_SYSTEM = (
     "sổ ĐANG CHẠY SẴN (vd 'chuyển sang Chrome', 'qua Claude', 'mở lại cửa sổ Word đang mở') "
     "= switch_window; hỏi 'đang mở những gì/cửa sổ nào' = list_windows."
 )
+
+# Dòng mô tả case gửi cho BỘ PHÂN LOẠI (prompt ROUTER), khác `CASE_*` ở trên là
+# chỉ dẫn gửi cho lượt LÀM VIỆC. Hai vai trò khác nhau nên tách hẳn hai hằng.
+ROUTER_HINT = '- system: mở/đóng ứng dụng, LIỆT KÊ cửa sổ đang mở, CHUYỂN sang một cửa sổ/ứng dụng đang chạy (đưa ra trước), chỉnh âm lượng, độ sáng, xem thông tin máy'

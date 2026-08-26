@@ -30,3 +30,7 @@ CASE_WEB = (
     'danh sách địa điểm có thật. Không được trình bày chúng như thể là quán/cửa hàng '
     'quanh người dùng; muốn tìm địa điểm ngoài đời thì phải dùng find_nearby/find_place.'
 )
+
+# Dòng mô tả case gửi cho BỘ PHÂN LOẠI (prompt ROUTER), khác `CASE_*` ở trên là
+# chỉ dẫn gửi cho lượt LÀM VIỆC. Hai vai trò khác nhau nên tách hẳn hai hằng.
+ROUTER_HINT = '- web: MỞ MỚI trang web, tìm kiếm Google, tìm/PHÁT một video hoặc bài hát MỚI trên YouTube, tra cứu Wikipedia, đọc trang'

@@ -9,3 +9,7 @@ CASE_WEATHER = (
     "dùng có nói địa điểm thì truyền vào 'location', không thì để trống. Đọc lại kết quả tự "
     'nhiên, GIỮ phần khuyến nghị và ghi nguồn.'
 )
+
+# Dòng mô tả case gửi cho BỘ PHÂN LOẠI (prompt ROUTER), khác `CASE_*` ở trên là
+# chỉ dẫn gửi cho lượt LÀM VIỆC. Hai vai trò khác nhau nên tách hẳn hai hằng.
+ROUTER_HINT = '- weather: hỏi thời tiết, trời nắng/mưa, nhiệt độ, khả năng mưa, tia UV'
