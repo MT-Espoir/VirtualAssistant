@@ -38,6 +38,7 @@ def _register_screen_tools(reg: ToolRegistry, screen):
             "required": ["query"],
         },
         handler=lambda query: screen.find(query),
+        untrusted_output=True,   # nội dung do bên ngoài kiểm soát
     ))
 
     reg.register(Tool(

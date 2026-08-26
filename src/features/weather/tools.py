@@ -31,4 +31,5 @@ def register(reg, ctx):
             location or (profile.get_default_location() if profile else None)
             or config.WEATHER_DEFAULT_LOCATION),
         speakable=True,      # đã gồm mô tả trời + khuyến nghị + ghi nguồn
+        untrusted_output=True,   # nội dung do bên ngoài kiểm soát
     ))

@@ -53,6 +53,7 @@ def _register_browser_tools(reg: ToolRegistry, browser):
                     "dùng hỏi 'đang mở tab gì', hoặc để biết tab nào trước khi đóng.",
         input_schema={"type": "object", "properties": {}},
         handler=list_tabs,
+        untrusted_output=True,   # nội dung do bên ngoài kiểm soát
     ))
 
     reg.register(Tool(

@@ -15,6 +15,7 @@ Phụ thuộc tiêm vào (llm, registry) nên test được với LLM giả.
 import re
 from dataclasses import dataclass
 
+from agent import untrusted
 from llm.client import LLMClient, Message, ToolResult
 from agent.tools import ToolRegistry
 from memory.short_term import ShortTermMemory
@@ -446,7 +447,13 @@ class Agent:
             # Log rõ tool nào được gọi + kết quả -> thấy ngay model có gọi tool không,
             # hay chỉ bịa câu trả lời (phân biệt lỗi tool vs lỗi model yếu).
             logger.info("🔧 tool %s(%s) → %s", call.name, call.arguments, str(output)[:150])
-            return ToolResult(tool_call_id=call.id, name=call.name, content=str(output))
+
+            content = str(output)
+            # Nội dung do bên ngoài kiểm soát đi vào hội thoại dưới role="user" — tức
+            # ĐÚNG vai model được dạy phải nghe lời. Bọc lại trước khi nó tới đó.
+            if self.registry.get(call.name).untrusted_output:
+                content = untrusted.boc(content)
+            return ToolResult(tool_call_id=call.id, name=call.name, content=content)
         except KeyError:
             logger.error("LLM gọi tool không tồn tại: %s", call.name)
             return ToolResult(tool_call_id=call.id, name=call.name,

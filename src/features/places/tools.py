@@ -281,6 +281,7 @@ def register(reg, ctx):
         },
         handler=find_nearby,
         speakable=True,
+        untrusted_output=True,   # nội dung do bên ngoài kiểm soát
     ))
 
     reg.register(Tool(
@@ -300,6 +301,7 @@ def register(reg, ctx):
         },
         handler=find_place,
         speakable=True,
+        untrusted_output=True,   # nội dung do bên ngoài kiểm soát
     ))
 
     reg.register(Tool(
@@ -327,6 +329,7 @@ def register(reg, ctx):
         },
         handler=research_places,
         speakable=True,
+        untrusted_output=True,   # nội dung do bên ngoài kiểm soát
     ))
 
     reg.register(Tool(
@@ -365,6 +368,7 @@ def register(reg, ctx):
         },
         handler=refine_places,
         speakable=True,
+        untrusted_output=True,   # nội dung do bên ngoài kiểm soát
     ))
 
     reg.register(Tool(

@@ -13,6 +13,8 @@ xuống dòng trong code không thêm ký tự nào vào prompt.
 """
 
 # Nền chung: áp cho MỌI yêu cầu, luôn được ghép trước fragment của case.
+from agent.untrusted import LUAT as _LUAT_NOI_DUNG_NGOAI  # noqa: E402
+
 BASE = (
     'Bạn là trợ lý điều khiển máy tính bằng tiếng Việt.\n'
     'Với MỌI yêu cầu hành động, BẮT BUỘC gọi ngay công cụ phù hợp với đúng tham số. KHÔNG '
@@ -31,7 +33,12 @@ BASE = (
     'sẵn danh sách ĐÁNH SỐ thì đọc lại đúng các số đó.\n'
     "Kết thúc mỗi câu trả lời bằng đúng một thẻ trên dòng riêng: '#emotion: happy' (hoàn "
     "thành tốt) | '#emotion: neutral' (bình thường) | '#emotion: sad' (không làm được/gặp "
-    "lỗi) | '#emotion: cry' (CHỈ khi người dùng trách móc trợ lý)."
+    "lỗi) | '#emotion: cry' (CHỈ khi người dùng trách móc trợ lý).\n\n"
+    # Luật chống prompt injection. Đặt trong BASE (không phải fragment theo case) vì nội
+    # dung ngoài có thể vào ở BẤT KỲ case nào — web, pim, place, screen, browser đều có
+    # tool trả nội dung ngoài. Lấy nguyên văn từ `agent/untrusted.py` để cặp mốc và luật
+    # mô tả nó không bao giờ lệch nhau.
+    + _LUAT_NOI_DUNG_NGOAI
 )
 
 # Prompt cho lượt PHÂN LOẠI của router (chỉ trả về đúng một từ khoá case).

@@ -43,6 +43,12 @@ class Tool:
     # (tìm web, đọc mail, tóm tắt trang).
     speakable: bool = False
 
+    # True = kết quả tool chứa nội dung do BÊN NGOÀI kiểm soát (trang web, email, tiêu đề
+    # tab, chữ OCR trên màn hình, review địa điểm). Agent sẽ bọc nó lại và báo cho model
+    # biết đó là DỮ LIỆU chứ không phải lệnh — xem `agent/untrusted.py`.
+    # Không ảnh hưởng `spec()`: cờ này dành cho ta, không gửi lên LLM.
+    untrusted_output: bool = False
+
     def spec(self) -> dict:
         """Định nghĩa tool gửi cho LLM (định dạng Anthropic tool-use)."""
         return {

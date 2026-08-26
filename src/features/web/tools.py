@@ -26,6 +26,7 @@ def register(reg, ctx):
             "required": ["url"],
         },
         handler=lambda url: actions.web_fetch(url),
+        untrusted_output=True,   # nội dung do bên ngoài kiểm soát
     ))
 
     reg.register(Tool(
@@ -40,6 +41,7 @@ def register(reg, ctx):
             "required": ["topic"],
         },
         handler=lambda topic: actions.wikipedia_lookup(topic),
+        untrusted_output=True,   # nội dung do bên ngoài kiểm soát
     ))
 
     reg.register(Tool(
@@ -68,6 +70,7 @@ def register(reg, ctx):
             "required": ["query"],
         },
         handler=lambda query, engine="google": actions.search_web(query, engine),
+        untrusted_output=True,   # nội dung do bên ngoài kiểm soát
     ))
 
     reg.register(Tool(
@@ -95,6 +98,7 @@ def register(reg, ctx):
             "required": ["query", "site"],
         },
         handler=lambda query, site: actions.search_on_specific_site(query, site),
+        untrusted_output=True,   # nội dung do bên ngoài kiểm soát
     ))
 
     # Nhóm đọc kết quả tìm kiếm cần cầu nối Chrome; thiếu thì bỏ qua,
@@ -158,6 +162,7 @@ def _register_web_search_tools(reg: ToolRegistry, browser, actions):
             "required": ["query"],
         },
         handler=search_list,
+        untrusted_output=True,   # nội dung do bên ngoài kiểm soát
     ))
 
     reg.register(Tool(
@@ -204,4 +209,5 @@ def _register_web_search_tools(reg: ToolRegistry, browser, actions):
             },
         },
         handler=read_result,
+        untrusted_output=True,   # nội dung do bên ngoài kiểm soát
     ))

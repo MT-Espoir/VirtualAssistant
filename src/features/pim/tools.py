@@ -151,6 +151,10 @@ def _register_mcp_tools(reg: ToolRegistry, mcp, destructive_keywords=None):
             input_schema=spec.get("input_schema") or {"type": "object", "properties": {}},
             handler=(lambda tn: (lambda **kwargs: mcp.call_tool(tn, kwargs)))(name),
             destructive=destructive,
+            # Tool MCP trả nội dung LỊCH và EMAIL — do người khác gửi tới, không phải
+            # người dùng viết. Đánh dấu ở đây (chứ không liệt kê tên) vì tool MCP sinh
+            # động theo server: server thêm tool mới thì nó tự được bọc.
+            untrusted_output=True,
             confirm_message=_confirm(name),
             # Gắn cho MỌI tool: tool không mang hình dạng email thì email_draft trả None
             # -> không panel, không cổng, luồng y như cũ.

@@ -49,6 +49,7 @@ def register(reg, ctx):
                     "hoặc để biết tên cửa sổ trước khi chuyển sang nó.",
         input_schema={"type": "object", "properties": {}},
         handler=lambda: actions.list_windows(),
+        untrusted_output=True,   # nội dung do bên ngoài kiểm soát
     ))
 
     reg.register(Tool(
