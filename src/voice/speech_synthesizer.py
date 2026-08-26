@@ -96,7 +96,7 @@ class SpeechSynthesizer:
     """
     
     def __init__(self, engine="pyttsx3", language="vi", rate=150, volume=1.0,
-                 robot=False, robot_carrier=80, speed=1.0):
+                 robot=False, robot_carrier=80, speed=1.0, giong_rieng=None):
         """
         Initialize the speech synthesizer
 
@@ -109,6 +109,8 @@ class SpeechSynthesizer:
             robot_carrier (int): Tần số sóng mang (Hz) cho hiệu ứng robot
             speed (float): Hệ số tốc độ nói (>1 nhanh hơn). Với pyttsx3 chỉnh 'rate'
                 (giữ cao độ); với gTTS nội suy lại mẫu (nhanh hơn = cao giọng hơn).
+            giong_rieng: `voice.piper_voice.PiperVoice` đã kiểm dùng được, hoặc None.
+                Có thì mọi câu đi qua giọng này; nó hỏng thì tự rơi về gtts.
         """
         self.engine_type = engine
         self.language = language
@@ -123,6 +125,7 @@ class SpeechSynthesizer:
         # Token thế hệ phát: stop() tăng lên -> đoạn (chunk) đang phát tự huỷ, không phát
         # nốt các đoạn còn lại (giữ barge-in hoạt động khi câu dài bị chia nhiều đoạn).
         self._speak_gen = 0
+        self._giong_rieng = giong_rieng
 
         # Initialize the appropriate TTS engine
         if self.engine_type == "pyttsx3":
@@ -145,12 +148,24 @@ class SpeechSynthesizer:
                 self.engine.setProperty('voice', selected_voice)
                 
         # Initialize pygame for gtts playback
-        elif self.engine_type == "gtts":
+        # `piper` (giọng riêng) dùng CHUNG đường phát này: nó cũng sinh ra file rồi phát,
+        # chỉ khác chỗ sinh. Nhờ vậy barge-in, hiệu ứng robot, chỉnh tốc độ dùng lại được hết.
+        elif self.engine_type in ("gtts", "piper"):
             pygame.mixer.init()
             
         # Start the speaking thread
         self._start_speaking_thread()
     
+    @property
+    def _phat_qua_file(self):
+        """Engine này có sinh ra FILE rồi phát không? (gtts và giọng riêng đều vậy.)
+
+        Dùng thuộc tính thay vì so `engine_type == "gtts"` ở 6 chỗ: thêm một engine sinh
+        file nữa thì chỉ sửa đúng đây. Trước khi có nó, cắm `piper` vào phải sờ 6 nhánh —
+        đúng kiểu rải rác mà đợt refactor feature-module vừa dọn.
+        """
+        return self.engine_type in ("gtts", "piper")
+
     def _start_speaking_thread(self):
         """Start a background thread to handle speech synthesis"""
         self.speak_thread = threading.Thread(target=self._process_speech_queue, daemon=True)
@@ -168,7 +183,7 @@ class SpeechSynthesizer:
                     if self.engine_type == "pyttsx3":
                         self.engine.say(text)
                         self.engine.runAndWait()
-                    elif self.engine_type == "gtts":
+                    elif self._phat_qua_file:
                         self._speak_with_gtts(text)
                     
                     self.is_speaking = False
@@ -245,8 +260,28 @@ class SpeechSynthesizer:
                 worker.join()
                 path = ahead.get("path")
 
+    def _giong_rieng_synth(self, text):
+        """Tổng hợp bằng GIỌNG RIÊNG đã fine-tune. Trả đường dẫn wav, None nếu không dùng được.
+
+        Trả None là đường lui hợp lệ: người gọi tự chuyển sang gtts. Giọng riêng hỏng chỉ
+        nên làm trợ lý đổi giọng, không được làm nó câm.
+        """
+        if self._giong_rieng is None:
+            return None
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
+            path = f.name
+        if self._giong_rieng.synth_wav(text, path):
+            return path
+        self._discard(path)
+        self._giong_rieng = None          # hỏng một lần thì thôi, khỏi thử lại mỗi câu
+        return None
+
     def _gtts_synth(self, text, gen):
         """Tổng hợp MỘT đoạn thành file mp3 tạm. Trả đường dẫn, hoặc None nếu lỗi cả 2 lần."""
+        rieng = self._giong_rieng_synth(text)
+        if rieng is not None:
+            return rieng
+
         for attempt in (1, 2):
             if self._speak_gen != gen:            # đã bị cắt lời -> khỏi tốn thêm request
                 return None
@@ -314,7 +349,7 @@ class SpeechSynthesizer:
             self.engine.runAndWait()
             self.is_speaking = False
             return True
-        elif self.engine_type == "gtts":
+        elif self._phat_qua_file:
             self.is_speaking = True
             self._speak_with_gtts(text)
             self.is_speaking = False
@@ -340,7 +375,7 @@ class SpeechSynthesizer:
                 self.engine.stop()
             except Exception:
                 pass  # Ignore errors when stopping
-        elif self.engine_type == "gtts":
+        elif self._phat_qua_file:
             try:
                 if pygame.mixer.music.get_busy():
                     pygame.mixer.music.stop()
@@ -374,7 +409,7 @@ class SpeechSynthesizer:
             
             return False
         
-        elif self.engine_type == "gtts" and language:
+        elif self._phat_qua_file and language:
             self.language = language
             return True
         
@@ -407,7 +442,7 @@ class SpeechSynthesizer:
         
         if self.engine_type == "pyttsx3":
             self.engine.setProperty('volume', volume)
-        elif self.engine_type == "gtts":
+        elif self._phat_qua_file:
             try:
                 pygame.mixer.music.set_volume(volume)
             except pygame.error:

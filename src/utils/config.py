@@ -143,6 +143,16 @@ class Config:
     # Tốc độ nói: >1 nhanh hơn (vd 1.3). pyttsx3 giữ cao độ; gTTS nhanh hơn = cao giọng hơn.
     TTS_SPEED = _get_float("TTS_SPEED", 1.0)
 
+    # --- Giọng RIÊNG đã fine-tune (TTS_ENGINE=piper) ---
+    # Piper xuất giọng ra CẶP file: `<tên>.onnx` + `<tên>.onnx.json`. Để trống
+    # PIPER_CONFIG thì suy ra từ PIPER_MODEL. Thiếu file hoặc chưa cài `piper-tts` ->
+    # tự rơi về gtts kèm log nói rõ thiếu gì. Xem `docs/voice_finetune_spec.md`.
+    PIPER_MODEL = _get("PIPER_MODEL", "")
+    PIPER_CONFIG = _get("PIPER_CONFIG", "")
+    PIPER_SPEAKER = _get_int("PIPER_SPEAKER", 0)
+    PIPER_LENGTH_SCALE = _get_float("PIPER_LENGTH_SCALE", 1.0)   # >1 nói chậm lại
+    PIPER_NOISE_SCALE = _get_float("PIPER_NOISE_SCALE", 0.667)   # thấp = ngữ điệu đều hơn
+
     # --- LLM: agent tool-calling ---
     # LLM_PROVIDER: "ollama" (local, mặc định) | "claude" (API) | "gemini" (API, xoay model)
     LLM_PROVIDER = _get("LLM_PROVIDER", "ollama")
