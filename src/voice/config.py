@@ -41,7 +41,8 @@ class NoiConfig:
     `engine` quyết định giọng:
       gtts     — Google, cần mạng, giọng chung ai cũng có
       pyttsx3  — giọng hệ điều hành, offline
-      piper    — GIỌNG RIÊNG đã huấn luyện (ONNX), offline; xem `piper_*` bên dưới
+      piper    — giọng đã FINE-TUNE (ONNX), offline; xem `piper_*` bên dưới
+      vieneu   — giọng CLONE từ ~3s audio mẫu, KHÔNG cần huấn luyện; xem `vieneu_*`
     """
     engine: str = "gtts"
     language: str = "vi"
@@ -59,6 +60,13 @@ class NoiConfig:
     piper_length_scale: float = 1.0    # >1 nói chậm lại
     piper_noise_scale: float = 0.667   # biến thiên ngữ điệu; thấp = đều đều hơn
 
+    # --- giọng clone (VieNeu-TTS) ---
+    # Chỉ cần MỘT đoạn thu ~3 giây. Đổi file này là đổi giọng — không huấn luyện lại.
+    vieneu_ref_audio: str = ""
+    # `v3turbo` (mặc định): 48 kHz, chạy ONNX Runtime, không cần torch/llama_cpp.
+    vieneu_mode: str = "v3turbo"
+    vieneu_precision: str = "int8"
+
 
 @dataclass(frozen=True)
 class VoiceConfig:
@@ -70,7 +78,7 @@ class VoiceConfig:
 
     @property
     def dung_giong_rieng(self) -> bool:
-        return self.noi.engine == "piper"
+        return self.noi.engine in ("piper", "vieneu")
 
 
 def from_config(config) -> VoiceConfig:
@@ -108,6 +116,9 @@ def from_config(config) -> VoiceConfig:
             piper_speaker=g("PIPER_SPEAKER", 0),
             piper_length_scale=g("PIPER_LENGTH_SCALE", 1.0),
             piper_noise_scale=g("PIPER_NOISE_SCALE", 0.667),
+            vieneu_ref_audio=g("VIENEU_REF_AUDIO", ""),
+            vieneu_mode=g("VIENEU_MODE", "v3turbo"),
+            vieneu_precision=g("VIENEU_PRECISION", "int8"),
         ),
         wake_words=wake,
         require_wake_word=g("REQUIRE_WAKE_WORD", True),

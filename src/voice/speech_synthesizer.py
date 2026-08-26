@@ -150,7 +150,7 @@ class SpeechSynthesizer:
         # Initialize pygame for gtts playback
         # `piper` (giọng riêng) dùng CHUNG đường phát này: nó cũng sinh ra file rồi phát,
         # chỉ khác chỗ sinh. Nhờ vậy barge-in, hiệu ứng robot, chỉnh tốc độ dùng lại được hết.
-        elif self.engine_type in ("gtts", "piper"):
+        elif self.engine_type in ("gtts", "piper", "vieneu"):
             pygame.mixer.init()
             
         # Start the speaking thread
@@ -158,13 +158,13 @@ class SpeechSynthesizer:
     
     @property
     def _phat_qua_file(self):
-        """Engine này có sinh ra FILE rồi phát không? (gtts và giọng riêng đều vậy.)
+        """Engine này có sinh ra FILE rồi phát không? (gtts và các giọng riêng đều vậy.)
 
         Dùng thuộc tính thay vì so `engine_type == "gtts"` ở 6 chỗ: thêm một engine sinh
         file nữa thì chỉ sửa đúng đây. Trước khi có nó, cắm `piper` vào phải sờ 6 nhánh —
         đúng kiểu rải rác mà đợt refactor feature-module vừa dọn.
         """
-        return self.engine_type in ("gtts", "piper")
+        return self.engine_type in ("gtts", "piper", "vieneu")
 
     def _start_speaking_thread(self):
         """Start a background thread to handle speech synthesis"""
@@ -261,19 +261,27 @@ class SpeechSynthesizer:
                 path = ahead.get("path")
 
     def _giong_rieng_synth(self, text):
-        """Tổng hợp bằng GIỌNG RIÊNG đã fine-tune. Trả đường dẫn wav, None nếu không dùng được.
+        """Tổng hợp bằng GIỌNG RIÊNG. Trả đường dẫn wav, None nếu không dùng được.
 
         Trả None là đường lui hợp lệ: người gọi tự chuyển sang gtts. Giọng riêng hỏng chỉ
         nên làm trợ lý đổi giọng, không được làm nó câm.
         """
         if self._giong_rieng is None:
             return None
+
+        # VieNeu nạp model ở NỀN (~20s). Trong quãng đó `synth_wav` trả False, và đó là
+        # đường chạy BÌNH THƯỜNG chứ không phải hỏng — tắt vĩnh viễn ở đây thì giọng riêng
+        # không bao giờ được dùng, vì câu đầu tiên luôn rơi vào lúc chưa nạp xong.
+        dang_nap = getattr(self._giong_rieng, "san_sang", True) is False
+        if dang_nap:
+            return None
+
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
             path = f.name
         if self._giong_rieng.synth_wav(text, path):
             return path
         self._discard(path)
-        self._giong_rieng = None          # hỏng một lần thì thôi, khỏi thử lại mỗi câu
+        self._giong_rieng = None          # hỏng THẬT một lần thì thôi, khỏi thử lại mỗi câu
         return None
 
     def _gtts_synth(self, text, gen):

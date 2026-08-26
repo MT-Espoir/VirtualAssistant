@@ -44,14 +44,15 @@ SPEAK_TAIL_GUARD_S = 0.4
 def _make_speaker():
     """Tạo bộ tổng hợp giọng nói (TTS); lỗi thì trả None (hệ thống vẫn chạy, mất giọng)."""
     try:
-        from voice import config as voice_config, piper_voice
+        from voice import config as voice_config, piper_voice, vieneu_voice
         from voice.speech_synthesizer import SpeechSynthesizer
 
         # Mọi tham số giọng nói gom ở `voice/config.py` — xem docstring ở đó.
         vc = voice_config.from_config(config)
-        # Giọng riêng đã fine-tune (nếu có). Thiếu file/thư viện -> None kèm log nói rõ
-        # thiếu gì, rồi chạy tiếp bằng giọng mặc định.
-        giong = piper_voice.tao(vc.noi)
+        # Giọng riêng, theo TTS_ENGINE. Mỗi hàm `tao()` tự trả None nếu không phải phần
+        # của mình, hoặc nếu thiếu file/thư viện (kèm log nói RÕ thiếu gì). Thiếu thì
+        # chạy tiếp bằng giọng mặc định — không bao giờ để trợ lý câm.
+        giong = vieneu_voice.tao(vc.noi) or piper_voice.tao(vc.noi)
         return SpeechSynthesizer(
             engine=vc.noi.engine, language=vc.noi.language,
             robot=vc.noi.robot, robot_carrier=vc.noi.robot_carrier,

@@ -116,3 +116,73 @@ def test_piper_dung_chung_duong_phat_voi_gtts():
     for e, mong_doi in (("gtts", True), ("piper", True), ("pyttsx3", False)):
         tu.engine_type = e
         assert tu._phat_qua_file is mong_doi, e
+
+
+# --- giọng clone VieNeu: nạp nền, suy biến an toàn ------------------------------------
+
+def test_vieneu_chua_khai_ref_thi_noi_ro():
+    from voice import vieneu_voice
+    thieu = vieneu_voice.VieneuVoice(vcfg.NoiConfig(engine="vieneu")).thieu_gi()
+    assert any("VIENEU_REF_AUDIO" in t for t in thieu)
+
+
+def test_vieneu_ref_khong_ton_tai_thi_noi_ro():
+    from voice import vieneu_voice
+    thieu = vieneu_voice.VieneuVoice(
+        vcfg.NoiConfig(engine="vieneu", vieneu_ref_audio="C:/khong/co.wav")).thieu_gi()
+    assert any("không thấy file audio mẫu" in t for t in thieu)
+
+
+def test_engine_khac_thi_tao_tra_None():
+    from voice import vieneu_voice
+    assert vieneu_voice.tao(vcfg.NoiConfig(engine="gtts")) is None
+
+
+def test_chua_nap_xong_thi_synth_tra_False_chu_khong_no():
+    """~20s đầu model chưa sẵn sàng — đó là đường chạy BÌNH THƯỜNG, không phải lỗi."""
+    from voice import vieneu_voice
+    v = vieneu_voice.VieneuVoice(vcfg.NoiConfig(engine="vieneu", vieneu_ref_audio="x.wav"))
+    assert v.san_sang is False
+    assert v.synth_wav("bất kỳ", "khong_ghi_gi.wav") is False
+
+
+def test_dang_nap_KHONG_bi_tat_vinh_vien():
+    """Bẫy thật: `_giong_rieng_synth` tắt hẳn giọng riêng sau lần hỏng đầu.
+
+    VieNeu nạp nền nên câu ĐẦU TIÊN luôn rơi vào lúc chưa xong. Nếu coi đó là hỏng thì
+    giọng riêng không bao giờ được dùng — nạp xong cũng vô ích.
+    """
+    from voice.speech_synthesizer import SpeechSynthesizer
+
+    class _DangNap:
+        san_sang = False
+        def synth_wav(self, text, path):
+            raise AssertionError("không được gọi khi chưa sẵn sàng")
+
+    tu = SpeechSynthesizer.__new__(SpeechSynthesizer)
+    tu._giong_rieng = _DangNap()
+    assert tu._giong_rieng_synth("xin chào") is None
+    assert tu._giong_rieng is not None, "chưa nạp xong KHÔNG phải lý do để tắt vĩnh viễn"
+
+
+def test_hong_THAT_thi_tat_vinh_vien():
+    """Ngược lại: hỏng thật thì thôi, khỏi thử lại mỗi câu."""
+    from voice.speech_synthesizer import SpeechSynthesizer
+
+    class _Hong:
+        san_sang = True
+        def synth_wav(self, text, path):
+            return False
+
+    tu = SpeechSynthesizer.__new__(SpeechSynthesizer)
+    tu._giong_rieng = _Hong()
+    assert tu._giong_rieng_synth("xin chào") is None
+    assert tu._giong_rieng is None
+
+
+def test_vieneu_cung_dung_duong_phat_qua_file():
+    from voice.speech_synthesizer import SpeechSynthesizer
+    tu = SpeechSynthesizer.__new__(SpeechSynthesizer)
+    for e, mong_doi in (("gtts", True), ("piper", True), ("vieneu", True), ("pyttsx3", False)):
+        tu.engine_type = e
+        assert tu._phat_qua_file is mong_doi, e

@@ -153,6 +153,13 @@ class Config:
     PIPER_LENGTH_SCALE = _get_float("PIPER_LENGTH_SCALE", 1.0)   # >1 nói chậm lại
     PIPER_NOISE_SCALE = _get_float("PIPER_NOISE_SCALE", 0.667)   # thấp = ngữ điệu đều hơn
 
+    # --- Giọng CLONE bằng VieNeu-TTS (TTS_ENGINE=vieneu) ---
+    # Chỉ cần MỘT đoạn thu ~3 giây; đổi file là đổi giọng, không huấn luyện lại.
+    # Model nạp mất ~20s nên chạy ở NỀN: trợ lý nói bằng gtts trước, tự đổi khi xong.
+    VIENEU_REF_AUDIO = _get("VIENEU_REF_AUDIO", "")
+    VIENEU_MODE = _get("VIENEU_MODE", "v3turbo")      # 48kHz, ONNX Runtime, torch-free
+    VIENEU_PRECISION = _get("VIENEU_PRECISION", "int8")
+
     # --- LLM: agent tool-calling ---
     # LLM_PROVIDER: "ollama" (local, mặc định) | "claude" (API) | "gemini" (API, xoay model)
     LLM_PROVIDER = _get("LLM_PROVIDER", "ollama")
