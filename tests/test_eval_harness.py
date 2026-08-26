@@ -262,3 +262,39 @@ def test_summarize_accuracy():
 if __name__ == "__main__":
     if pytest is not None:
         raise SystemExit(pytest.main([__file__, "-v"]))
+
+
+# --------------------------- đo kích thước đầu vào --------------------------- #
+
+def test_counting_llm_cong_don_ky_tu_dau_vao():
+    """`prompt_eval` chiếm ~83% chi phí một lượt, nên số call thôi chưa đủ để so A/B."""
+    from evals.harness import CountingLLM
+    from llm.client import AssistantTurn, Message
+
+    class _LLM:
+        def generate(self, **k):
+            return AssistantTurn(text="ok")
+
+    llm = CountingLLM(_LLM())
+    llm.generate(system="abcde", messages=[Message(role="user", text="xy")], tools=[])
+    assert llm.input_chars == 5 + 2 + len("[]")
+
+    llm.generate(system="", messages=[], tools=[{"name": "t"}])
+    assert llm.input_chars > 9, "lượt thứ hai phải CỘNG DỒN, không ghi đè"
+
+
+def test_reset_xoa_luon_so_do_dau_vao():
+    from evals.harness import CountingLLM
+
+    llm = CountingLLM(object())
+    llm.input_chars = 999
+    llm.reset()
+    assert llm.input_chars == 0
+
+
+def test_summarize_bao_cao_dau_vao_trung_binh():
+    from evals.harness import summarize
+
+    s = summarize([{"tool_ok": True, "case_ok": None, "input_chars": 100},
+                   {"tool_ok": True, "case_ok": None, "input_chars": 300}])
+    assert s["avg_input_chars"] == 200

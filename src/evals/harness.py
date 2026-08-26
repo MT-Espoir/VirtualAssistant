@@ -10,6 +10,7 @@ Lõi eval — logic THUẦN (không mạng, không LLM thật), test được.
 Agent + LLM được TIÊM vào nên test được bằng LLM giả; run_eval.py mới ráp LLM thật.
 """
 
+import json
 import time
 
 from agent.agent import Agent
@@ -53,21 +54,40 @@ class RecordingRouter:
 
 
 class CountingLLM:
-    """Bọc LLM: đếm SỐ LẦN gọi `generate` + cộng dồn thời gian. Dùng để đo chi phí thật
-    mỗi lượt (router classify + decide + respond đều tính) — cơ sở so sánh A/B khi cắt bớt
-    lượt. Không đổi hành vi, chỉ quan sát."""
+    """Bọc LLM: đếm SỐ LẦN gọi `generate`, thời gian, và KÍCH THƯỚC ĐẦU VÀO. Dùng để đo
+    chi phí thật mỗi lượt (router classify + decide + respond đều tính) — cơ sở so sánh
+    A/B khi cắt bớt lượt. Không đổi hành vi, chỉ quan sát.
+
+    Vì sao đếm cả đầu vào: đo trên máy này (`docs/latency_optimization_spec.md`) thấy
+    `prompt_eval` chiếm ~83% chi phí một lượt. Số call chỉ nói được phần SINH RA; phần
+    ĐỌC VÀO mới là chỗ đắt, và nó phình theo mỗi tính năng thêm vào. Đếm ở đây đo được
+    payload THẬT — gồm cả phần router đã thu hẹp — khác với phép đo tĩnh trên registry
+    đầy đủ ở `tests/test_spec_budget.py`.
+    """
 
     def __init__(self, inner):
         self._inner = inner
         self.calls = 0
         self.seconds = 0.0
+        self.input_chars = 0
 
     def reset(self):
         self.calls = 0
         self.seconds = 0.0
+        self.input_chars = 0
+
+    @staticmethod
+    def _do_lon(system, messages, tools):
+        """Số ký tự đầu vào một lượt: system + lịch sử + đặc tả tool."""
+        n = len(system or "")
+        for m in messages or []:
+            n += len(getattr(m, "text", "") or "")
+        return n + len(json.dumps(tools or [], ensure_ascii=False))
 
     def generate(self, **kwargs):
         self.calls += 1
+        self.input_chars += self._do_lon(kwargs.get("system"), kwargs.get("messages"),
+                                         kwargs.get("tools"))
         t0 = time.time()
         try:
             return self._inner.generate(**kwargs)
@@ -75,7 +95,8 @@ class CountingLLM:
             self.seconds += time.time() - t0
 
 
-def score_case(case, called, got_case, error=None, calls=None, seconds=None):
+def score_case(case, called, got_case, error=None, calls=None, seconds=None,
+               input_chars=None):
     """Chấm một ca. `called`: list tên tool đã gọi. `got_case`: case router chọn.
 
     tool_ok: nếu ca kỳ vọng tool -> mọi tool kỳ vọng phải nằm trong danh sách đã gọi;
@@ -101,6 +122,7 @@ def score_case(case, called, got_case, error=None, calls=None, seconds=None):
         "error": error,
         "calls": calls,          # số lần gọi LLM cho ca này (None = không đo)
         "seconds": seconds,      # tổng thời gian chờ LLM (giây)
+        "input_chars": input_chars,  # tổng ký tự ĐẦU VÀO đã gửi lên LLM trong ca này
     }
 
 
@@ -135,7 +157,8 @@ def run_case(llm, registry, router, case, max_iterations=4, system=None):
         called.append(agent.pending["name"])
     got_case = rec_router.cases[-1] if (rec_router and rec_router.cases) else None
     return score_case(case, called, got_case, error,
-                      calls=counting.calls, seconds=round(counting.seconds, 2))
+                      calls=counting.calls, seconds=round(counting.seconds, 2),
+                      input_chars=counting.input_chars)
 
 
 def summarize(results):
@@ -150,6 +173,7 @@ def summarize(results):
     case_pass = sum(1 for r in case_scored if r["case_ok"])
     counted = [r for r in results if r.get("calls") is not None]
     timed = [r for r in results if r.get("seconds") is not None]
+    sized = [r for r in results if r.get("input_chars") is not None]
     return {
         "total": n,
         "tool_pass": tool_pass,
@@ -160,4 +184,6 @@ def summarize(results):
         "total_calls": sum(r["calls"] for r in counted) if counted else None,
         "avg_calls": (sum(r["calls"] for r in counted) / len(counted)) if counted else None,
         "avg_seconds": (sum(r["seconds"] for r in timed) / len(timed)) if timed else None,
+        "avg_input_chars": ((sum(r["input_chars"] for r in sized) / len(sized))
+                            if sized else None),
     }

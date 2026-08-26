@@ -120,6 +120,11 @@ def main(argv=None):
         print(f"Số call LLM   : {s['total_calls']} tổng  ({s['avg_calls']:.2f} call/lượt)")
     if s["avg_seconds"] is not None:
         print(f"Chờ LLM       : {s['avg_seconds']:.1f}s/lượt")
+    if s.get("avg_input_chars"):
+        # prompt_eval chiếm ~83% chi phí một lượt trên máy này -> đây là con số phình
+        # theo mỗi tính năng thêm vào. ~3 ký tự/token với tiếng Việt có dấu.
+        print(f"Đầu vào LLM   : {s['avg_input_chars']:,.0f} ký tự/ca "
+              f"(~{s['avg_input_chars'] / 3:,.0f} token)")
     print(f"Thời gian     : {dt:.1f}s ({dt/max(1,len(cases)):.1f}s/ca)")
     # Không exit khác 0 — đây là ĐO LƯỜNG, không phải cổng CI.
 
