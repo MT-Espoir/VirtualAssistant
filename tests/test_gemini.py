@@ -198,3 +198,42 @@ def test_parse_model_specs():
 if __name__ == "__main__":
     if pytest is not None:
         raise SystemExit(pytest.main([__file__, "-v"]))
+
+
+# --------------------------- quan sát cache ngầm định --------------------------- #
+
+def test_ghi_lai_ti_le_token_trung_cache(caplog):
+    """Gemini bật cache ngầm định sẵn (2.5+), giảm 90% token trúng cache — nhưng trước
+    đây không ai ĐO, nên không biết thực tế có trúng không. Dòng log này là cái đo đó."""
+    import logging
+
+    from llm.gemini import _log_cache_usage
+
+    with caplog.at_level(logging.INFO):
+        _log_cache_usage("gemini-3.1-flash-lite",
+                         {"promptTokenCount": 10000, "cachedContentTokenCount": 9000})
+    assert "10000 token vào" in caplog.text
+    assert "9000 trúng cache (90%)" in caplog.text
+
+
+def test_khong_co_so_lieu_thi_khong_ghi(caplog):
+    """Phản hồi thiếu usageMetadata (hoặc model không trả) -> im lặng, không nổ."""
+    import logging
+
+    from llm.gemini import _log_cache_usage
+
+    with caplog.at_level(logging.INFO):
+        _log_cache_usage("m", {})
+        _log_cache_usage("m", {"promptTokenCount": 0})
+    assert "trúng cache" not in caplog.text
+
+
+def test_khong_trung_cache_van_ghi_de_thay_0(caplog):
+    """0% cũng phải hiện ra — im lặng khi trượt cache là mất đúng tín hiệu cần thấy."""
+    import logging
+
+    from llm.gemini import _log_cache_usage
+
+    with caplog.at_level(logging.INFO):
+        _log_cache_usage("m", {"promptTokenCount": 1400})
+    assert "0 trúng cache (0%)" in caplog.text

@@ -181,6 +181,8 @@ class GeminiModelClient:
         if status >= 400:
             raise RuntimeError(f"Gemini lỗi {status}: {json.dumps(data)[:200]}")
 
+        _log_cache_usage(self.model, data.get("usageMetadata") or {})
+
         candidates = data.get("candidates") or []
         if not candidates:
             return AssistantTurn(text="", tool_calls=[])
@@ -195,6 +197,29 @@ class GeminiModelClient:
                                            arguments=dict(fc.get("args") or {}),
                                            thought_signature=p.get("thoughtSignature")))
         return AssistantTurn(text="".join(text_parts), tool_calls=tool_calls)
+
+
+def _log_cache_usage(model, usage):
+    """Ghi lại tỉ lệ token ĐƯỢC CACHE mỗi lượt gọi.
+
+    Gemini bật cache NGẦM ĐỊNH sẵn cho model 2.5 trở lên — không phải khai gì, và token
+    trúng cache được giảm 90%. Điều kiện: request phải có TIỀN TỐ CHUNG với request trước,
+    và phải dài hơn ngưỡng tối thiểu (Gemini 3.x: 4.096 token).
+
+    Đo 2026-08-26: 99,97% payload mỗi lượt của hệ này giống hệt nhau từng byte, và mỗi
+    call ~9.618 token — tức đủ điều kiện. Nhưng TRƯỚC ĐÂY KHÔNG AI ĐO, nên không biết
+    thực tế có trúng hay không. Dòng log này biến câu hỏi đó thành quan sát được.
+
+    Đáng chú ý cho mọi thay đổi tương lai: thu hẹp payload (vd bật router) có thể đẩy
+    request xuống DƯỚI ngưỡng và mất sạch cache — nhỏ hơn chưa chắc rẻ hơn.
+    Xem `docs/router_local_classifier_spec.md` §6b.
+    """
+    tong = usage.get("promptTokenCount")
+    if not tong:
+        return
+    cache = usage.get("cachedContentTokenCount", 0)
+    logger.info("💾 %s: %d token vào, %d trúng cache (%.0f%%)",
+                model, tong, cache, 100 * cache / tong)
 
 
 class RotatingGeminiClient:
