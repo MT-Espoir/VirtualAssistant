@@ -81,14 +81,26 @@ class PiperVoice:
 
         Không ném lỗi ra ngoài: mất giọng riêng chỉ nên làm trợ lý đổi giọng, không nên
         làm nó câm.
+
+        API của `piper-tts` 1.7: `synthesize_wav(text, wav_file, syn_config)`. Bản đầu của
+        hàm này gọi theo API cũ (`synthesize(text, f, speaker_id=..., ...)`) — nó ném
+        TypeError, bị `except` nuốt, và để lại một file WAV RỖNG. Chỉ lộ ra khi chạy thật.
         """
         try:
+            from piper.config import SynthesisConfig
+
             voice = self._nap()
+            cfg = SynthesisConfig(
+                speaker_id=self.speaker or None,
+                length_scale=self.length_scale,
+                noise_scale=self.noise_scale,
+            )
             with wave.open(duong_dan, "wb") as f:
-                voice.synthesize(text, f,
-                                 speaker_id=self.speaker or None,
-                                 length_scale=self.length_scale,
-                                 noise_scale=self.noise_scale)
+                voice.synthesize_wav(text, f, syn_config=cfg)
+            # Sinh ra file rỗng cũng là hỏng, chỉ là hỏng lặng lẽ hơn.
+            if os.path.getsize(duong_dan) < 1024:
+                logger.error("Giọng riêng sinh ra file rỗng — quay về giọng mặc định.")
+                return False
             return True
         except Exception as e:
             logger.error("Giọng riêng lỗi (%s) — quay về giọng mặc định.", e)
