@@ -37,6 +37,7 @@ import json
 import os
 import time
 
+from utils.atomic_json import write_json
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -98,12 +99,8 @@ class ClaimCache:
         if not self.path:
             return
         try:
-            directory = os.path.dirname(self.path)
-            if directory:
-                os.makedirs(directory, exist_ok=True)
-            with io.open(self.path, "w", encoding="utf-8", newline="\n") as f:
-                json.dump({"version": CACHE_VERSION, "entries": self._entries},
-                          f, ensure_ascii=False)
+            write_json(self.path, {"version": CACHE_VERSION, "entries": self._entries},
+                       indent=None)          # cache: gọn hơn, không ai đọc bằng mắt
         except Exception as e:
             logger.warning("claim_cache: ghi '%s' lỗi: %s", self.path, e)
 

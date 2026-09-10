@@ -31,11 +31,18 @@ src/memory/data/
 # Claim cache của Lane 3 — nội dung web đã đọc, sinh lại được, không thuộc mã nguồn
 src/research/data/
 
-# Log runtime khi chạy qua launcher (launch_assistant.vbs)
+# Log runtime khi chạy qua launcher (launch_assistant.vbs) — stdout+stderr, ghi đè mỗi lần
 assistant.log
+
+# Log của logger, xoay vòng, sống qua nhiều lần chạy (LOG_FILE)
+logs/
 
 # Ảnh chụp màn hình (tính năng đọc màn hình) — local, không commit
 captures/
+
+# Bộ dữ liệu huấn luyện giọng riêng: giọng THẬT của người dùng (dữ liệu sinh trắc, không
+# thu hồi được sau khi đã lên mạng) + model tải về. ~385 MB, TUYỆT ĐỐI không commit.
+my_dataset_builder/
 
 # Bí mật / khoá / gói build — KHÔNG commit
 .env

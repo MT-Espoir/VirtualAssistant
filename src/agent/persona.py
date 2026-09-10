@@ -15,6 +15,7 @@ import json
 import os
 import re
 
+from utils.atomic_json import write_json
 from utils.logger import get_logger
 from utils.text_norm import norm
 
@@ -110,11 +111,7 @@ class PersonaState:
         if not self.persist:
             return
         try:
-            directory = os.path.dirname(self.path)
-            if directory:
-                os.makedirs(directory, exist_ok=True)
-            with open(self.path, "w", encoding="utf-8") as f:
-                json.dump(self.data, f, ensure_ascii=False, indent=2)
+            write_json(self.path, self.data)
         except OSError as e:
             logger.error("Không lưu được persona: %s", e)
 
@@ -184,8 +181,19 @@ class PersonaState:
         return card
 
 
+# Từ mức ngượng này trở lên thì khuôn mặt chuyển sang `shy`.
+FLUSTER_POSE = 0.35
+
+
 class MoodState:
-    """Tâm trạng phiên: valence (tiêu↔tích cực) + arousal (trầm↔hưng phấn). Phai về baseline."""
+    """Tâm trạng phiên: valence (tiêu↔tích cực) + arousal (trầm↔hưng phấn) + fluster
+    (ngượng). Cả ba đều phai dần; valence/arousal phai về baseline, fluster phai về 0.
+
+    Fluster là chiều RIÊNG chứ không phải một mức của valence: nó do một tác nhân cụ thể
+    gây ra (được khen thẳng, bị thả thính, bị tỏ tình), còn valence là nền tâm trạng
+    chung. Gộp vào valence thì mọi lời khen đều bị nuốt thành "vui" và không bao giờ
+    phân biệt được ngượng với vui.
+    """
 
     def __init__(self, baseline_valence=0.2, baseline_arousal=0.5, decay=0.5):
         self.baseline_v = _clamp(baseline_valence, -1.0, 1.0)
@@ -193,26 +201,38 @@ class MoodState:
         self.decay = _clamp(decay, 0.0, 1.0)
         self.valence = self.baseline_v
         self.arousal = self.baseline_a
+        # Ngượng không có baseline: mặc định là không ngượng, và phai hẳn về 0. Đỏ mặt là
+        # PHẢN ỨNG, không phải tâm trạng nền — hết tác nhân là phải hết.
+        self.fluster = 0.0
 
     def set_baseline(self, valence, arousal):
         """Đổi baseline (khi núm tính cách thay đổi) — mood sẽ phai dần về mốc mới."""
         self.baseline_v = _clamp(valence, -1.0, 1.0)
         self.baseline_a = _clamp(arousal, 0.0, 1.0)
 
-    def update(self, user_valence=0.0, outcome=0.0, familiarity=0.3):
+    def update(self, user_valence=0.0, outcome=0.0, familiarity=0.3, fluster=0.0):
         """Cập nhật tất định: phai về baseline rồi cộng tín hiệu (cảm xúc user + kết quả việc).
 
         user_valence: -1..1 (cảm xúc người dùng). outcome: +1 làm được / -1 hỏng / 0.
         familiarity: 0..1 (càng thân càng nhích hưng phấn nhẹ).
+        fluster: 0..1 (mức ngượng câu vừa nghe gây ra, xem `score_fluster`).
         """
         self.valence += (self.baseline_v - self.valence) * self.decay
         self.arousal += (self.baseline_a - self.arousal) * self.decay
+        self.fluster -= self.fluster * self.decay
         self.valence = _clamp(self.valence + 0.4 * user_valence + 0.35 * outcome, -1.0, 1.0)
-        self.arousal = _clamp(self.arousal + 0.2 * abs(user_valence) + 0.1 * familiarity, 0.0, 1.0)
+        self.fluster = _clamp(self.fluster + fluster, 0.0, 1.0)
+        self.arousal = _clamp(self.arousal + 0.2 * abs(user_valence) + 0.1 * familiarity
+                              + 0.25 * self.fluster, 0.0, 1.0)
         return self
 
     def to_pose(self):
-        """Ánh xạ tâm trạng -> pose avatar EVE (neutral/happy/sad)."""
+        """Ánh xạ tâm trạng -> khung hình avatar (shy/happy/sad/neutral)."""
+        # Ngượng xét TRƯỚC: nó là phản ứng với một tác nhân cụ thể, còn happy/sad là nền
+        # tâm trạng chung. Xét sau thì mọi lời khen đều đã bị nuốt thành happy trước khi
+        # tới lượt nó.
+        if self.fluster >= FLUSTER_POSE:
+            return "shy"
         if self.valence >= 0.25:
             return "happy"
         if self.valence <= -0.25:
@@ -237,6 +257,9 @@ class MoodState:
         else:
             vw = "khá buồn"
         aw = "hào hứng" if self.arousal >= 0.66 else "thoải mái" if self.arousal >= 0.4 else "trầm lặng"
+        # Đang ngượng thì nói ra: khuôn mặt đỏ mặt mà lời lẽ tỉnh bơ là hai thứ đá nhau.
+        if self.fluster >= FLUSTER_POSE:
+            return f"{vw}, {aw}, hơi ngượng"
         return f"{vw}, {aw}"
 
 
@@ -250,6 +273,33 @@ _POS_WORDS = ("vui", "thich", "tuyet", "cam on", "cam onnn", "hay qua", "tot", "
 _NEG_WORDS = ("buon", "te", "ghet", "chan", "buc", "gian", "kem", "that vong",
               "met", "kho chiu", "tuc", "toi te", "khong thich", "chan qua", "buon qua",
               "vo dung", "bucminh", "buc minh")
+
+
+# --------------------- tác nhân gây NGƯỢNG (tách hẳn khỏi _POS_WORDS) --------------------- #
+#
+# Ranh giới với _POS_WORDS, và đây là điểm mấu chốt: _POS_WORDS là vui CHUNG CHUNG —
+# việc xong tốt, người dùng hài lòng ("ổn", "cảm ơn", "tuyệt vời"). Ba bảng dưới đây là
+# lời NHẮM THẲNG VÀO trợ lý — khen chính nó, trêu ghẹo nó, tỏ tình với nó. Hai nhóm phải
+# tách nhau, nếu không thì sau này thêm ảnh `happy` riêng, mọi lời khen vẫn sẽ rơi vào
+# happy và không bao giờ thấy mặt ngượng.
+#
+# Ưu tiên CỤM nhiều từ, hạn chế từ đơn: bỏ dấu xong tiếng Việt đụng nhau rất nhiều
+# ('nhờ em'/'nhớ em' -> "nho em", 'yêu cầu' -> "yeu cau"), mà một tác nhân bắt nhầm sẽ
+# làm trợ lý đỏ mặt giữa lúc được sai việc.
+
+# Khen thẳng vào trợ lý.
+_SHY_PRAISE = ("de thuong", "dang yeu", "cute", "xinh", "dep gai", "gioi qua",
+               "gioi that", "gioi ghe", "thong minh qua", "thong minh that",
+               "tai that", "tai qua", "hay ghe", "sieu qua")
+
+# Thả thính / tán tỉnh.
+_SHY_FLIRT = ("tha thinh", "thich em", "thich cau", "co nguoi yeu chua",
+              "lam nguoi yeu", "lam ban gai", "hen ho voi", "di choi voi anh",
+              "cho anh xin so")
+
+# Tỏ tình.
+_SHY_LOVE = ("yeu em", "anh yeu em", "to tinh", "lam vo anh", "cuoi anh nhe",
+             "em la nhat", "khong the thieu em")
 
 
 def _count_hits(t, tokens, words):
@@ -276,3 +326,25 @@ def score_user_valence(text):
     if pos == neg:
         return 0.0
     return _clamp((pos - neg) / float(pos + neg), -1.0, 1.0)
+
+
+def score_fluster(text):
+    """Ước lượng mức NGƯỢNG mà câu người dùng gây ra -> [0, 1] (tất định).
+
+    Không dùng chung thang với `score_user_valence`: một câu vừa vui vừa ngượng là
+    chuyện bình thường ("giỏi quá!"), nên hai bộ chấm chạy song song và
+    `MoodState.to_pose` mới là chỗ quyết ai thắng.
+
+    Thả thính/tỏ tình nặng đô hơn hẳn một lời khen — một câu là đủ đỏ mặt, trong khi
+    khen thì cần đúng ngưỡng.
+    """
+    t = norm(text or "")
+    if not t:
+        return 0.0
+    tokens = set(t.split())
+    praise = _count_hits(t, tokens, _SHY_PRAISE)
+    forward = (_count_hits(t, tokens, _SHY_FLIRT)
+               + _count_hits(t, tokens, _SHY_LOVE))
+    if not praise and not forward:
+        return 0.0
+    return _clamp(0.45 * praise + 0.9 * forward, 0.0, 1.0)

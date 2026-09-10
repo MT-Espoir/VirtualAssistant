@@ -7,6 +7,7 @@ except ImportError:
 
 
 from conftest import registry_with
+from agent.tools import NeedsConfirmation
 
 
 class _FakeActions:
@@ -93,30 +94,42 @@ def test_list_tabs_sends_get_tabs():
     assert br.sent == {"action": "GET_TABS"}
 
 
-def test_close_tab_default_is_dry_run_preview():
-    # confirm không truyền -> dryRun=True (chỉ xem trước, không đóng)
-    matched = [{"id": 1, "title": "Facebook", "url": "https://facebook.com"}]
-    br = _FakeBrowser({"type": "STATUS", "matched": matched, "dryRun": True})
+def test_close_tab_LA_DESTRUCTIVE_khong_con_tu_xac_nhan_bang_prompt():
+    """HỒI QUY 2026-08-29. Trước đây tool tự làm hai pha bằng tham số `confirm`, và luật
+    "đừng tự đặt confirm=true" nằm trong MÔ TẢ TOOL — tức nằm đúng trong thứ mà prompt
+    injection ghi đè được. Mô phỏng tấn công xác nhận nó lọt: `confirm=True` ngay lần đầu
+    là tab đóng thật. Nay cổng nằm ở tầng code."""
+    br = _FakeBrowser({"type": "STATUS", "matched": [
+        {"id": 1, "title": "Facebook", "url": "https://facebook.com"}], "dryRun": True})
     reg = _registry(br)
-    out = reg.run("browser_close_tab", {"keyword": "facebook"})
-    assert br.sent["action"] == "CLOSE_TAB_BY_KEYWORD"
-    assert br.sent["dryRun"] is True             # mặc định KHÔNG đóng thật
-    assert "chắc" in out.lower()
+    assert reg.get("browser_close_tab").destructive is True
+    # Tham số `confirm` đã biến mất khỏi lược đồ -> model không còn đường tự cấp phép.
+    assert "confirm" not in reg.get("browser_close_tab").input_schema["properties"]
+    with pytest.raises(NeedsConfirmation):
+        reg.run("browser_close_tab", {"keyword": "facebook"})
 
 
-def test_close_tab_confirm_true_actually_closes():
-    matched = [{"id": 1, "title": "Facebook", "url": "https://facebook.com"}]
-    br = _FakeBrowser({"type": "STATUS", "matched": matched, "dryRun": False, "closedCount": 1})
-    reg = _registry(br)
-    out = reg.run("browser_close_tab", {"keyword": "facebook", "confirm": True})
+def test_cau_hoi_xac_nhan_van_doc_ten_tab_se_dong():
+    """Phần giá trị duy nhất của cơ chế cũ: người dùng biết MÌNH sắp đóng cái gì."""
+    br = _FakeBrowser({"type": "STATUS", "matched": [
+        {"id": 1, "title": "Ngân hàng ACB", "url": "https://acb.com.vn"}], "dryRun": True})
+    g = _registry(br).gate("browser_close_tab", {"keyword": "ngân hàng"})
+    assert "Ngân hàng ACB" in g["phrase"]
+    assert br.sent["dryRun"] is True             # hỏi thì chỉ chạy thử, KHÔNG đóng
+
+
+def test_da_duyet_thi_dong_that():
+    br = _FakeBrowser({"type": "STATUS", "matched": [
+        {"id": 1, "title": "Facebook", "url": "https://facebook.com"}],
+        "dryRun": False, "closedCount": 1})
+    out = _registry(br).run("browser_close_tab", {"keyword": "facebook"}, confirmed=True)
     assert br.sent["dryRun"] is False
     assert "đã đóng" in out.lower()
 
 
 def test_close_tab_empty_keyword_no_send():
     br = _FakeBrowser({})
-    reg = _registry(br)
-    out = reg.run("browser_close_tab", {"keyword": "   "})
+    out = _registry(br).run("browser_close_tab", {"keyword": "   "}, confirmed=True)
     assert br.sent is None and "từ khoá" in out.lower()
 
 

@@ -25,9 +25,11 @@ import re
 import unicodedata
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
+from email.utils import parsedate_to_datetime
 
 from fastmcp import FastMCP
 
+from google.auth.exceptions import RefreshError
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -49,6 +51,19 @@ _CREDS_FILE = os.path.join(_HERE, "credentials.json")   # BẠN tải từ Googl
 mcp = FastMCP("google-personal")
 
 
+# Thông báo khi refresh token bị Google từ chối. Viết dài có chủ đích: nguyên nhân hay gặp
+# nhất (app ở trạng thái "Testing" -> Google cho refresh token hết hạn sau 7 NGÀY) không
+# có cách nào đoán ra từ chữ "invalid_grant", mà lỗi này thì lặp lại đều đặn.
+_HET_HAN = (
+    "OAuth cho tài khoản '{label}' ĐÃ HẾT HẠN ({ly_do}).\n"
+    "Cấp lại:\n"
+    "    python google_personal.py --setup {tk}\n"
+    "Nếu cứ ~7 ngày lại hỏng như thế: OAuth client đang ở trạng thái 'Testing' trong "
+    "Google Cloud Console, mà Google cho refresh token của app Testing hết hạn sau 7 ngày. "
+    "Vào APIs & Services -> OAuth consent screen -> PUBLISH APP để hết hẳn."
+)
+
+
 def _token_path(user_email=None, token_file=None):
     """Đường dẫn token cho một tài khoản. Ưu tiên `token_file` (đường dẫn tuỳ ý); nếu không
     thì suy từ `user_email` (vd work@gmail.com -> token_work_gmail_com.json); rỗng -> mặc định.
@@ -67,15 +82,21 @@ def _creds(user_email=None, token_file=None, allow_interactive=False):
     path = _token_path(user_email, token_file)
     creds = Credentials.from_authorized_user_file(path, SCOPES) if os.path.exists(path) else None
 
+    label = user_email or "mặc định"
     if creds and creds.valid:
         return creds
     if creds and creds.expired and creds.refresh_token:
-        creds.refresh(Request())
+        try:
+            creds.refresh(Request())
+        except RefreshError as e:
+            # Google trả 'invalid_grant' rất trần trụi. Nói luôn cách sửa, vì lỗi này
+            # LẶP LẠI ĐỀU ĐẶN và không ai nên phải tra nghĩa nó mỗi lần.
+            raise RuntimeError(_HET_HAN.format(label=label, ly_do=e,
+                                               tk=user_email or "")) from e
         _save(creds, path)
         return creds
 
     if not allow_interactive:
-        label = user_email or "mặc định"
         raise RuntimeError(
             f"Chưa cấp OAuth cho tài khoản '{label}'. Chạy setup trước:\n"
             f"    python google_personal.py --setup {user_email or ''}".rstrip())
@@ -153,23 +174,86 @@ def _header(msg, name):
     return ""
 
 
-@mcp.tool()
-def gws_gmail_unread(max_results: int = 10, user_email: str = "") -> str:
-    """Liệt kê email CHƯA ĐỌC (người gửi, tiêu đề, mã) — tối đa `max_results`.
-    user_email: tài khoản Gmail cần dùng (rỗng = mặc định; vd 'work@gmail.com')."""
-    svc = _gmail(user_email or None)
+def _ngay_goc(msg):
+    """Header 'Date' (RFC 2822) -> 'dd/mm HH:MM'. Rỗng nếu không đọc được.
+
+    Rút gọn vì chuỗi gốc ('Mon, 25 Aug 2026 09:12:33 +0700') vừa dài vừa không đọc lên
+    được bằng giọng, mà thứ người dùng cần chỉ là 'thư này mới hay cũ'.
+    """
+    raw = _header(msg, "Date")
+    if not raw:
+        return ""
+    try:
+        return parsedate_to_datetime(raw).strftime("%d/%m %H:%M")
+    except (TypeError, ValueError):
+        return ""
+
+
+def _liet_ke(svc, q, max_results):
+    """Thư khớp `q` -> danh sách dict {id, tu, tieu_de, ngay}. Hàm thuần theo `svc`.
+
+    CHỈ lấy metadata (`format="metadata"`), KHÔNG tải thân thư. Hai lý do, lý do sau nặng
+    hơn: (1) danh sách là để LƯỚT, thân của 10 lá thư đổ vào ngữ cảnh LLM vừa đắt vừa
+    không ai nghe hết bằng giọng; (2) thân thư là nội dung do NGƯỜI KHÁC soạn — kéo cả
+    mớ vào hội thoại chỉ để liệt kê là mở rộng bề mặt prompt injection không cần thiết.
+    Cần nội dung thì gọi `gws_gmail_read` cho ĐÚNG lá cần.
+    """
     ids = svc.users().messages().list(
-        userId="me", q="is:unread", maxResults=max(1, min(max_results, 25))
+        userId="me", q=q, maxResults=max(1, min(max_results, 25))
     ).execute().get("messages", [])
-    if not ids:
-        return "Không có email chưa đọc."
-    lines = []
+    rows = []
     for m in ids:
         msg = svc.users().messages().get(
             userId="me", id=m["id"], format="metadata",
-            metadataHeaders=["From", "Subject"]).execute()
-        lines.append(f"- [{m['id']}] {_header(msg, 'From')} — {_header(msg, 'Subject') or '(không tiêu đề)'}")
-    return f"Có {len(lines)} email chưa đọc:\n" + "\n".join(lines)
+            metadataHeaders=["From", "Subject", "Date"]).execute()
+        rows.append({"id": m["id"], "tu": _header(msg, "From"),
+                     "tieu_de": _header(msg, "Subject") or "(không tiêu đề)",
+                     "ngay": _ngay_goc(msg)})
+    return rows
+
+
+def _ke_thu(rows):
+    """Danh sách thư -> chuỗi cho trợ lý đọc. Mỗi thư MỘT dòng, không có thân thư."""
+    dong = []
+    for r in rows:
+        ngay = f" ({r['ngay']})" if r["ngay"] else ""
+        dong.append(f"- [{r['id']}] {r['tu']} — {r['tieu_de']}{ngay}")
+    return "\n".join(dong)
+
+
+@mcp.tool()
+def gws_gmail_unread(max_results: int = 10, user_email: str = "") -> str:
+    """Liệt kê email CHƯA ĐỌC (người gửi, tiêu đề, ngày, mã) — tối đa `max_results`.
+    KHÔNG trả nội dung thư; muốn đọc nội dung thì gọi gws_gmail_read với mã.
+    user_email: tài khoản Gmail cần dùng (rỗng = mặc định; vd 'work@gmail.com')."""
+    rows = _liet_ke(_gmail(user_email or None), "is:unread", max_results)
+    if not rows:
+        return "Không có email chưa đọc."
+    return f"Có {len(rows)} email chưa đọc:\n" + _ke_thu(rows)
+
+
+@mcp.tool()
+def gws_gmail_search(q: str, max_results: int = 10, user_email: str = "") -> str:
+    """TÌM email theo tiêu chí, cả đã đọc lẫn chưa đọc — trả người gửi, tiêu đề, ngày, mã.
+    KHÔNG trả nội dung thư; muốn đọc nội dung thì gọi gws_gmail_read với mã.
+
+    Dùng khi người dùng hỏi về thư CỦA AI ĐÓ hoặc VỀ VIỆC GÌ ĐÓ ('có mail nào của phòng
+    đào tạo không', 'thư về đăng ký tốt nghiệp'). Hỏi chung chung 'có mail mới không' thì
+    dùng gws_gmail_unread.
+
+    `q` theo cú pháp tìm kiếm Gmail, ghép nhiều điều kiện bằng khoảng trắng (VÀ):
+      from:ten@mien.com     người gửi        subject:"tốt nghiệp"  cụm trong tiêu đề
+      "đăng ký tốt nghiệp"  cụm bất kỳ đâu   newer_than:30d        trong 30 ngày (d/m/y)
+      is:unread             chưa đọc         has:attachment        có tệp đính kèm
+    Ví dụ: q='from:hcmut.edu.vn "tốt nghiệp" newer_than:30d'
+    user_email: tài khoản Gmail cần dùng (rỗng = mặc định)."""
+    q = (q or "").strip()
+    if not q:
+        return "Cần cho biết tiêu chí tìm (vd from:..., subject:..., hoặc một cụm từ khoá)."
+    rows = _liet_ke(_gmail(user_email or None), q, max_results)
+    if not rows:
+        return f"Không tìm thấy email nào khớp '{q}'."
+    return f"Tìm thấy {len(rows)} email khớp '{q}':\n" + _ke_thu(rows)
 
 
 def _plain_body(payload):

@@ -40,3 +40,19 @@ def wake_words_not_in(text, wake_words):
     """Các wake word KHÔNG xuất hiện trong `text`.
     """
     return [w for w in wake_words if not match_wake_word(text, [w])[0]]
+
+
+def in_follow_up_window(spoke_at, heard_at, window_s):
+    """Câu bắt đầu lúc `heard_at` có còn nằm trong cửa sổ NỐI LỜI không?
+
+    Cửa sổ nối lời mở ra ngay sau khi trợ lý trả lời xong (`spoke_at`): trong ngần đó
+    giây, người dùng nói tiếp mà KHÔNG phải gọi tên — đó là nhịp của một cuộc đối thoại
+    thật, hỏi đi hỏi lại không ai xưng tên trước mỗi câu.
+
+    Hàm THUẦN: nhận mốc thời gian chứ không tự đọc đồng hồ, nên test được mà không phải
+    chờ 10 giây thật. `spoke_at=None` (chưa trả lời lần nào) hoặc cửa sổ <= 0 -> đóng.
+    Hiệu số ÂM (người dùng nói chen lúc trợ lý còn đang nói) vẫn tính là trong cửa sổ.
+    """
+    if spoke_at is None or not window_s or window_s <= 0:
+        return False
+    return (heard_at - spoke_at) <= window_s

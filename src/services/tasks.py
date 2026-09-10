@@ -11,6 +11,7 @@ import os
 import uuid
 from datetime import datetime
 
+from utils.atomic_json import write_json
 from utils.logger import get_logger
 from utils.text_norm import strip_accents
 
@@ -83,10 +84,6 @@ class TaskStore:
 
     def _save(self):
         try:
-            directory = os.path.dirname(self.path)
-            if directory:
-                os.makedirs(directory, exist_ok=True)
-            with open(self.path, "w", encoding="utf-8") as f:
-                json.dump(list(self._tasks.values()), f, ensure_ascii=False, indent=2)
+            write_json(self.path, list(self._tasks.values()))
         except OSError as e:
             logger.error("Không lưu được file việc cần làm: %s", e)

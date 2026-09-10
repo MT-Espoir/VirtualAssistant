@@ -16,6 +16,22 @@ from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+
+class MCPError(Exception):
+    """Gọi MCP thất bại — NÉM chứ không trả về chuỗi trông như kết quả.
+
+    Trước bản này `call_tool` trả chuỗi "(MCP báo lỗi) ..." khi hỏng. Nó đọc thì thân
+    thiện, nhưng handler trả về bình thường nghĩa là `Agent._run_tool` xếp lượt đó là
+    THÀNH CÔNG: `is_error=False`, và nhật ký kết quả ghi `ket_qua="xong"`. Hệ quả: MỌI
+    lỗi MCP — hết hạn OAuth, server chết, mất mạng — đều vô hình với bộ đo
+    (`docs/learning_from_experience_spec.md` §1.1).
+
+    Đã xảy ra thật 2026-08-29: OAuth hết hạn, `gws_gmail_search` trả chuỗi lỗi, nhật ký
+    ghi "xong". Mọi tool khác trong hệ đều NÉM khi hỏng; MCP là ngoại lệ duy nhất, và
+    ngoại lệ đó chính là chỗ tín hiệu bị nuốt.
+    """
+
+
 # Từ khoá gợi ý tool GHI (khó hoàn tác) -> đánh dấu destructive (Agent hỏi xác nhận).
 DEFAULT_DESTRUCTIVE_KEYWORDS = ("send", "create", "update", "delete", "remove",
                                 "insert", "add", "move", "trash")
@@ -111,20 +127,32 @@ class MCPClient:
         return list(self._tools)
 
     def call_tool(self, name, arguments=None):
-        """Gọi một MCP tool (đồng bộ). Trả chuỗi kết quả, hoặc thông báo lỗi thân thiện."""
+        """Gọi một MCP tool (đồng bộ). Trả chuỗi kết quả, hoặc NÉM `MCPError`.
+
+        Ném chứ không trả chuỗi lỗi — xem docstring `MCPError`. Nơi gọi vẫn có câu chữ
+        thân thiện để đọc cho người dùng, vì `Agent._run_tool` bắt ngoại lệ rồi tự dựng
+        `ToolResult(is_error=True)`; khác biệt là bây giờ cờ lỗi ĐƯỢC BẬT.
+        """
         if self.loop is None or not self.connected:
-            return "MCP chưa kết nối (server chưa chạy?)."
+            raise MCPError("MCP chưa kết nối (server chưa chạy?).")
         try:
             fut = asyncio.run_coroutine_threadsafe(
                 self._call(name, arguments or {}), self.loop)
             return fut.result(self.timeout)
+        except MCPError:
+            raise                       # đã có nghĩa rồi, đừng bọc thêm một lớp nữa
         except Exception as e:
             logger.warning("MCP call_tool '%s' lỗi: %s", name, e)
-            return f"Lỗi MCP: {e}"
+            raise MCPError(f"gọi '{name}' thất bại: {e}") from e
 
     async def _call(self, name, arguments):
         result = await self._session.call_tool(name, arguments=arguments)
-        return _extract_text(result)
+        text = _extract_text(result)
+        # Server báo lỗi qua cờ `isError` chứ không qua ngoại lệ — quy về ngoại lệ ở ĐÂY,
+        # chỗ duy nhất còn nhìn thấy cờ đó.
+        if getattr(result, "isError", False):
+            raise MCPError(text)
+        return text
 
     def stop(self):
         if self.loop is not None and self._closed is not None:

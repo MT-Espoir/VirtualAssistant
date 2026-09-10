@@ -9,54 +9,72 @@ try:
 except ImportError:
     pytest = None
 
-from ui.avatar_face import face_spec, guess_emotion
+from ui.avatar_face import BLINK_BASE, BLINK_FRAME, blink_frame, frame_spec, guess_emotion
 from utils.events import AssistantBus
 
 
-# --------------------------- face_spec --------------------------- #
+# --------------------------- frame_spec --------------------------- #
 
 def test_idle_neutral():
-    spec = face_spec("idle", "neutral")
-    assert spec == {"pose": "neutral", "label": "Sẵn sàng"}
+    assert frame_spec("idle", "neutral") == {"frame": "default", "label": "Sẵn sàng"}
 
 
-def test_happy_pose():
-    assert face_spec("idle", "happy")["pose"] == "happy"
+def test_happy_dung_chung_khung_voi_neutral():
+    # Chưa có ảnh riêng cho "vui" -> vẫn là khung của trạng thái, không rơi vào khung lạ.
+    assert frame_spec("idle", "happy")["frame"] == "default"
 
 
-def test_sad_pose():
-    assert face_spec("idle", "sad")["pose"] == "sad"
+def test_sad_va_cry_dung_khung_sad():
+    assert frame_spec("idle", "sad")["frame"] == "sad"
+    assert frame_spec("idle", "cry")["frame"] == "sad"
 
 
-def test_cry_pose():
-    assert face_spec("idle", "cry")["pose"] == "cry"
+def test_moi_trang_thai_mot_khung():
+    assert frame_spec("thinking")["frame"] == "thinking"
+    assert frame_spec("speaking")["frame"] == "talk"
 
 
-def test_thinking_forces_confused_regardless_of_emotion():
-    # state == thinking -> luôn "confused", bất kể emotion đang là gì
-    assert face_spec("thinking", "neutral")["pose"] == "confused"
-    assert face_spec("thinking", "happy")["pose"] == "confused"
-    assert face_spec("thinking", "sad")["pose"] == "confused"
-    assert face_spec("thinking", "cry")["pose"] == "confused"
+def test_listening_dung_chung_khung_voi_idle():
+    # Trợ lý đứng chờ mic gần như suốt phiên -> "đang nghe" là mặt nghỉ, không phải
+    # một khung riêng chiếm màn hình mãi.
+    assert frame_spec("listening")["frame"] == frame_spec("idle")["frame"]
 
 
-def test_non_thinking_states_use_emotion_as_pose():
+def test_thinking_khong_bi_cam_xuc_de_len():
+    # Đang nghĩ thì phải thấy là còn bận, bất kể tâm trạng.
+    for emotion in ("neutral", "happy", "sad", "cry"):
+        assert frame_spec("thinking", emotion)["frame"] == "thinking"
+
+
+def test_cam_xuc_de_len_cac_trang_thai_con_lai():
     for state in ("idle", "listening", "speaking"):
-        assert face_spec(state, "happy")["pose"] == "happy"
-        assert face_spec(state, "sad")["pose"] == "sad"
+        assert frame_spec(state, "sad")["frame"] == "sad"
 
 
 def test_listening_label():
-    assert face_spec("listening")["label"] == "Đang nghe..."
+    assert frame_spec("listening")["label"] == "Đang nghe..."
 
 
-def test_unknown_state_defaults_to_idle():
-    assert face_spec("khong_biet", "happy") == {"pose": "happy", "label": "Sẵn sàng"}
+def test_trang_thai_la_thi_ve_idle():
+    assert frame_spec("khong_biet", "happy") == {"frame": "default", "label": "Sẵn sàng"}
 
 
-def test_unknown_emotion_defaults_to_neutral():
-    spec = face_spec("idle", "la_lam")
-    assert spec["pose"] == "neutral"
+def test_cam_xuc_la_thi_ve_neutral():
+    assert frame_spec("idle", "la_lam")["frame"] == "default"
+
+
+# --------------------------- blink_frame --------------------------- #
+
+def test_chi_tu_the_goc_moi_chop_mat():
+    assert blink_frame(BLINK_BASE) == BLINK_FRAME
+    for frame in ("sad", "shy", "talk", "thinking"):
+        assert blink_frame(frame) is None
+
+
+def test_chop_mat_khai_bao_ca_khi_chua_co_anh():
+    # Hàm chỉ nói "tư thế này chớp được bằng ảnh nào"; có ảnh hay chưa là việc của
+    # ui.avatar. Nhờ vậy thả ảnh vào + bake lại là chớp mắt chạy, không phải sửa code.
+    assert blink_frame(frame_spec("idle", "neutral")["frame"]) == BLINK_FRAME
 
 
 # --------------------------- guess_emotion --------------------------- #

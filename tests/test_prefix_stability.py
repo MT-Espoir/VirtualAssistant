@@ -81,6 +81,14 @@ def test_specs_khop_anh_chup_truoc_refactor():
     byte với bản gốc thay vì "chạy thử thấy ổn". Đổi tức là đã lỡ tay đụng vào hành vi —
     hoặc thứ tự nạp feature vừa xê dịch.
 
+    CHỤP LẠI LẦN HAI (2026-08-29, đợt 3 của vá bảo mật): `browser_close_tab` bỏ tham số
+    `confirm` khỏi lược đồ và rút gọn mô tả. Tool này từng tự làm hai pha bằng `confirm`,
+    với luật "đừng tự đặt confirm=true" viết trong MÔ TẢ TOOL — tức nằm đúng trong thứ mà
+    prompt injection ghi đè được, và mô phỏng tấn công đã chứng minh nó lọt. Nay việc chặn
+    thuộc về `registry.gate()` ở tầng code, nên tham số đó phải BIẾN MẤT khỏi tầm nhìn của
+    model. Đã kiểm trước khi chụp lại: vẫn đúng 47 tool, và `browser_close_tab` là tool DUY
+    NHẤT khác đi. Tổng payload giảm 19.351 -> 19.028 ký tự.
+
     ĐÃ CHỤP LẠI MỘT LẦN (2026-08-25, bước cuối việc 4). Suốt đợt migrate ảnh chụp giữ
     nguyên nhờ rút khối đăng ký CUỐI CÙNG trước; riêng nhóm lõi thì không giữ được:
     system/web/weather cài răng lược trong một khối `reg.register` liên tiếp, tách theo

@@ -153,6 +153,13 @@ def _register_routine_tools(reg: ToolRegistry, routines):
             "required": ["name", "steps"],
         },
         handler=create_routine,
+        # TẠO ROUTINE lưu các bước sẽ THỰC THI qua `_dispatch` về sau — persistence cộng
+        # thực thi trễ. Trước đây `delete_routine` có cổng còn `create_routine` thì không,
+        # trong khi tạo mới nguy hiểm hơn xoá một cái đã có.
+        destructive=True,
+        confirm_message=lambda name=None, steps=None, **_: (
+            f"tạo routine '{name}' gồm: " + "; ".join(steps or [])),
+        persistent=True,
     ))
 
     reg.register(Tool(

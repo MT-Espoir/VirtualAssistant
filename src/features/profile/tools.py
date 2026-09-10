@@ -1,8 +1,6 @@
 """
 Tool của feature `profile` — Ghi nhớ / quên thông tin về người dùng.
 
-Chuyển nguyên khối từ `agent/tools.py` (2026-08-25); thân hàm KHÔNG sửa một
-dòng nào. `register(reg, ctx)` chỉ là lớp bọc mỏng lấy dependency từ ctx.
 """
 
 from agent.tools import Tool, ToolRegistry
@@ -44,6 +42,7 @@ def _register_profile_tools(reg: ToolRegistry, profile):
         handler=lambda name=None, address_form=None, location=None, note=None, when=None:
             profile.remember(name=name, address_form=address_form,
                              location=location, note=note, when=when),
+        persistent=True,
     ))
 
     reg.register(Tool(

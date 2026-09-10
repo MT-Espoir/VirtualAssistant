@@ -12,9 +12,11 @@ intent/entities không còn tồn tại trong kiến trúc tool-calling hiện t
 
 import json
 import os
+import re
 
 from datetime import datetime
 
+from utils.atomic_json import write_json
 from utils.logger import get_logger
 from utils.text_norm import norm
 from memory.timefmt import describe_age, is_past, older_than_days, parse_iso
@@ -34,6 +36,10 @@ _RETRIEVAL_THRESHOLD = 6
 _RETRIEVAL_K = 5
 
 _DEFAULT_PATH = os.path.join(os.path.dirname(__file__), "data", "profile.json")
+
+# Tham chiếu tượng trưng cho TÊN người dùng. Model chỉ thấy chuỗi này; tên thật được thay
+# ở tầng runtime ngay trước khi nói ra. Xem `summarize` và `thay_tham_chieu`.
+THAM_CHIEU_TEN = "@ten"
 
 
 # auto_facts: sự thật TỰ TRÍCH từ hội thoại (độ tin thấp hơn notes tường minh) -> giữ
@@ -159,6 +165,20 @@ def find_memories(data, keyword):
     return hits
 
 
+def thay_tham_chieu(text, data):
+    """Thay `@ten` bằng tên thật trong câu sắp nói ra. Hàm THUẦN.
+
+    Chưa lưu tên -> bỏ tham chiếu đi thay vì để model đọc "@ten" cho người dùng nghe.
+    """
+    if not text or THAM_CHIEU_TEN not in text:
+        return text
+    ten = ((data or {}).get("name") or "").strip()
+    if ten:
+        return text.replace(THAM_CHIEU_TEN, ten)
+    # Không có tên: xoá tham chiếu + khoảng trắng thừa do nó để lại.
+    return re.sub(r"\s{2,}", " ", text.replace(THAM_CHIEU_TEN, "")).strip()
+
+
 def summarize(data, query=None, now=None):
     """Câu ngắn mô tả người dùng để bơm vào system prompt. '' nếu chưa biết gì.
 
@@ -168,13 +188,22 @@ def summarize(data, query=None, now=None):
     if not data:
         return ""
     parts = []
+    # TÊN đi vào prompt dưới dạng THAM CHIẾU, không phải giá trị: model viết `@ten`, tầng
+    # runtime thay bằng tên thật ngay trước khi nói (`thay_tham_chieu`). Model không thấy
+    # tên thì model bị chiếm cũng không đọc ra được — mạnh hơn mọi cổng, vì cổng lách được
+    # còn dữ liệu vắng mặt thì không. Cùng khuôn với toạ độ ở `services/location.py`.
+    #
+    # GIỚI HẠN, nói rõ để đừng ảo tưởng: nếu người dùng vừa tự nói tên ra trong hội thoại
+    # thì tên đó nằm sẵn trong lịch sử ngắn hạn. Chỗ này chỉ chặn việc bơm tên vào MỌI
+    # lượt một cách hệ thống, không xoá được tên khỏi ngữ cảnh nói chung.
     if data.get("name"):
-        parts.append(f"Tên người dùng: {data['name']}.")
+        parts.append(f"Người dùng có tên đã lưu. Khi cần gọi tên, viết đúng "
+                     f"'{THAM_CHIEU_TEN}' — hệ thống tự thay bằng tên thật.")
     if data.get("address_form"):
         parts.append(f"Xưng hô với người dùng là '{data['address_form']}'.")
-    loc = (data.get("preferences") or {}).get("default_location")
-    if loc:
-        parts.append(f"Địa điểm mặc định của người dùng: {loc}.")
+    # ĐỊA ĐIỂM MẶC ĐỊNH cố ý KHÔNG vào prompt: đây là dữ liệu vị trí, mà model không cần
+    # nó — `get_weather` để trống `location` thì tầng tool tự lấy từ hồ sơ. Mô tả tool đã
+    # dặn sẵn "không nói địa điểm thì để trống".
 
     notes = data.get("notes") or []
     auto = data.get("auto_facts") or []
@@ -222,11 +251,7 @@ class UserProfile:
 
     def _save(self):
         try:
-            directory = os.path.dirname(self.path)
-            if directory:
-                os.makedirs(directory, exist_ok=True)
-            with open(self.path, "w", encoding="utf-8") as f:
-                json.dump(self.data, f, ensure_ascii=False, indent=2)
+            write_json(self.path, self.data)
         except OSError as e:
             logger.error("Không lưu được hồ sơ người dùng: %s", e)
 
@@ -276,6 +301,10 @@ class UserProfile:
         self.data.setdefault("events", []).append(make_event(text, when))
         self.data["events"] = prune_events(self.data["events"])
         self._save()
+
+    def resolve(self, text):
+        """Thay tham chiếu tượng trưng bằng giá trị thật, ngay trước khi nói ra."""
+        return thay_tham_chieu(text, self.data)
 
     def summary(self, query=None):
         # Dọn sự kiện quá hạn ngay lúc đọc -> hồ sơ không phình theo thời gian.

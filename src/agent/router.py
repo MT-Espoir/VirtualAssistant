@@ -2,6 +2,9 @@
 Router: phân loại yêu cầu vào một "case" bằng MỘT lượt LLM, rồi chọn prompt + THU HẸP
 bộ tool cho case đó trước khi agent gọi tool.
 
+Đây là một cài đặt của hợp đồng BỀ MẶT TOOL — `select(user_text, registry) -> (system,
+specs)`, xem `agent/surface.py`. Agent chỉ biết hợp đồng đó, không biết router tồn tại.
+
 Vì model nhỏ chọn tool kém khi thấy quá nhiều tool + prompt to, thu hẹp về đúng nhóm
 liên quan giúp chọn đúng hơn nhiều. LLM vẫn tự quyết cách gọi tool -> câu phức tạp
 KHÔNG bị "hijack" như fast-path. Không rõ case / lỗi -> dùng full tool (an toàn).
@@ -40,6 +43,10 @@ class Router:
         self.case_tools = case_tools
         self.data = data
         self.mcp_prefix = mcp_prefix or ""      # tiền tố tên tool MCP để thu hẹp case 'pim'
+        # Case của lượt gần nhất. Nhật ký kết quả đọc qua `getattr(surface, "last_case")`,
+        # nên bề mặt không phân loại (AllTools) đơn giản là không có thuộc tính này —
+        # không phải cài đặt nào cũng có case, và hợp đồng bề mặt không đòi.
+        self.last_case = None
 
     @classmethod
     def from_report(cls, llm, report, mcp_prefix=None):
@@ -81,6 +88,7 @@ class Router:
     def select_for_case(self, case, registry):
         """Trả (system_prompt, tool_specs) cho một case ĐÃ biết (tách khỏi classify để
         đo lường/tái dùng được — vd bộ eval cần biết case mà không phải classify 2 lần)."""
+        self.last_case = case
         base = self.data.get("base", "")
         frag = self.data.get("cases", {}).get(case, "")
         system = (base + "\n" + frag).strip() if frag else base

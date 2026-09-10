@@ -31,6 +31,29 @@ def _get(name: str, default: str) -> str:
     return os.getenv(name, default)
 
 
+# Gốc dự án = cha của `src/` — mốc để quy đường dẫn TƯƠNG ĐỐI trong .env về tuyệt đối.
+_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _get_path(name: str, default: str = "") -> str:
+    """Đọc một biến môi trường dạng ĐƯỜNG DẪN, quy về tuyệt đối theo GỐC DỰ ÁN.
+
+    Đường dẫn tương đối vốn được đọc theo thư mục ĐANG CHẠY LỆNH, mà thư mục đó khác nhau
+    tuỳ cách mở app: gõ tay từ gốc repo thì đúng, còn `launch_assistant.vbs` đặt
+    CurrentDirectory = `src/` nên cùng một dòng .env lại trỏ vào chỗ không tồn tại.
+
+    Đã hỏng thật: `VIENEU_REF_AUDIO=my_dataset_builder/ref/...` chạy từ gốc thì có giọng
+    riêng, mở bằng shortcut thì thành `src/my_dataset_builder/...` -> không thấy file ->
+    im lặng rơi về giọng Google. Cùng lý lẽ với việc nạp `.env` bằng đường dẫn tuyệt đối
+    ở trên: cấu hình KHÔNG được phụ thuộc thư mục chạy lệnh.
+    """
+    raw = (os.getenv(name, default) or "").strip()
+    if not raw:
+        return ""
+    duong_dan = Path(raw)
+    return str(duong_dan if duong_dan.is_absolute() else _ROOT / duong_dan)
+
+
 def _get_int(name: str, default: int) -> int:
     try:
         return int(os.getenv(name, default))
@@ -101,7 +124,7 @@ class Config:
     # Bảo mật: chỉ bật khi bạn chủ động cho phép. Nội dung màn hình (chữ OCR) sẽ đi
     # tới LLM -> chỉ hoạt động với LLM LOCAL (ollama); app tự từ chối nếu dùng online.
     SCREEN_CONTROL_ENABLED = _get_bool("SCREEN_CONTROL_ENABLED", False)
-    SCREEN_CAPTURE_DIR = _get("SCREEN_CAPTURE_DIR", "")   # rỗng = <gốc dự án>/captures
+    SCREEN_CAPTURE_DIR = _get_path("SCREEN_CAPTURE_DIR")   # rỗng = <gốc dự án>/captures
     TESSERACT_CMD = _get("TESSERACT_CMD", "")             # rỗng = tự dò đường dẫn
 
     # --- Từ khoá kích hoạt (wake word) — chỉ áp dụng khi nhập bằng giọng nói ---
@@ -109,6 +132,11 @@ class Config:
     # phát ra loa (tránh mic thu lại rồi tự trả lời loạn).
     REQUIRE_WAKE_WORD = _get_bool("REQUIRE_WAKE_WORD", True)
     WAKE_WORDS = _get("WAKE_WORDS", "trợ lý,tro ly,jarvis,ying,assistant")
+    # Cửa sổ NỐI LỜI: sau khi trợ lý vừa trả lời xong, người dùng có ngần này GIÂY để
+    # nói tiếp mà không phải gọi tên (đối thoại qua lại không ai xưng tên mỗi câu). Hết
+    # giờ thì từ khoá bắt buộc trở lại. Đổi lại: trong cửa sổ đó, tiếng nhạc/clip lọt
+    # mic cũng được nhận -> đặt 0 để tắt hẳn nếu môi trường ồn.
+    FOLLOW_UP_SECONDS = _get_float("FOLLOW_UP_SECONDS", 10.0)
     # Barge-in: cho phép ngắt lời AI đang nói bằng wake word (chỉ khi dùng giọng nói
     # + đã bật REQUIRE_WAKE_WORD). Không cần AEC; đánh đổi độ tin cậy (xem docs).
     BARGE_IN = _get_bool("BARGE_IN", True)
@@ -147,8 +175,8 @@ class Config:
     # Piper xuất giọng ra CẶP file: `<tên>.onnx` + `<tên>.onnx.json`. Để trống
     # PIPER_CONFIG thì suy ra từ PIPER_MODEL. Thiếu file hoặc chưa cài `piper-tts` ->
     # tự rơi về gtts kèm log nói rõ thiếu gì. Xem `docs/voice_finetune_spec.md`.
-    PIPER_MODEL = _get("PIPER_MODEL", "")
-    PIPER_CONFIG = _get("PIPER_CONFIG", "")
+    PIPER_MODEL = _get_path("PIPER_MODEL")
+    PIPER_CONFIG = _get_path("PIPER_CONFIG")
     PIPER_SPEAKER = _get_int("PIPER_SPEAKER", 0)
     PIPER_LENGTH_SCALE = _get_float("PIPER_LENGTH_SCALE", 1.0)   # >1 nói chậm lại
     PIPER_NOISE_SCALE = _get_float("PIPER_NOISE_SCALE", 0.667)   # thấp = ngữ điệu đều hơn
@@ -156,7 +184,7 @@ class Config:
     # --- Giọng CLONE bằng VieNeu-TTS (TTS_ENGINE=vieneu) ---
     # Chỉ cần MỘT đoạn thu ~3 giây; đổi file là đổi giọng, không huấn luyện lại.
     # Model nạp mất ~20s nên chạy ở NỀN: trợ lý nói bằng gtts trước, tự đổi khi xong.
-    VIENEU_REF_AUDIO = _get("VIENEU_REF_AUDIO", "")
+    VIENEU_REF_AUDIO = _get_path("VIENEU_REF_AUDIO")
     VIENEU_MODE = _get("VIENEU_MODE", "v3turbo")      # 48kHz, ONNX Runtime, torch-free
     VIENEU_PRECISION = _get("VIENEU_PRECISION", "int8")
 
@@ -170,21 +198,36 @@ class Config:
     MAX_HISTORY_TURNS = _get_int("MAX_HISTORY_TURNS", 10)
     # Trí nhớ NGẮN HẠN: đường dẫn file lưu các lượt gần đây (rỗng = chỉ nhớ trong phiên,
     # quên khi tắt app — đúng nghĩa ngắn hạn; đặt đường dẫn nếu muốn nối tiếp qua restart)
-    MEMORY_PATH = _get("MEMORY_PATH", "")
+    MEMORY_PATH = _get_path("MEMORY_PATH")
 
     # Củng cố STM -> LTM: tự động trích sự thật bền vững từ hội thoại (khi lượt cũ bị đẩy
-    # khỏi trí nhớ ngắn hạn) vào hồ sơ dài hạn. TỐN thêm 1 lượt LLM mỗi lần củng cố -> nên
-    # bật khi dùng provider NHANH (Gemini/Claude); model local chậm nên để TẮT (mặc định).
-    LTM_AUTO_EXTRACT = _get_bool("LTM_AUTO_EXTRACT", False)
+    # khỏi trí nhớ ngắn hạn, và nốt phần còn lại lúc đóng phiên) vào hồ sơ dài hạn.
+    # BẬT mặc định: tắt thì trợ lý chỉ nhớ được điều người dùng ngồi khai báo thành lời,
+    # mà gần như không ai làm vậy — hỏi "biết tôi hay nghe nhạc gì không" sẽ luôn là
+    # "chưa biết". Giá phải trả là 1 lượt LLM mỗi lần củng cố; máy chạy model local chậm
+    # thì đặt LTM_AUTO_EXTRACT=false.
+    LTM_AUTO_EXTRACT = _get_bool("LTM_AUTO_EXTRACT", True)
+
+    # Cho phép trợ lý tự SUY RA sự thật bền vững từ hội thoại rồi ghi vào hồ sơ.
+    # MẶC ĐẮNH TẮT (2026-08-29): đây là trường dữ liệu TỰ DO — sức khoẻ, tài chính, quan
+    # hệ đều rơi vào đây — mà lại được ghi khi người dùng KHÔNG hề bảo nhớ, rồi được bơm
+    # vào mọi prompt sau đó. Bật lại thì trợ lý "hiểu" bạn hơn, đổi bằng việc nó tự quyết
+    # điều gì đáng nhớ về bạn. SỰ KIỆN có thời điểm KHÔNG bị ảnh hưởng (tự hết hạn).
+    LTM_AUTO_FACTS = _get_bool("LTM_AUTO_FACTS", False)
     # Gom bao nhiêu lượt bị đẩy ra rồi mới củng cố một lần (đỡ tốn lượt LLM).
     LTM_CONSOLIDATE_EVERY = _get_int("LTM_CONSOLIDATE_EVERY", 6)
+
+    # THÓI QUEN: đếm hành vi lặp lại (bài hay nghe, app hay mở) -> bơm vào prompt khi đã
+    # đủ nhiều lần. Không tốn lượt LLM nào (chỉ cộng số), nhưng là dữ liệu theo dõi hành
+    # vi người dùng nên phải có công tắc tắt. Xem `memory/habits.py`.
+    HABITS_ENABLED = _get_bool("HABITS_ENABLED", True)
 
     # --- Persona: nhân cách + tâm trạng ---
     # Bật -> bơm nhân cách (character card, thích nghi provider) + tâm trạng (công thức)
     # vào prompt, và để tâm trạng dẫn khuôn mặt avatar (bỏ tự reset về neutral sau 5s).
     PERSONA_ENABLED = _get_bool("PERSONA_ENABLED", True)
     # Rỗng = dùng components/user/user_data/persona.json (dữ liệu cá nhân, đã gitignore).
-    PERSONA_PATH = _get("PERSONA_PATH", "")
+    PERSONA_PATH = _get_path("PERSONA_PATH")
     # Phase 2 (opt-in): khi CỦNG CỐ trí nhớ, gọi LLM đề xuất nudge NÚM tính cách (rất nhỏ,
     # có biên). TỐN thêm 1 lượt LLM/lần củng cố -> chỉ bật với provider NHANH (Gemini).
     PERSONA_AUTO_TUNE = _get_bool("PERSONA_AUTO_TUNE", False)
@@ -205,15 +248,15 @@ class Config:
 
     # --- Việc cần làm (to-do) + Quy trình (routine) — local, bền vững ---
     # Rỗng = dùng file mặc định trong src/services/ (đã gitignore, dữ liệu cá nhân).
-    TASKS_PATH = _get("TASKS_PATH", "")
-    ROUTINES_PATH = _get("ROUTINES_PATH", "")
+    TASKS_PATH = _get_path("TASKS_PATH")
+    ROUTINES_PATH = _get_path("ROUTINES_PATH")
     # Sổ danh bạ cục bộ (tên -> email) để soạn/gửi mail theo tên. Rỗng = file mặc định.
-    CONTACTS_PATH = _get("CONTACTS_PATH", "")
+    CONTACTS_PATH = _get_path("CONTACTS_PATH")
 
     # --- Hồ sơ NGƯỜI DÙNG bền vững (tên, xưng hô, địa điểm mặc định...) ---
     # Rỗng = dùng vị trí mặc định components/user/user_data/profile.json. Đây là DỮ LIỆU
     # CÁ NHÂN -> đã gitignore, không commit.
-    USER_PROFILE_PATH = _get("USER_PROFILE_PATH", "")
+    USER_PROFILE_PATH = _get_path("USER_PROFILE_PATH")
 
     # --- Gemini API (LLM_PROVIDER=gemini) — XOAY VÒNG model theo hạn mức free tier ---
     GEMINI_API_KEY = _get("GEMINI_API_KEY", "")
@@ -261,14 +304,14 @@ class Config:
     PLACES_W_QUALITY = _get_float("PLACES_W_QUALITY", 0.35)
     PLACES_W_OPEN = _get_float("PLACES_W_OPEN", 0.20)
     PLACES_W_EVIDENCE = _get_float("PLACES_W_EVIDENCE", 0.10)
-    LOCATION_PATH = _get("LOCATION_PATH", "")                 # rỗng = chỉ nhớ trong phiên
+    LOCATION_PATH = _get_path("LOCATION_PATH")                 # rỗng = chỉ nhớ trong phiên
 
     # --- Claim cache của lane research (đọc web) ---
     # Nhớ LỜI CỦA TỪNG NGUỒN theo câu hỏi, không nhớ câu trả lời. Ba tác dụng: bỏ hẳn
     # phần đọc web khi hỏi lại trong cửa sổ tươi; GỘP nguồn giữa các lượt (tập kết quả
     # tìm kiếm vốn không ổn định); và còn cái để trả lời khi máy tìm kiếm chặn, kèm lời
     # nói rõ dữ liệu cũ bao lâu.
-    RESEARCH_CACHE_PATH = _get("RESEARCH_CACHE_PATH", "")     # rỗng = <src>/research/data/claims.json
+    RESEARCH_CACHE_PATH = _get_path("RESEARCH_CACHE_PATH")     # rỗng = <src>/research/data/claims.json
     RESEARCH_CACHE_ENABLED = _get_bool("RESEARCH_CACHE_ENABLED", True)
     RESEARCH_CACHE_FRESH_H = _get_int("RESEARCH_CACHE_FRESH_H", 24)
     # Hạn dùng lấy theo LỚP BIẾN ĐỘNG CHẬM NHẤT: thẩm mỹ của một quán đổi theo năm.
@@ -280,7 +323,24 @@ class Config:
 
     # --- Logging ---
     LOG_LEVEL = _get("LOG_LEVEL", "INFO")
-    LOG_FILE = _get("LOG_FILE", "")   # rỗng = chỉ log ra console
+
+    # File log CỦA LOGGER, có xoay vòng. KHÁC `assistant.log` ở gốc repo và cố ý không
+    # trỏ vào đó: `assistant.log` là chỗ `launch_assistant.vbs` đổ stdout+stderr bằng
+    # `>` — hai cơ chế cùng mở một file sẽ chèn lẫn nhau. Hai file hai việc:
+    #   assistant.log  = đúng những gì màn hình vừa hiện (có cả print()), GHI ĐÈ mỗi lần chạy
+    #   logs/app.log   = lịch sử của logger, SỐNG QUA nhiều lần chạy, có trần dung lượng
+    # Chạy `python app.py` từ terminal thì chỉ file thứ hai có. Đặt rỗng để tắt hẳn.
+    LOG_FILE = _get_path("LOG_FILE", "logs/app.log")
+    # 2 MB × (1 + 3 bản lưu) = 8 MB trần, ~29 phiên ở mức 273 KB/phiên đo được 2026-08-28.
+    LOG_MAX_BYTES = _get_int("LOG_MAX_BYTES", 2_000_000)
+    LOG_BACKUP_COUNT = _get_int("LOG_BACKUP_COUNT", 3)
+
+    # Nhật ký KẾT QUẢ mỗi lượt (`memory/outcomes.py`) — nguyên liệu để đo trợ lý có khá
+    # lên không. Khác hai file log trên: đây là DỮ LIỆU có cấu trúc (JSONL) để phân tích,
+    # không phải log để người đọc. Chứa nguyên văn câu người dùng nói -> chỉ nằm trên máy.
+    # Rỗng = tắt hẳn.
+    OUTCOMES_FILE = _get_path("OUTCOMES_FILE", "logs/outcomes.jsonl")
+    OUTCOMES_MAX_BYTES = _get_int("OUTCOMES_MAX_BYTES", 1_000_000)
 
     def use_router(self) -> bool:
         """Lượt này có chạy router không. Tính lúc gọi vì 'auto' phụ thuộc LLM_PROVIDER."""

@@ -11,6 +11,7 @@ import json
 import os
 
 from llm.client import Message
+from utils.atomic_json import write_json
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -60,11 +61,6 @@ class ShortTermMemory:
         if not self.path:
             return
         try:
-            directory = os.path.dirname(self.path)
-            if directory:
-                os.makedirs(directory, exist_ok=True)
-            with open(self.path, "w", encoding="utf-8") as f:
-                json.dump([{"role": m.role, "text": m.text} for m in self.turns],
-                          f, ensure_ascii=False, indent=2)
+            write_json(self.path, [{"role": m.role, "text": m.text} for m in self.turns])
         except OSError as e:
             logger.error("Không lưu được bộ nhớ ngắn hạn: %s", e)

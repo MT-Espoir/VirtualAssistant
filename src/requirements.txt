@@ -29,6 +29,12 @@ requests>=2.31.0         # call Ollama + fetch page (web_fetch) + videoId YouTub
 # --- Điều khiển Chrome (tùy chọn: BROWSER_BRIDGE_ENABLED=true) ---
 websockets>=13.0         # cầu nối WebSocket tới Chrome extension (API asyncio mới)
 
+# --- Giao diện ---
+# Bắt buộc: avatar hiện nhân vật bằng ảnh PNG và phải thu ảnh theo kích thước cửa sổ
+# (Tk PhotoImage chỉ thu được theo bội số nguyên). Panel HUD cũng dùng để hiện ảnh
+# địa điểm. `packaging/make_avatar_frames.py` cần thêm numpy (đã có ở trên).
+Pillow>=10.0.0
+
 # --- Configuration (optional: allows loading .env files) ---
 python-dotenv>=1.0.0
 

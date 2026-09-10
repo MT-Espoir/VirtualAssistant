@@ -83,8 +83,11 @@ def test_tool_create_and_list():
     s, path = _tmp()
     try:
         reg = _reg(s)
+        # `create_routine` giờ là destructive (lưu các bước sẽ TỰ THỰC THI về sau) -> phải
+        # nói rõ đã được duyệt. Test này kiểm HANDLER, không kiểm cổng.
         out = reg.run("create_routine", {"name": "buổi sáng",
-                                         "steps": ["mở chrome", "đọc thời tiết"]})
+                                         "steps": ["mở chrome", "đọc thời tiết"]},
+                      confirmed=True)
         assert "tạo" in out and "2 bước" in out
         assert "buổi sáng" in reg.run("list_routines", {})
     finally:
@@ -94,7 +97,8 @@ def test_tool_create_and_list():
 def test_tool_create_rejects_no_steps():
     s, path = _tmp()
     try:
-        assert "ít nhất một bước" in _reg(s).run("create_routine", {"name": "x", "steps": []})
+        assert "ít nhất một bước" in _reg(s).run(
+            "create_routine", {"name": "x", "steps": []}, confirmed=True)
     finally:
         if os.path.exists(path): os.unlink(path)
 

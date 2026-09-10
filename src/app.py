@@ -12,10 +12,13 @@ import time
 
 from agent.agent import Agent
 from agent.actions_facade import AssistantActions
+from agent.tools import NeedsConfirmation
 from features.contract import FeatureContext
 from features.registry import build_registry
 from features.places.service import PlacesService
 from services.location import LocationStore
+from memory.habits import HabitLog
+from memory.outcomes import OutcomeLog
 from memory.profile import UserProfile
 from agent.persona import PersonaState, MoodState
 from services.tasks import TaskStore
@@ -25,7 +28,8 @@ from services.proactive import ProactiveMonitor
 from services.mcp_bridge import MCPClient
 from llm.client import build_default_llm_client
 from utils.events import AssistantBus
-from voice.wake_word import match_wake_word, parse_wake_words, wake_words_not_in
+from voice.wake_word import (in_follow_up_window, match_wake_word, parse_wake_words,
+                             wake_words_not_in)
 from features import fast as feature_fast
 from voice.fast_commands import (match_avatar_command, match_mode_command,
                                  match_confirmation, match_persona_command,
@@ -100,6 +104,20 @@ def _say(synth, bus, text, emotion):
             synth.speak_sync(text)     # chặn tới khi phát xong
         except Exception as e:
             logger.error("Lỗi khi phát giọng nói: %s", e)
+
+
+def _reply_and_idle(synth, bus, voice_io, text, emotion="happy"):
+    """Nói MỘT câu xen giữa vòng lặp (hỏi lại, đổi chế độ, xác nhận...) rồi mở lại vòng
+    nghe. Trả về mốc nói xong — chính là lúc CỬA SỔ NỐI LỜI bắt đầu tính.
+
+    Bốn chỗ trong `_assistant_loop` từng lặp y hệt ba dòng này; gom lại để mốc thời gian
+    ấy không thể quên ở một nhánh nào (quên = lượt sau lại đòi gọi tên).
+    """
+    _say(synth, bus, text, emotion)
+    if voice_io:
+        _flush_mic_after_speaking(voice_io[0])
+    bus.emit(state="idle")
+    return time.monotonic()
 
 
 def _flush_mic_after_speaking(recorder):
@@ -211,7 +229,9 @@ def _dispatch(agent, text, bus, fast_match=None):
     fast = fast_match(text) if (fast_match and config.FAST_COMMANDS) else None
     ui_cmd = match_avatar_command(text) if (config.FAST_COMMANDS and fast is None) else None
     if fast is not None and agent.registry.has(fast[0]):
-        return _run_fast(agent, fast), "happy"
+        noi = _run_fast(agent, fast)
+        if noi is not None:                     # None = tool cần duyệt -> để agent đi hỏi
+            return noi, "happy"
     if ui_cmd is not None:
         bus.emit_ui(**ui_cmd)
         print(f"⚡ (giao diện, không qua LLM) {ui_cmd}")
@@ -259,6 +279,11 @@ def _assistant_loop(agent, bus, synth, voice_io, routines=None, fast_match=None)
 
     Khi nhập bằng giọng nói và bật REQUIRE_WAKE_WORD: chỉ hành động với câu có chứa
     từ khoá kích hoạt — bỏ qua lời nhạc/clip lọt vào mic (không tự trả lời loạn).
+
+    NGOẠI LỆ — cửa sổ NỐI LỜI: FOLLOW_UP_SECONDS giây ngay sau khi trợ lý trả lời xong,
+    câu tiếp theo được nhận thẳng, khỏi gọi tên. Người ta hỏi lại ("thế còn ngày mai?")
+    trong vài giây sau câu trả lời, và bắt xưng tên ở đúng nhịp đó nghe như nói với máy.
+    Hết cửa sổ, từ khoá bắt buộc trở lại.
     """
     hint = "Đang lắng nghe micro..." if voice_io else "Gõ yêu cầu ở cửa sổ terminal."
     # Wake word chỉ áp dụng cho đầu vào giọng nói (gõ phím là chủ đích rõ ràng rồi).
@@ -267,14 +292,22 @@ def _assistant_loop(agent, bus, synth, voice_io, routines=None, fast_match=None)
     # Barge-in cần: giọng nói + có TTS + có wake word để phân biệt câu ngắt lời.
     bargein = bool(voice_io) and synth is not None and gate_wake and bool(wake_words) \
         and config.BARGE_IN
+    # Cửa sổ nối lời chỉ có nghĩa khi từ khoá đang gác cổng; chế độ làm việc đã bỏ gác
+    # rồi nên không liên quan.
+    follow_up_s = config.FOLLOW_UP_SECONDS if gate_wake else 0
     if gate_wake and wake_words:
-        hint += f' (nói "{wake_words[0]}" trước yêu cầu; hoặc "chế độ làm việc" để khỏi cần gọi tên)'
+        hint += f' (nói "{wake_words[0]}" trước yêu cầu'
+        if follow_up_s > 0:
+            hint += f'; trong {follow_up_s:g}s sau câu trả lời thì nói thẳng'
+        hint += '; hoặc "chế độ làm việc" để khỏi cần gọi tên)'
     bus.emit(state="idle", emotion="neutral", text=hint)
 
     pending = None          # câu lệnh có sẵn từ barge-in -> bỏ qua bước NGHE ở đầu vòng
     # Chế độ làm việc: TẠM tắt wake word (ra lệnh trực tiếp, không cần gọi tên). Chỉ có
     # nghĩa khi wake word đang được dùng (gate_wake). Đổi bằng giọng nói, không lưu file.
     work_mode = False
+    # Mốc trợ lý nói xong lượt gần nhất — gốc tính cửa sổ nối lời. None = chưa nói câu nào.
+    answered_at = None
     fails = 0
     while True:
         # 1) Lấy câu lệnh
@@ -307,21 +340,27 @@ def _assistant_loop(agent, bus, synth, voice_io, routines=None, fast_match=None)
             awaiting_confirm = (agent.pending is not None
                                 and match_confirmation(raw) is not None)
 
-            # Chế độ làm việc TẮT wake word tạm thời -> khi bật, bỏ qua bước kiểm từ khoá.
-            if gate_wake and not work_mode and not awaiting_confirm:
+            # Mốc BẮT ĐẦU nói, không phải lúc nhận dạng xong: một câu dài (hoặc STT
+            # chậm) không được ăn mất cửa sổ nối lời của chính nó.
+            onset = voice_io[0].speech_started_at if voice_io else None
+            follow_up = in_follow_up_window(answered_at, onset or time.monotonic(),
+                                            follow_up_s)
+
+            # Ba đường được miễn từ khoá: chế độ làm việc, câu 'có/không' đang chờ xác
+            # nhận, và cửa sổ nối lời ngay sau câu trả lời trước.
+            if gate_wake and not work_mode and not awaiting_confirm and not follow_up:
                 matched, remainder = match_wake_word(raw, wake_words)
                 if not matched:
                     print(f"(bỏ qua — không có từ khoá kích hoạt): {raw}")
                     bus.emit(state="idle")
                     continue
                 if not remainder:               # chỉ gọi tên, chưa có yêu cầu cụ thể
-                    _say(synth, bus, "Dạ, bạn cần gì?", "happy")
-                    if voice_io:
-                        _flush_mic_after_speaking(voice_io[0])
-                    bus.emit(state="idle")
+                    answered_at = _reply_and_idle(synth, bus, voice_io, "Dạ, bạn cần gì?")
                     continue
                 text = remainder
             else:
+                if follow_up and not work_mode:      # follow_up chỉ bật khi có gác cổng
+                    print("↩ (nối lời — trong cửa sổ sau câu trả lời, khỏi gọi tên)")
                 text = raw
 
         # 1b) CHUYỂN CHẾ ĐỘ nghe (chỉ khi wake word đang được dùng): "chế độ làm việc"
@@ -333,10 +372,7 @@ def _assistant_loop(agent, bus, synth, voice_io, routines=None, fast_match=None)
                 msg = ("Đã bật chế độ làm việc. Bạn ra lệnh trực tiếp, không cần gọi tên tôi nữa."
                        if work_mode else
                        "Đã trở lại chế độ bình thường. Hãy gọi tên tôi trước mỗi yêu cầu.")
-                _say(synth, bus, msg, "happy")
-                if voice_io:
-                    _flush_mic_after_speaking(voice_io[0])
-                bus.emit(state="idle")
+                answered_at = _reply_and_idle(synth, bus, voice_io, msg)
                 continue
 
         # 1c) CHỈNH TÍNH CÁCH bằng lời (học tường minh): "vui tính hơn", "nghiêm túc hơn",
@@ -351,10 +387,7 @@ def _assistant_loop(agent, bus, synth, voice_io, routines=None, fast_match=None)
                 if agent.mood is not None:
                     agent.mood.set_baseline(agent.persona.baseline_valence(),
                                             agent.persona.baseline_arousal())
-                _say(synth, bus, pcmd["say"], "happy")
-                if voice_io:
-                    _flush_mic_after_speaking(voice_io[0])
-                bus.emit(state="idle")
+                answered_at = _reply_and_idle(synth, bus, voice_io, pcmd["say"])
                 continue
 
         # 1d) CHẠY ROUTINE bằng lời: "chạy routine X" -> lặp từng bước qua _dispatch.
@@ -362,6 +395,7 @@ def _assistant_loop(agent, bus, synth, voice_io, routines=None, fast_match=None)
             rname = match_routine_command(text)
             if rname is not None:
                 _run_routine(agent, routines, rname, bus, synth, voice_io, fast_match)
+                answered_at = time.monotonic()
                 bus.emit(state="idle")
                 continue
 
@@ -379,6 +413,7 @@ def _assistant_loop(agent, bus, synth, voice_io, routines=None, fast_match=None)
         # Chỉ sau khi nói/ngắt xong mới dọn mic + mở lại vòng nghe (chống vọng âm).
         if voice_io:
             _flush_mic_after_speaking(voice_io[0])
+        answered_at = time.monotonic()      # mở cửa sổ nối lời cho lượt kế
         bus.emit(state="idle")
 
     if voice_io:
@@ -409,9 +444,9 @@ def _make_browser_bridge():
 def _ui_ack(ui):
     """Câu xác nhận ngắn cho lệnh chỉnh giao diện avatar."""
     if ui.get("scale_delta", 0) < 0:
-        return "Đã thu nhỏ khuôn mặt."
+        return "Đã thu nhỏ avatar."
     if ui.get("scale_delta", 0) > 0:
-        return "Đã phóng to khuôn mặt."
+        return "Đã phóng to avatar."
     if ui.get("opacity_delta", 0) < 0:
         return "Đã làm mờ hơn."
     if ui.get("opacity_delta", 0) > 0:
@@ -420,10 +455,19 @@ def _ui_ack(ui):
 
 
 def _run_fast(agent, fast):
-    """Chạy thẳng một tool (fast-path), không qua LLM. Trả câu kết quả để nói."""
+    """Chạy thẳng một tool (fast-path), không qua LLM. Trả câu kết quả để nói.
+
+    Trả None nếu tool cần người dùng duyệt: fast-path không có chỗ để hỏi, nên nhường lượt
+    cho đường LLM — ở đó agent hoãn hành động và hỏi đúng luồng xác nhận. Không luật nào
+    hiện nay khớp ra tool cần duyệt, nhưng chỉ cần thêm một luật khớp ra `close_app` là
+    tình huống này thành thật; chặn ở đây thì nó không bao giờ thành lỗ hổng.
+    """
     tool_name, tool_args = fast
     try:
         out = str(agent.registry.run(tool_name, tool_args))
+    except NeedsConfirmation:
+        logger.info("Fast-path %s cần xác nhận -> nhường cho đường LLM.", tool_name)
+        return None
     except Exception as e:
         logger.error("Lỗi chạy nhanh %s: %s", tool_name, e)
         return "Xin lỗi, có lỗi khi thực hiện."
@@ -523,6 +567,10 @@ def main():
             mcp = None
 
     profile = UserProfile(config.USER_PROFILE_PATH or None)
+    habits = HabitLog() if config.HABITS_ENABLED else None
+    # Nhật ký kết quả: chỉ QUAN SÁT, không đổi hành vi lượt nào. Phải chạy thật một thời
+    # gian mới có mốc nền để về sau biết trợ lý có khá lên không.
+    outcomes = OutcomeLog(config.OUTCOMES_FILE, config.OUTCOMES_MAX_BYTES)
     tasks = TaskStore(config.TASKS_PATH or None)
     routines = RoutineStore(config.ROUTINES_PATH or None)
     contacts = ContactStore(config.CONTACTS_PATH or None)
@@ -556,30 +604,33 @@ def main():
     def fast_match(text):
         return feature_fast.match(text, report)
 
+    # BỀ MẶT TOOL (`agent/surface.py`): lượt này model thấy prompt gì + tool nào.
     # Router thu hẹp prompt+tool bằng 1 lượt LLM phân loại. Provider mạnh không cần (đo
-    # được: bỏ router vẫn 100% chọn đúng tool, bớt 1 call/lượt) -> ROUTER_MODE=auto tắt.
+    # được: bỏ router vẫn 100% chọn đúng tool, bớt 1 call/lượt) -> ROUTER_MODE=auto tắt,
+    # và Agent tự rơi về `AllTools` (gửi hết).
     # Khi TẮT phải dùng prompt GỘP: không có ai chọn fragment theo case nữa, dùng base
     # trần sẽ mất sạch chỉ dẫn riêng (đọc nguyên văn kết quả web, tra danh bạ, ...).
     #
     # Dựng SAU registry vì bảng case->tool nay suy ra từ `report` chứ không còn là hằng
     # số chép tay — router không thể biết case nào tồn tại trước khi feature nạp xong.
-    router, system_prompt = None, None
+    surface, system_prompt = None, None
     if config.use_router():
         from agent.router import Router
-        router = Router.from_report(llm, report, mcp_prefix=config.MCP_TOOL_PREFIX)
+        surface = Router.from_report(llm, report, mcp_prefix=config.MCP_TOOL_PREFIX)
     else:
         from llm import prompts
         system_prompt = prompts.merged(report)
-    logger.info("🧭 router: %s", "bật" if router else "tắt (prompt gộp)")
+    logger.info("🧭 router: %s", "bật" if surface else "tắt (prompt gộp)")
 
     agent = Agent(llm=llm,
                   registry=registry,
                   **({"system": system_prompt} if system_prompt else {}),
                   max_history_turns=config.MAX_HISTORY_TURNS,
-                  memory_path=config.MEMORY_PATH or None, router=router, profile=profile,
+                  memory_path=config.MEMORY_PATH or None, surface=surface, profile=profile,
                   auto_extract=config.LTM_AUTO_EXTRACT,
                   consolidate_every=config.LTM_CONSOLIDATE_EVERY,
-                  persona=persona, mood=mood, auto_tune=config.PERSONA_AUTO_TUNE,
+                  persona=persona, mood=mood, habits=habits, outcomes=outcomes,
+                  auto_tune=config.PERSONA_AUTO_TUNE,
                   skip_respond_for_speakable=config.SKIP_RESPOND_FOR_SPEAKABLE,
                   # Hành động chờ xác nhận mà có nội dung đáng NHÌN (thân thư email) ->
                   # trưng lên panel thay vì bắt tai nghe TTS đọc cả lá thư.
@@ -628,6 +679,17 @@ def main():
         except Exception as e:
             print(f"(không mở được chỗ số {index}: {e})")
 
+    # Bấm một thư trên panel danh sách = đúng tool `show_email`, để bấm và nói ("mở thư thứ
+    # hai") đi chung một đường. Tool không có (chưa bật MCP) thì bỏ qua lặng lẽ — panel
+    # thư cũng không bao giờ hiện ra trong trường hợp đó.
+    def _open_mail_from_panel(index):
+        if not agent.registry.has("show_email"):
+            return
+        try:
+            agent.registry.run("show_email", {"index": index})
+        except Exception as e:
+            print(f"(không mở được thư số {index}: {e})")
+
     # Bấm Gửi/Huỷ trên panel nháp = ĐÚNG đường xác nhận bằng giọng (agent.confirm_pending),
     # không dựng đường gửi thứ hai. Chạy trên main thread Tk nên phải lấy _AGENT_LOCK để
     # không đụng agent.run của vòng lặp nền; lấy không được thì nói ra chứ không im lặng
@@ -650,10 +712,17 @@ def main():
     win = AvatarWindow(bus=bus, title="Trợ lý AI",
                        emotion_hold_ms=0 if config.PERSONA_ENABLED else None,
                        on_open_place=_open_place_from_panel,
-                       on_draft_decision=_decide_draft)
+                       on_draft_decision=_decide_draft,
+                       on_open_mail=_open_mail_from_panel)
     try:
         win.run()          # Tk mainloop (main thread) — chặn tới khi đóng cửa sổ
     finally:
+        # Trích nốt điều đáng nhớ TRƯỚC khi tắt: phiên ngắn thì đệm củng cố không bao giờ
+        # đầy, không có bước này là mọi thứ vừa nghe được bay sạch (xem Agent.flush_memory).
+        try:
+            agent.flush_memory()
+        except Exception as e:
+            logger.warning("Không củng cố được trí nhớ lúc đóng phiên: %s", e)
         scheduler.stop()
         if monitor is not None:
             monitor.stop()

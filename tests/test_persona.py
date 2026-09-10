@@ -8,7 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from agent.persona import (PersonaState, MoodState, score_user_valence,
-                           parse_trait_nudges)
+                           score_fluster, parse_trait_nudges)
 
 
 # --------------------------- PersonaState --------------------------- #
@@ -112,6 +112,58 @@ def test_mood_label_vietnamese():
     m = MoodState(baseline_valence=0.6, baseline_arousal=0.7)
     lbl = m.label()
     assert "vui" in lbl and "," in lbl
+
+
+# --------------------------- ngượng (fluster) --------------------------- #
+
+def test_khen_thang_vao_tro_ly_gay_nguong():
+    assert score_fluster("em dễ thương quá") > 0
+    assert score_fluster("giỏi quá đi") > 0
+
+
+def test_tha_thinh_va_to_tinh_nguong_hon_loi_khen():
+    assert score_fluster("anh yêu em") > score_fluster("giỏi quá")
+
+
+def test_khen_viec_khong_gay_nguong():
+    # Đây là địa hạt của _POS_WORDS -> happy, không phải shy.
+    for cau in ("cảm ơn nhé", "hay quá, tốt lắm", "ổn rồi", "tuyệt vời"):
+        assert score_fluster(cau) == 0.0, cau
+
+
+def test_khong_bat_nham_cau_sai_viec():
+    # Bỏ dấu xong 'nhờ em' -> "nho em", 'yêu cầu' -> "yeu cau": hai cái bẫy đã né.
+    for cau in ("nhờ em mở nhạc", "yêu cầu của tôi là gì", "nhớ em bé nhà tôi",
+                "mở giúp tôi cái này", "hôm nay thế nào"):
+        assert score_fluster(cau) == 0.0, cau
+
+
+def test_nguong_de_len_vui():
+    m = MoodState(baseline_valence=0.2)
+    m.update(user_valence=1.0, outcome=1.0, fluster=score_fluster("em dễ thương quá"))
+    assert m.valence >= 0.25          # vẫn đang vui...
+    assert m.to_pose() == "shy"       # ...nhưng ngượng thắng vì nó cụ thể hơn
+
+
+def test_vui_khong_bi_nguong_cuop_mat():
+    m = MoodState(baseline_valence=0.2)
+    m.update(user_valence=1.0, outcome=1.0, fluster=score_fluster("cảm ơn, tốt lắm"))
+    assert m.to_pose() == "happy"
+
+
+def test_nguong_phai_het_khi_het_tac_nhan():
+    m = MoodState(baseline_valence=0.2, decay=0.5)
+    m.update(fluster=score_fluster("em dễ thương quá"))
+    assert m.to_pose() == "shy"
+    m.update()                        # lượt sau không còn tác nhân
+    assert m.to_pose() != "shy"
+    assert m.fluster < 0.35
+
+
+def test_nguong_hien_trong_label_de_loi_le_khop_mat():
+    m = MoodState()
+    m.update(fluster=1.0)
+    assert "ngượng" in m.label()
 
 
 # --------------------------- score_user_valence --------------------------- #

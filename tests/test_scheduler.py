@@ -143,7 +143,10 @@ def test_schedule_reminder_tool_adds_task():
 def test_schedule_action_tool_adds_do_task():
     sched = ReminderScheduler(store_path=_temp_store())
     reg = registry_with(actions=MagicMock(), scheduler=sched)
-    out = reg.run("schedule_action", {"command": "mở youtube", "at": "22:30"})
+    # `schedule_action` giờ là destructive (hẹn chạy lệnh lúc người dùng vắng mặt) -> phải nói
+    # rõ đã được duyệt. Test này kiểm HANDLER; cổng có test riêng ở test_confirm_gate.py.
+    out = reg.run("schedule_action", {"command": "mở youtube", "at": "22:30"},
+                  confirmed=True)
     assert "tự làm" in out.lower()
     t = sched.list()[0]
     assert t["message"] == "mở youtube" and t["kind"] == "do"

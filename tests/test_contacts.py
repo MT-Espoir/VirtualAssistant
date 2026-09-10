@@ -92,11 +92,14 @@ def test_tools_registered():
     _rm(path)
 
 
-def test_save_and_find_tool():
+def test_find_tra_THAM_CHIEU_chu_khong_tra_dia_chi():
+    """Email của NGƯỜI KHÁC là dữ liệu bên thứ ba — họ chưa từng đồng ý cho nó đi sang
+    nhà cung cấp LLM. Model nhận tham chiếu; địa chỉ hiện hình ở tầng runtime."""
     reg, _, path = _registry_with_contacts()
     assert "Đã lưu" in reg.run("save_contact", {"name": "Sếp", "email": "boss@x.com"})
     out = reg.run("find_contact", {"name": "sếp"})
-    assert "boss@x.com" in out
+    assert "boss@x.com" not in out
+    assert "@lienhe:Sếp" in out
     _rm(path)
 
 
@@ -112,10 +115,59 @@ def test_find_tool_not_found():
     _rm(path)
 
 
-def test_list_and_remove_tool():
+def test_list_chi_tra_TEN_khong_tra_dia_chi():
+    """"Danh bạ có ai" không đáng giá bằng việc đổ email của MỌI người quen vào ngữ cảnh."""
     reg, _, path = _registry_with_contacts()
     reg.run("save_contact", {"name": "X", "email": "x@x.com"})
-    assert "x@x.com" in reg.run("list_contacts", {})
-    assert "Đã xoá" in reg.run("remove_contact", {"name": "X"})
+    danh_sach = reg.run("list_contacts", {})
+    assert "x@x.com" not in danh_sach and "X" in danh_sach
+    # `remove_contact` là destructive -> registry chặn nếu không nói rõ đã được duyệt.
+    # Test này kiểm HANDLER, không kiểm cổng duyệt (cổng có test riêng ở test_agent.py).
+    assert "Đã xoá" in reg.run("remove_contact", {"name": "X"}, confirmed=True)
     assert "trống" in reg.run("list_contacts", {})
+    _rm(path)
+
+
+# --------------------------- giải tham chiếu ở tầng runtime --------------------------- #
+#
+# Model thấy `@lienhe:Sếp`; địa chỉ thật chỉ hiện hình ngay trước khi gọi tool gửi mail,
+# và trên panel để người dùng kiểm bằng mắt. Đây là chỗ tham chiếu biến thành sự thật.
+
+def test_giai_tham_chieu_thanh_dia_chi_that():
+    from features.pim.tools import giai_lien_he
+    from services.contacts import ContactStore
+    import tempfile, os
+    path = os.path.join(tempfile.mkdtemp(), "c.json")
+    kho = ContactStore(path=path)
+    kho.add("Sếp", "boss@x.com")
+    assert giai_lien_he("@lienhe:Sếp", kho) == "boss@x.com"
+    _rm(path)
+
+
+def test_khong_phai_tham_chieu_thi_giu_nguyen():
+    from features.pim.tools import giai_lien_he
+    assert giai_lien_he("ai-do@x.com", None) == "ai-do@x.com"
+    assert giai_lien_he(None, None) is None
+
+
+def test_tra_khong_ra_thi_KHONG_doan_bua():
+    """Hư theo chiều AN TOÀN: chuỗi tham chiếu không phải địa chỉ hợp lệ nên lệnh gửi
+    hỏng rõ ràng, còn hơn đoán bừa rồi gửi nhầm người."""
+    from features.pim.tools import giai_lien_he
+    from services.contacts import ContactStore
+    import tempfile, os
+    path = os.path.join(tempfile.mkdtemp(), "c.json")
+    assert giai_lien_he("@lienhe:KhongCoAi", ContactStore(path=path)) == "@lienhe:KhongCoAi"
+    _rm(path)
+
+
+def test_giai_ca_lo_tham_so():
+    from features.pim.tools import giai_tham_chieu
+    from services.contacts import ContactStore
+    import tempfile, os
+    path = os.path.join(tempfile.mkdtemp(), "c.json")
+    kho = ContactStore(path=path)
+    kho.add("Sếp", "boss@x.com")
+    ra = giai_tham_chieu({"to": "@lienhe:Sếp", "subject": "Xin nghỉ"}, kho)
+    assert ra == {"to": "boss@x.com", "subject": "Xin nghỉ"}
     _rm(path)

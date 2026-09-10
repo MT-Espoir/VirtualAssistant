@@ -1,11 +1,24 @@
 """
-Cửa sổ avatar (Tkinter)
+Cửa sổ avatar (Tkinter) — hiện nhân vật bằng ẢNH, mỗi cảm xúc một khung hình.
+
+Khung hình nằm ở `ui/image/frames/`, do `packaging/make_avatar_frames.py` cắt ra từ
+ảnh gốc toàn thân trong `ui/image/`. Cửa sổ không tự cắt/canh gì cả: mọi tấm đã cùng
+cỡ và khớp nhau từ lúc bake, nên đổi cảm xúc chỉ là đổi ảnh.
 """
 
+import logging
 import random
 import tkinter as tk
+from pathlib import Path
 
-from ui.avatar_face import face_spec
+from ui.avatar_face import BLINK_FRAME, blink_frame, frame_spec
+
+try:
+    from PIL import Image, ImageTk
+except ImportError:
+    # Thiếu Pillow thì cửa sổ vẫn mở và vẫn báo được lý do, thay vì làm chết cả trợ lý
+    # ngay từ lúc import.
+    Image = ImageTk = None
 
 try:
     from utils.config import config
@@ -14,57 +27,62 @@ try:
 except Exception:
     _DEF_SCALE, _DEF_OPACITY = 0.7, 1.0
 
-BLUE = "#4cc9f0"
-BEZEL_COLOR = "#f5f5f5"
-RING_COLOR = "#4a4a4a"
-SCREEN_COLOR = "#050505"
 # Màu "chìa khoá" cho vùng trong suốt (Windows -transparentcolor). Phải KHÁC mọi màu
-# dùng vẽ khuôn mặt để không bị đục thủng nhầm.
+# có trong khung hình để không đục thủng nhầm vào người nhân vật.
 TRANSPARENT_KEY = "#ff00ff"
+HINT_COLOR = "#4cc9f0"                     # cùng tông với panel HUD (`ui/hud.py`)
 
 BLINK_MIN_MS, BLINK_MAX_MS = 3000, 5500   # khoảng ngẫu nhiên giữa 2 lần chớp mắt
 BLINK_DURATION_MS = 150
 EMOTION_HOLD_MS = 5000                     # giữ cảm xúc rồi tự về neutral
 
-BASE_W, BASE_H = 360, 340                  # kích thước gốc (scale=1.0), đủ ôm khuôn mặt
+FRAMES_DIR = Path(__file__).resolve().parent / "image" / "frames"
+FRAME_OVERSAMPLE = 2                       # khung hình bake ở 2x cỡ gốc cho nét
+ALPHA_CUT = 128                            # ngưỡng ép alpha nhị phân, xem `_photo`
+FALLBACK_SIZE = (305, 280)                 # cỡ cửa sổ khi chưa nạp được khung hình nào
+MISSING_FRAMES_HINT = ("Thiếu khung hình avatar.\n"
+                       "Chạy: python packaging/make_avatar_frames.py")
+
 SCALE_MIN, SCALE_MAX = 0.4, 1.5
 OPACITY_MIN, OPACITY_MAX = 0.25, 1.0
+
+logger = logging.getLogger(__name__)
 
 
 def _clamp(v, lo, hi):
     return max(lo, min(hi, v))
 
 
-# Toạ độ khung/màn hình (vẽ ở kích thước gốc 360x340, rồi scale toàn bộ canvas)
-BEZEL = (40, 30, 320, 310)
-RING = (52, 42, 308, 298)
-SCREEN = (68, 58, 292, 282)
-SCREEN_CX = (SCREEN[0] + SCREEN[2]) // 2      # 180
-SCREEN_CY = (SCREEN[1] + SCREEN[3]) // 2      # 170
-EYE_DX, EYE_Y = 45, SCREEN_CY - 22
-MOUTH_Y = SCREEN_CY + 48
+def _load_frames():
+    """{tên: ảnh RGBA} đọc từ `FRAMES_DIR`. Thiếu Pillow hoặc thiếu thư mục -> {}.
 
-
-def _round_rect(canvas, x1, y1, x2, y2, radius=10, **kwargs):
-    """Vẽ hình chữ nhật bo góc bằng polygon làm mượt (Canvas không có sẵn)."""
-    r = min(radius, (x2 - x1) / 2, (y2 - y1) / 2)
-    points = [
-        x1 + r, y1, x2 - r, y1, x2, y1, x2, y1 + r,
-        x2, y2 - r, x2, y2, x2 - r, y2, x1 + r, y2,
-        x1, y2, x1, y2 - r, x1, y1 + r, x1, y1, x1 + r, y1,
-    ]
-    return canvas.create_polygon(points, smooth=True, **kwargs)
+    Nạp một lần lúc dựng cửa sổ: thêm ảnh mới thì phải bake lại VÀ mở lại trợ lý.
+    """
+    if Image is None:
+        logger.warning("Không có Pillow -> avatar không hiện được khung hình")
+        return {}
+    frames = {}
+    for path in sorted(FRAMES_DIR.glob("*.png")):
+        try:
+            frames[path.stem] = Image.open(path).convert("RGBA")
+        except OSError:
+            logger.warning("Không đọc được khung hình %s", path.name, exc_info=True)
+    if not frames:
+        logger.warning("Không thấy khung hình nào trong %s", FRAMES_DIR)
+    return frames
 
 
 class AvatarWindow:
     def __init__(self, bus=None, title="Trợ lý AI", scale=None, opacity=None,
-                 emotion_hold_ms=None, on_open_place=None, on_draft_decision=None):
+                 emotion_hold_ms=None, on_open_place=None, on_draft_decision=None,
+                 on_open_mail=None):
         self.bus = bus
         # Panel dùng chung khung HUD (`ui/hud.py`), tạo LƯỜI ở lần dùng đầu: phiên nào
         # không dùng tới tính năng đó thì không phải trả chi phí dựng cửa sổ nào.
         self._panels = {}
         self.on_open_place = on_open_place
         self.on_draft_decision = on_draft_decision
+        self.on_open_mail = on_open_mail
         self.state, self.emotion, self.message = "idle", "neutral", ""
         # Giữ cảm xúc bao lâu rồi tự về neutral. <=0 = KHÔNG tự reset (để Persona/tâm trạng
         # dẫn dắt khuôn mặt). None = dùng mặc định EMOTION_HOLD_MS.
@@ -72,6 +90,11 @@ class AvatarWindow:
         self._blinking = False
         self._emotion_reset_id = None
         self._drag_origin = (0, 0)
+        self._frames = _load_frames()
+        # Ảnh đã thu về đúng cỡ đang hiển thị. Tk KHÔNG giữ tham chiếu ảnh nên phải tự
+        # giữ, nếu không ảnh bị thu gom và canvas trống trơn.
+        self._photos = {}
+        self.base_w, self.base_h = self._base_size()
         self.scale = _clamp(_DEF_SCALE if scale is None else scale, SCALE_MIN, SCALE_MAX)
         self.opacity = _clamp(_DEF_OPACITY if opacity is None else opacity,
                               OPACITY_MIN, OPACITY_MAX)
@@ -81,7 +104,7 @@ class AvatarWindow:
         self.root.title(title)
         self.root.configure(bg=TRANSPARENT_KEY)
         self._place_top_right()
-        self._setup_frameless()      # bỏ viền + nền trong suốt: chỉ hiện khuôn mặt
+        self._setup_frameless()      # bỏ viền + nền trong suốt: chỉ hiện nhân vật
         self._apply_opacity()
 
         self.canvas = tk.Canvas(self.root, width=self.W, height=self.H,
@@ -93,13 +116,21 @@ class AvatarWindow:
             self.root.after(100, self._poll)
         self._schedule_blink()
 
+    def _base_size(self):
+        """Cỡ cửa sổ ở scale 1.0, suy từ chính khung hình đã bake."""
+        frame = next(iter(self._frames.values()), None)
+        if frame is None:
+            return FALLBACK_SIZE
+        return (frame.width // FRAME_OVERSAMPLE, frame.height // FRAME_OVERSAMPLE)
+
     def _scaled_size(self):
-        return int(BASE_W * self.scale), int(BASE_H * self.scale)
+        return int(self.base_w * self.scale), int(self.base_h * self.scale)
 
     # ------------------------- kích thước / độ mờ ------------------------- #
     def set_scale(self, value):
         self.scale = _clamp(value, SCALE_MIN, SCALE_MAX)
         self.W, self.H = self._scaled_size()
+        self._photos.clear()               # ảnh cũ sai cỡ, thu lại từ khung hình gốc
         self.canvas.config(width=self.W, height=self.H)
         x, y = self.root.winfo_x(), self.root.winfo_y()
         self.root.geometry(f"{self.W}x{self.H}+{x}+{y}")
@@ -140,7 +171,7 @@ class AvatarWindow:
         self.root.geometry(f"{self.W}x{self.H}+{max(0, sw - self.W - 40)}+40")
 
     def _setup_frameless(self):
-        """Chỉ hiện khuôn mặt: bỏ viền cửa sổ + nền trong suốt (Windows). Nền tảng
+        """Chỉ hiện nhân vật: bỏ viền cửa sổ + nền trong suốt (Windows). Nền tảng
         không hỗ trợ thì giữ cửa sổ thường (không làm vỡ app)."""
         try:
             self.root.overrideredirect(True)
@@ -214,14 +245,47 @@ class AvatarWindow:
         vì đường xác nhận bằng giọng nằm ở agent, không nằm ở đây.
         """
         try:
-            from ui.panels import draft_blocks
+            from ui.panels import pending_blocks, pending_title
             # Đóng panel = KHÔNG gửi. Im lặng đóng rồi vẫn gửi là cái bẫy tệ nhất.
             panel = self._panel("draft", "NHÁP EMAIL", self.on_draft_decision,
                                 close_value="no")
-            panel.show(draft_blocks(draft))
+            panel.title = pending_title(draft)   # panel dùng chung cho mọi hành động chờ duyệt
+            panel.show(pending_blocks(draft))
         except Exception:
             import logging
             logging.getLogger(__name__).warning("Không mở được panel nháp", exc_info=True)
+
+    def _show_mail(self, mail):
+        """Mở/cập nhật panel THƯ ĐẾN; dict rỗng = đóng.
+
+        Không truyền `on_pick` thật và không có `close_value`: panel này chỉ để ĐỌC, đóng
+        nó không kích hoạt hành động nào. Xem `ui/panels.py::mail_blocks`.
+        """
+        try:
+            from ui.panels import mail_blocks
+            panel = self._panel("mail", "THƯ ĐẾN", self.on_open_mail)
+            panel.title = "THƯ ĐẾN"       # dùng CHUNG panel với danh sách -> phải đặt lại mỗi lần
+            panel.show(mail_blocks(mail))
+        except Exception:
+            # Panel hỏng KHÔNG được làm chết avatar hay vòng lặp trợ lý.
+            import logging
+            logging.getLogger(__name__).warning("Không mở được panel thư", exc_info=True)
+
+    def _show_mail_list(self, payload):
+        """Mở/cập nhật panel DANH SÁCH thư; danh sách rỗng = đóng.
+
+        Dùng CHUNG panel "mail" với `_show_mail`: bấm một thẻ thì chi tiết thư thay chỗ
+        danh sách, thay vì mở thêm một cửa sổ nữa đè lên nhân vật.
+        """
+        try:
+            from ui.panels import mail_list_blocks
+            panel = self._panel("mail", "THƯ TÌM ĐƯỢC", self.on_open_mail)
+            panel.title = "THƯ TÌM ĐƯỢC"
+            panel.show(mail_list_blocks(payload.get("rows"), payload.get("q")))
+        except Exception:
+            import logging
+            logging.getLogger(__name__).warning("Không mở được panel danh sách thư",
+                                                exc_info=True)
 
     def set(self, state=None, emotion=None, text=None):
         if state:
@@ -245,6 +309,12 @@ class AvatarWindow:
             if getattr(ev, "draft", None) is not None:
                 self._show_draft(ev.draft)
                 continue
+            if getattr(ev, "mail", None) is not None:
+                self._show_mail(ev.mail)
+                continue
+            if getattr(ev, "mails", None) is not None:
+                self._show_mail_list(ev.mails)
+                continue
             if ev.state:
                 self.state = ev.state
             if ev.emotion:
@@ -257,8 +327,11 @@ class AvatarWindow:
         self._render()
         self.root.after(100, self._poll)
 
-    # ------------------------- chớp mắt (chỉ áp dụng cho pose "neutral") ------------------------- #
+    # ------------------------- chớp mắt ------------------------- #
     def _schedule_blink(self):
+        """Hẹn lần chớp mắt kế tiếp. Chưa có ảnh chớp mắt thì không hẹn gì cả."""
+        if BLINK_FRAME not in self._frames:
+            return
         self.root.after(random.randint(BLINK_MIN_MS, BLINK_MAX_MS), self._start_blink)
 
     def _start_blink(self):
@@ -273,107 +346,46 @@ class AvatarWindow:
 
     # ------------------------- vẽ ------------------------- #
     def _render(self):
-        spec = face_spec(self.state, self.emotion)
+        name = frame_spec(self.state, self.emotion)["frame"]
+        if self._blinking:
+            # Chỉ vài tư thế chớp được, và chỉ khi ảnh chớp đã có mặt.
+            blink = blink_frame(name)
+            if blink in self._frames:
+                name = blink
+
         c = self.canvas
         c.delete("all")
-        c.configure(bg=TRANSPARENT_KEY)     # nền trong suốt: chỉ khuôn mặt hiện ra
+        c.configure(bg=TRANSPARENT_KEY)     # nền trong suốt: chỉ nhân vật hiện ra
 
-        _round_rect(c, *BEZEL, radius=55, fill=BEZEL_COLOR, outline="")
-        _round_rect(c, *RING, radius=45, fill=RING_COLOR, outline="")
-        _round_rect(c, *SCREEN, radius=35, fill=SCREEN_COLOR, outline="")
-        c.create_arc(BEZEL[2] - 55, BEZEL[1] - 5, BEZEL[2] + 15, BEZEL[1] + 55,
-                     start=200, extent=70, style="arc", width=6, outline="#ffffff")
+        photo = self._photo(name)
+        if photo is None:
+            c.create_text(self.W // 2, self.H // 2, text=MISSING_FRAMES_HINT,
+                          fill=HINT_COLOR, justify="center", width=self.W - 20)
+            return
+        c.create_image(self.W // 2, self.H // 2, image=photo)
 
-        pose = spec["pose"]
-        blinking = self._blinking and pose == "neutral"
-        self._draw_pose(pose, blinking)
-        # (Bỏ nhãn trạng thái + câu nói: chỉ hiển thị khuôn mặt.)
+    def _photo(self, name):
+        """Khung hình `name` đã thu về đúng cỡ cửa sổ hiện tại; không có -> None.
 
-        # Vẽ ở toạ độ gốc rồi thu/phóng toàn bộ theo scale (đơn giản, không phải sửa
-        # từng toạ độ). Nét/độ dày không đổi -> chấp nhận với mức scale vừa phải.
-        if self.scale != 1.0:
-            c.scale("all", 0, 0, self.scale, self.scale)
+        Thu bằng Pillow chứ không phải `canvas.scale` như hồi vẽ tay: đây là ảnh bitmap,
+        `canvas.scale` chỉ kéo giãn toạ độ của hình vẽ chứ không đụng tới ảnh.
 
-    def _draw_pose(self, pose, blinking):
-        cx, cy = SCREEN_CX, SCREEN_CY
-        ex_l, ex_r, ey = cx - EYE_DX, cx + EYE_DX, EYE_Y
-
-        if pose == "neutral":
-            self._eyes_neutral(ex_l, ex_r, ey, blinking)
-            self._mouth_flat(cx, MOUTH_Y)
-        elif pose == "happy":
-            self._eyes_arc(ex_l, ex_r, ey, up=True)      # mắt chữ U ngược lên: ∩
-            self._mouth_d_down(cx, MOUTH_Y)              # miệng chữ D lật xuống
-        elif pose == "sad":
-            self._eyes_arc(ex_l, ex_r, ey, up=False)     # mắt chữ U: ∪
-            self._mouth_frown(cx, MOUTH_Y)               # miệng vòm úp: ∩
-        elif pose == "cry":
-            self._eyes_cry(ex_l, ex_r, ey)               # mắt nhắm nghiền + dòng lệ
-            self._mouth_wail(cx, MOUTH_Y)
-        elif pose == "confused":
-            self._eyes_confused(ex_l, ex_r, ey)
-            # không vẽ miệng — giống mẫu (chỉ mắt + dấu hỏi + chấm)
-
-    # --- neutral: 2 khối vuông đặc, chớp mắt = dẹt lại --- #
-    def _eyes_neutral(self, ex_l, ex_r, ey, blinking):
-        half = 12
-        for ex in (ex_l, ex_r):
-            h = 3 if blinking else half
-            self.canvas.create_rectangle(ex - half, ey - h, ex + half, ey + h,
-                                         fill=BLUE, outline="")
-
-    def _mouth_flat(self, cx, my):
-        _round_rect(self.canvas, cx - 42, my - 6, cx + 42, my + 6, radius=6,
-                   fill=BLUE, outline="")
-
-    # --- happy/sad: mắt cung (∩ = happy, ∪ = sad) --- #
-    def _eyes_arc(self, ex_l, ex_r, ey, up):
-        r = 24
-        start = 0 if up else 180
-        for ex in (ex_l, ex_r):
-            self.canvas.create_arc(ex - r, ey - r, ex + r, ey + r,
-                                   start=start, extent=180, style="arc",
-                                   width=7, outline=BLUE)
-
-    def _mouth_d_down(self, cx, my):
-        """Chữ D lật xuống: cạnh phẳng ở trên, bụng cong xuống dưới (đặc)."""
-        self.canvas.create_arc(cx - 36, my - 26, cx + 36, my + 26,
-                               start=180, extent=180, style="chord",
-                               fill=BLUE, outline="")
-
-    def _mouth_frown(self, cx, my):
-        self.canvas.create_arc(cx - 40, my - 8, cx + 40, my + 40,
-                               start=0, extent=180, style="arc", width=7, outline=BLUE)
-
-    # --- cry: mắt nhắm nghiền (thanh ngang) + dòng lệ rơi --- #
-    def _eyes_cry(self, ex_l, ex_r, ey):
-        bar_half, thick = 22, 4
-        for ex, out in ((ex_l, -1), (ex_r, 1)):
-            self.canvas.create_rectangle(ex - bar_half, ey - thick, ex + bar_half, ey + thick,
-                                         fill=BLUE, outline="")
-            # nét xiên nối xuống từ mép ngoài
-            tip_x = ex + out * bar_half
-            self.canvas.create_line(tip_x, ey, tip_x + out * 6, ey + 16,
-                                    fill=BLUE, width=5, capstyle="round")
-            # giọt lệ rơi thành chuỗi ô nhỏ, thưa dần
-            for i, (dy, size) in enumerate(((24, 5), (38, 4), (52, 3))):
-                dx = tip_x + out * (7 + i * 2)
-                self.canvas.create_rectangle(dx - size, ey + dy - size, dx + size, ey + dy + size,
-                                             fill=BLUE, outline="")
-
-    def _mouth_wail(self, cx, my):
-        """Miệng méo khi khóc: vòm úp dày, hai chân buông xuống."""
-        self.canvas.create_arc(cx - 44, my - 10, cx + 44, my + 34,
-                               start=0, extent=180, style="arc", width=9, outline=BLUE)
-
-    # --- confused: 1 mắt đặc + 1 mắt vòng + dấu hỏi + chấm nhỏ --- #
-    def _eyes_confused(self, ex_l, ex_r, ey):
-        self.canvas.create_oval(ex_l - 17, ey - 17, ex_l + 17, ey + 17, fill=BLUE, outline="")
-        self.canvas.create_oval(ex_r - 14, ey - 14, ex_r + 14, ey + 14, outline=BLUE, width=5)
-        self.canvas.create_text(ex_r + 30, ey - 30, text="?", fill=BLUE,
-                                font=("Segoe UI", 30, "bold"))
-        self.canvas.create_oval((ex_l + ex_r) // 2 - 6, ey + 42, (ex_l + ex_r) // 2 + 6,
-                                ey + 54, fill=BLUE, outline="")
+        Thu xong phải ÉP LẠI alpha về nhị phân: khung hình bake ra đã nhị phân, nhưng
+        phép thu làm mềm mép trở lại, mà `-transparentcolor` không có alpha nửa vời —
+        mép mềm sẽ trộn với màu chìa khoá và hiện thành quầng hồng quanh nhân vật.
+        """
+        photo = self._photos.get(name)
+        if photo is not None:
+            return photo
+        frame = self._frames.get(name)
+        if frame is None:
+            return None
+        small = frame.resize((self.W, self.H), Image.LANCZOS)
+        small.putalpha(small.getchannel("A").point(
+            lambda v: 255 if v >= ALPHA_CUT else 0))
+        photo = ImageTk.PhotoImage(small)
+        self._photos[name] = photo
+        return photo
 
     def run(self):
         self.root.mainloop()

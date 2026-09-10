@@ -25,6 +25,7 @@ def register(reg, ctx):
         },
         handler=lambda app_name: actions.open_application(app_name),
         speakable=True,      # "Đã mở Chrome."
+        habit=("app_name", "mở {}"),   # app mở đi mở lại = thói quen dùng máy
     ))
 
     reg.register(Tool(

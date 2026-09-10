@@ -33,12 +33,34 @@ def _register_browser_tools(reg: ToolRegistry, browser):
     def list_tabs():
         return summarize_tab_list(browser.send_command(action="GET_TABS"))
 
-    def close_tab(keyword, confirm=False):
+    def close_tab(keyword):
+        """Đóng tab THẬT. Cổng duyệt của registry đã chặn trước đó — xem `_mo_ta_dong_tab`."""
         if not keyword or not str(keyword).strip():
             return "Cần cho biết từ khoá của tab cần đóng (tên trang hoặc tiêu đề)."
         resp = browser.send_command(action="CLOSE_TAB_BY_KEYWORD",
-                                    keyword=keyword, dryRun=not confirm)
-        return summarize_close(resp, keyword, confirm)
+                                    keyword=keyword, dryRun=False)
+        return summarize_close(resp, keyword, True)
+
+    def _mo_ta_dong_tab(keyword=None, **_):
+        """Cụm mô tả để HỎI, kèm danh sách tab sẽ đóng (chạy thử `dryRun`).
+
+        Trước đây tool tự làm hai pha bằng tham số `confirm`, và luật "đừng tự đặt
+        confirm=true ngay lần đầu" nằm trong MÔ TẢ TOOL — tức nằm đúng trong thứ mà
+        prompt injection ghi đè được. Mô phỏng tấn công 2026-08-29 xác nhận nó lọt:
+        `confirm=True` ngay lần đầu là tab đóng thật, không cổng nào chạy.
+        Nay việc chặn thuộc về `registry.gate()` ở tầng code; chỗ này chỉ còn lo CÂU CHỮ.
+
+        Vẫn chạy thử để đọc tên tab cho người dùng nghe — đó là phần giá trị duy nhất của
+        cơ chế cũ, và mất nó thì câu hỏi trở nên mơ hồ ("đóng tab nào?"). Chrome hỏng thì
+        lùi về câu chung: `gate()` bắt ngoại lệ, hỏi vẫn hỏi.
+        """
+        kw = str(keyword or "").strip()
+        resp = browser.send_command(action="CLOSE_TAB_BY_KEYWORD", keyword=kw, dryRun=True)
+        matched = (resp or {}).get("matched") or []
+        if not matched:
+            return f"đóng tab khớp '{kw}'"
+        ten = ", ".join((t.get("title") or "?").strip() for t in matched[:5])
+        return f"đóng {len(matched)} tab khớp '{kw}' ({ten})"
 
     def open_or_reuse(url, match_domain=None):
         try:
@@ -58,23 +80,23 @@ def _register_browser_tools(reg: ToolRegistry, browser):
 
     reg.register(Tool(
         name="browser_close_tab",
-        description=(
-            "Đóng (các) tab Chrome có tiêu đề hoặc URL chứa 'keyword'. QUAN TRỌNG — đóng "
-            "tab KHÓ HOÀN TÁC: BẮT BUỘC gọi lần đầu với confirm=false để xem danh sách tab "
-            "sẽ đóng, ĐỌC danh sách đó cho người dùng và CHỜ họ đồng ý; chỉ gọi lại với "
-            "confirm=true SAU KHI người dùng xác nhận. Không tự đặt confirm=true ngay lần đầu."),
+        description=("Đóng (các) tab Chrome có tiêu đề hoặc URL chứa 'keyword'. Trợ lý sẽ "
+                     "tự hỏi xác nhận và đọc danh sách tab trước khi đóng."),
         input_schema={
             "type": "object",
             "properties": {
                 "keyword": {"type": "string",
                             "description": "Từ khoá khớp tiêu đề/URL tab, vd 'facebook'"},
-                "confirm": {"type": "boolean",
-                            "description": "false = chỉ xem trước; true = thật sự đóng "
-                                           "(chỉ dùng sau khi người dùng đã đồng ý)"},
             },
             "required": ["keyword"],
         },
         handler=close_tab,
+        # Đóng tab = mất thứ đang mở dở, không hoàn tác được. Cổng ở TẦNG CODE thay cho
+        # luật viết trong mô tả tool — luật viết trong mô tả thì injection ghi đè được.
+        destructive=True,
+        confirm_message=_mo_ta_dong_tab,
+        # Câu trả về liệt kê TÊN TAB — do trang tự đặt, kẻ tấn công viết được.
+        untrusted_output=True,
     ))
 
     reg.register(Tool(
@@ -94,6 +116,7 @@ def _register_browser_tools(reg: ToolRegistry, browser):
             "required": ["url"],
         },
         handler=open_or_reuse,
+        exfil=True,
     ))
 
     reg.register(Tool(

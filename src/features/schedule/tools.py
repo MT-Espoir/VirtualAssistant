@@ -81,6 +81,11 @@ def _register_schedule_tools(reg: ToolRegistry, scheduler):
             "required": ["command"],
         },
         handler=schedule_action,
+        # HẸN CHẠY MỘT LỆNH là hành động khó hoàn tác, và tệ hơn: nó chạy LÚC NGƯỜI
+        # DÙNG KHÔNG NGỒI TRƯỚC MÁY. Đây là cơ chế duy nhất cho phép một lần tiêm
+        # (prompt injection) tồn tại quá lượt hiện tại mà không cần đụng tới trí nhớ.
+        destructive=True,
+        confirm_message=lambda command=None, **_: f"hẹn tự làm: {command}",
     ))
 
     reg.register(Tool(

@@ -1,6 +1,8 @@
 ' Khởi chạy Trợ lý AI KHÔNG cửa sổ terminal (chỉ hiện khuôn mặt avatar).
 ' Double-click file này, hoặc dùng shortcut ngoài Desktop.
 ' Mọi log (kể cả 🔧 tool, lỗi) được ghi vào assistant.log cùng thư mục để chẩn đoán.
+' File đó bị GHI ĐÈ mỗi lần chạy. Muốn xem lịch sử nhiều lần chạy thì đọc logs/app.log
+' (do logger ghi, xoay vòng) — xem packaging/README.md.
 '
 ' Nếu đổi máy/đổi môi trường Python: sửa biến PYTHON bên dưới cho đúng.
 

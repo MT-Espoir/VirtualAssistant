@@ -38,6 +38,12 @@ def test_clean_removes_duplicate_lines():
     assert _clean_text(dup) == "Tôi đã tìm kiếm.\n1. Video A"
 
 
+def test_clean_removes_blank_lines():
+    """Dòng trống giữa câu trả lời = khoảng hở khi nhìn, quãng lặng khi nghe đọc."""
+    out = _clean_text("Đã mở Chrome.\n\nBạn cần gì nữa không?")
+    assert out == "Đã mở Chrome.\nBạn cần gì nữa không?"
+
+
 def test_clean_none_safe():
     assert _clean_text(None) == "" and _clean_text("") == ""
 
@@ -425,10 +431,14 @@ def test_emotion_cry_tag():
 # --------------------------- Hồ sơ người dùng bơm vào prompt --------------------------- #
 
 class _FakeProfile:
-    def __init__(self, summary):
+    def __init__(self, summary, ten=None):
         self._summary = summary
+        self._ten = ten
     def summary(self, query=None):
         return self._summary
+    def resolve(self, text):
+        from memory.profile import thay_tham_chieu
+        return thay_tham_chieu(text, {"name": self._ten})
 
 
 def test_profile_summary_injected_into_system():
@@ -496,19 +506,39 @@ class _CapturingProfile:
         self.facts = []
     def summary(self, query=None):
         return ""
+    def resolve(self, text):
+        return text
     def add_auto_fact(self, fact):
         self.facts.append(fact)
 
 
-def test_consolidation_extracts_facts_into_ltm():
+def _agent_cung_co(profile, trich="Thích uống trà", **kw):
+    return Agent(FakeLLMClient([AssistantTurn(text=f"trả lời {i}") for i in range(10)]),
+                 registry_with(actions=make_actions()),
+                 profile=profile, auto_extract=True, consolidate_every=1,
+                 max_history_turns=1, extractor=lambda transcript: trich, **kw)
+
+
+def test_MAC_DINH_khong_tu_ghi_su_that_ben_vung(monkeypatch):
+    """`LTM_AUTO_FACTS` tắt sẵn: trợ lý chỉ nhớ điều người dùng CHỦ ĐỘNG bảo nhớ.
+
+    Đây là trường dữ liệu TỰ DO — sức khoẻ, tài chính, quan hệ đều rơi vào đây — mà lại
+    được ghi khi người dùng không hề yêu cầu, rồi bơm vào mọi prompt sau đó.
+    """
     profile = _CapturingProfile()
-    # Bộ trích giả: trả 1 sự thật, không cần LLM.
-    agent = Agent(FakeLLMClient([AssistantTurn(text=f"trả lời {i}") for i in range(10)]),
-                  registry_with(actions=make_actions()),
-                  profile=profile, auto_extract=True, consolidate_every=1,
-                  max_history_turns=1, extractor=lambda transcript: "Thích uống trà")
-    agent.run("tôi hay uống trà buổi sáng")     # lượt 1: chưa đẩy ra
-    agent.run("câu khác")                        # lượt 2: đẩy lượt 1 -> đủ ngưỡng -> củng cố
+    agent = _agent_cung_co(profile)
+    agent.run("tôi hay uống trà buổi sáng")
+    agent.run("câu khác")
+    assert profile.facts == []
+
+
+def test_bat_LTM_AUTO_FACTS_thi_ghi_nhu_cu(monkeypatch):
+    from utils.config import config
+    monkeypatch.setattr(config, "LTM_AUTO_FACTS", True)
+    profile = _CapturingProfile()
+    agent = _agent_cung_co(profile)
+    agent.run("tôi hay uống trà buổi sáng")
+    agent.run("câu khác")
     assert "Thích uống trà" in profile.facts
 
 
@@ -559,6 +589,127 @@ def test_consolidation_survives_extractor_error():
                   max_history_turns=1, extractor=_boom)
     agent.run("a"); reply = agent.run("b")       # trích lỗi KHÔNG được làm vỡ luồng
     assert reply.text == "r1" and profile.facts == []
+
+
+# --------------------------- Thói quen (học từ hành vi lặp lại) --------------------------- #
+
+class _CapturingHabits:
+    """Kho thói quen giả — chỉ ghi lại lời gọi để test, không đụng file."""
+
+    def __init__(self, text=""):
+        self.ghi = []
+        self.text = text
+
+    def record(self, value, label_template):
+        self.ghi.append((value, label_template))
+
+    def summary(self):
+        return self.text
+
+
+def test_habit_recorded_after_successful_tool():
+    """Tool có khai báo `habit` chạy xong -> đếm thêm một lần cho tham số của nó."""
+    habits = _CapturingHabits()
+    agent = make_agent([AssistantTurn(tool_calls=[ToolCall("t1", "open_app", {"app_name": "Chrome"})]),
+                        AssistantTurn(text="Đã mở Chrome.")], habits=habits)
+    agent.run("mở chrome")
+    assert habits.ghi == [("Chrome", "mở {}")]
+
+
+def test_habit_not_recorded_when_tool_fails():
+    """Mở app thất bại KHÔNG phải một lần dùng — đếm vào là bịa thói quen."""
+    actions = make_actions()
+    actions.open_application.side_effect = RuntimeError("không mở được")
+    habits = _CapturingHabits()
+    agent = make_agent([AssistantTurn(tool_calls=[ToolCall("t1", "open_app", {"app_name": "Chrome"})]),
+                        AssistantTurn(text="Xin lỗi.")], actions=actions, habits=habits)
+    agent.run("mở chrome")
+    assert habits.ghi == []
+
+
+def test_tool_without_habit_records_nothing():
+    habits = _CapturingHabits()
+    agent = make_agent([AssistantTurn(tool_calls=[ToolCall("t1", "set_volume", {"change": 20})]),
+                        AssistantTurn(text="Xong.")], habits=habits)
+    agent.run("tăng âm lượng")
+    assert habits.ghi == []
+
+
+def test_habits_summary_goes_into_system_prompt():
+    """Đây là cả mục đích của tính năng: hỏi 'tôi hay nghe gì' phải có sẵn đáp án."""
+    llm = FakeLLMClient([AssistantTurn(text="Cậu hay nghe bài đó.")])
+    agent = Agent(llm, registry_with(actions=make_actions()),
+                  habits=_CapturingHabits("Thói quen: hay nghe 'Chúng ta của hiện tại' (5 lần)."))
+    agent.run("tôi hay nghe nhạc gì?")
+    assert "Chúng ta của hiện tại" in llm.last_system
+
+
+def test_broken_habit_store_does_not_break_turn():
+    class _Vo(_CapturingHabits):
+        def record(self, value, label_template):
+            raise RuntimeError("kho hỏng")
+
+        def summary(self):
+            raise RuntimeError("kho hỏng")
+
+    agent = make_agent([AssistantTurn(tool_calls=[ToolCall("t1", "open_app", {"app_name": "Chrome"})]),
+                        AssistantTurn(text="Đã mở Chrome.")], habits=_Vo())
+    assert agent.run("mở chrome").text == "Đã mở Chrome."
+
+
+# --------------------------- Củng cố nốt lúc đóng phiên --------------------------- #
+
+def _agent_de_cung_co(profile, **kwargs):
+    return Agent(FakeLLMClient([AssistantTurn(text=f"r{i}") for i in range(10)]),
+                 registry_with(actions=make_actions()),
+                 profile=profile, auto_extract=True, consolidate_every=99,
+                 extractor=lambda transcript: "Thích uống trà", **kwargs)
+
+
+def test_flush_memory_consolidates_leftover_turns(monkeypatch):
+    """Phiên ngắn: chưa lượt nào bị đẩy ra, nhưng tắt app là mất hết -> phải trích nốt.
+
+    Không có bước này thì mặc dù auto_extract BẬT, một phiên nói vài câu rồi tắt sẽ không
+    học được gì — đúng lý do trợ lý mãi không biết người dùng thích nghe nhạc nào.
+    """
+    from utils.config import config
+    monkeypatch.setattr(config, "LTM_AUTO_FACTS", True)   # test đường ống, không phải chính sách
+    profile = _CapturingProfile()
+    agent = _agent_de_cung_co(profile)
+    agent.run("tôi hay nghe nhạc Trịnh")
+    assert profile.facts == []                   # chưa tới ngưỡng củng cố giữa phiên
+    agent.flush_memory()
+    assert "Thích uống trà" in profile.facts
+
+
+def test_flush_memory_only_runs_once(monkeypatch):
+    from utils.config import config
+    monkeypatch.setattr(config, "LTM_AUTO_FACTS", True)
+    profile = _CapturingProfile()
+    agent = _agent_de_cung_co(profile)
+    agent.run("a")
+    agent.flush_memory()
+    agent.flush_memory()
+    assert profile.facts == ["Thích uống trà"]
+
+
+def test_flush_memory_bo_qua_luot_con_luu_file(tmp_path):
+    """STM có lưu file thì lượt còn lại chưa mất -> để phiên sau trích, khỏi trích hai lần."""
+    profile = _CapturingProfile()
+    agent = _agent_de_cung_co(profile, memory_path=str(tmp_path / "stm.json"))
+    agent.run("a")
+    agent.flush_memory()
+    assert profile.facts == []
+
+
+def test_flush_memory_khong_lam_gi_khi_tat_auto_extract():
+    profile = _CapturingProfile()
+    agent = Agent(FakeLLMClient([AssistantTurn(text="r")]),
+                  registry_with(actions=make_actions()), profile=profile,
+                  auto_extract=False, extractor=lambda t: "Không nên lưu")
+    agent.run("a")
+    agent.flush_memory()
+    assert profile.facts == []
 
 
 # --------------------------- Bộ nhớ hội thoại --------------------------- #

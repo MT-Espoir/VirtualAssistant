@@ -14,6 +14,7 @@ import threading
 import uuid
 from datetime import datetime
 
+from utils.atomic_json import write_json
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -100,8 +101,6 @@ class ReminderScheduler:
 
     def _save(self):
         try:
-            os.makedirs(os.path.dirname(self.store_path), exist_ok=True)
-            with open(self.store_path, "w", encoding="utf-8") as f:
-                json.dump(list(self._tasks.values()), f, ensure_ascii=False, indent=2)
+            write_json(self.store_path, list(self._tasks.values()))
         except OSError as e:
             logger.error("Không lưu được file nhắc việc: %s", e)

@@ -27,6 +27,7 @@ def register(reg, ctx):
         },
         handler=lambda url: actions.web_fetch(url),
         untrusted_output=True,   # nội dung do bên ngoài kiểm soát
+        exfil=True,
     ))
 
     reg.register(Tool(
@@ -55,6 +56,8 @@ def register(reg, ctx):
             "required": ["website"],
         },
         handler=lambda website: actions.open_website(website),
+        habit=("website", "vào {}"),   # trang vào đi vào lại = thói quen dùng máy
+        exfil=True,
     ))
 
     reg.register(Tool(
@@ -71,6 +74,7 @@ def register(reg, ctx):
         },
         handler=lambda query, engine="google": actions.search_web(query, engine),
         untrusted_output=True,   # nội dung do bên ngoài kiểm soát
+        exfil=True,
     ))
 
     reg.register(Tool(
@@ -84,6 +88,10 @@ def register(reg, ctx):
             "required": ["query"],
         },
         handler=lambda query: actions.search_and_play_youtube_direct(query),
+        # Nghe đi nghe lại một bài = sở thích nhạc, thứ người dùng gần như không bao giờ
+        # ngồi khai báo thành lời. Đếm ở đây để trợ lý tự biết.
+        habit=("query", "nghe '{}'"),
+        exfil=True,
     ))
 
     reg.register(Tool(
@@ -99,6 +107,7 @@ def register(reg, ctx):
         },
         handler=lambda query, site: actions.search_on_specific_site(query, site),
         untrusted_output=True,   # nội dung do bên ngoài kiểm soát
+        exfil=True,
     ))
 
     # Nhóm đọc kết quả tìm kiếm cần cầu nối Chrome; thiếu thì bỏ qua,
@@ -163,6 +172,7 @@ def _register_web_search_tools(reg: ToolRegistry, browser, actions):
         },
         handler=search_list,
         untrusted_output=True,   # nội dung do bên ngoài kiểm soát
+        exfil=True,
     ))
 
     reg.register(Tool(
@@ -178,6 +188,10 @@ def _register_web_search_tools(reg: ToolRegistry, browser, actions):
             "required": ["index"],
         },
         handler=open_result,
+        # Câu trả về có TIÊU ĐỀ TRANG, mà tiêu đề do chính trang đó đặt — kẻ tấn công viết
+        # được. Thiếu cờ này thì chữ của họ vào hội thoại mà không bị đánh dấu, và vết
+        # nhiễm không lan — cổng rò rỉ/bền vững im lặng không chạy.
+        untrusted_output=True,
     ))
 
     def read_result(index=1):

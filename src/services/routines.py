@@ -9,6 +9,7 @@ import json
 import os
 from datetime import datetime
 
+from utils.atomic_json import write_json
 from utils.logger import get_logger
 from utils.text_norm import strip_accents
 
@@ -66,10 +67,6 @@ class RoutineStore:
 
     def _save(self):
         try:
-            directory = os.path.dirname(self.path)
-            if directory:
-                os.makedirs(directory, exist_ok=True)
-            with open(self.path, "w", encoding="utf-8") as f:
-                json.dump(list(self._routines.values()), f, ensure_ascii=False, indent=2)
+            write_json(self.path, list(self._routines.values()))
         except OSError as e:
             logger.error("Không lưu được file routine: %s", e)

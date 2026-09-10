@@ -44,7 +44,7 @@ def _registry(speakable=True, destructive=False, boom=False):
 
 
 def _agent(llm, reg, on=True):
-    return Agent(llm=llm, registry=reg, router=None, max_history_turns=0,
+    return Agent(llm=llm, registry=reg, surface=None, max_history_turns=0,
                  skip_respond_for_speakable=on)
 
 
@@ -65,7 +65,7 @@ def test_shortcut_marks_outcome_as_success_for_mood():
     mood = MagicMock()
     mood.to_pose.return_value = "happy"
     llm = _FakeLLM([AssistantTurn(tool_calls=[ToolCall("t1", "system_info", {})])])
-    Agent(llm=llm, registry=_registry(), router=None, max_history_turns=0,
+    Agent(llm=llm, registry=_registry(), surface=None, max_history_turns=0,
           skip_respond_for_speakable=True, mood=mood).run("ram")
     assert mood.update.call_args.kwargs["outcome"] == 1.0
 

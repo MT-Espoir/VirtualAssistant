@@ -367,17 +367,13 @@
   },
   {
     "name": "browser_close_tab",
-    "description": "Đóng (các) tab Chrome có tiêu đề hoặc URL chứa 'keyword'. QUAN TRỌNG — đóng tab KHÓ HOÀN TÁC: BẮT BUỘC gọi lần đầu với confirm=false để xem danh sách tab sẽ đóng, ĐỌC danh sách đó cho người dùng và CHỜ họ đồng ý; chỉ gọi lại với confirm=true SAU KHI người dùng xác nhận. Không tự đặt confirm=true ngay lần đầu.",
+    "description": "Đóng (các) tab Chrome có tiêu đề hoặc URL chứa 'keyword'. Trợ lý sẽ tự hỏi xác nhận và đọc danh sách tab trước khi đóng.",
     "input_schema": {
       "type": "object",
       "properties": {
         "keyword": {
           "type": "string",
           "description": "Từ khoá khớp tiêu đề/URL tab, vd 'facebook'"
-        },
-        "confirm": {
-          "type": "boolean",
-          "description": "false = chỉ xem trước; true = thật sự đóng (chỉ dùng sau khi người dùng đã đồng ý)"
         }
       },
       "required": [

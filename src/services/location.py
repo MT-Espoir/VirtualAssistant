@@ -15,6 +15,7 @@ import io
 import json
 import os
 
+from utils.atomic_json import write_json
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -46,9 +47,7 @@ class LocationStore:
         if not self.path:
             return
         try:
-            os.makedirs(os.path.dirname(self.path), exist_ok=True)
-            with io.open(self.path, "w", encoding="utf-8", newline="\n") as f:
-                json.dump(self._data, f, ensure_ascii=False, indent=2)
+            write_json(self.path, self._data)
         except Exception as e:
             logger.warning("location: ghi '%s' lỗi: %s", self.path, e)
 

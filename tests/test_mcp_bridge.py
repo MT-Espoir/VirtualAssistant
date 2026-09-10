@@ -6,6 +6,11 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+try:
+    import pytest
+except ImportError:
+    pytest = None
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from services.mcp_bridge import is_destructive_tool, _extract_text
@@ -143,3 +148,66 @@ def test_draft_without_recipient_still_previews():
     payload = reg.get("gws_gmail_draft").preview(
         to="", subject="Xin hướng dẫn đồ án tốt nghiệp", body="Kính gửi thầy...")
     assert payload is not None and payload["to"] == ""
+
+
+# --------------------------- lỗi MCP phải NÉM, không trả chuỗi --------------------------- #
+#
+# HỒI QUY 2026-08-29: OAuth hết hạn -> `gws_gmail_search` trả chuỗi "(MCP báo lỗi) ..." ->
+# `Agent._run_tool` thấy handler trả về bình thường -> `is_error=False` -> nhật ký kết quả
+# ghi lượt đó là "xong". Mọi lỗi MCP đều vô hình với bộ đo. Xem `MCPError`.
+
+class _LoopGia:
+    """Đủ để `call_tool` coi là đã kết nối; không chạy coroutine nào thật."""
+
+
+def _client_gia():
+    """MCPClient đã 'kết nối' nhưng không chạy coroutine thật."""
+    from services.mcp_bridge import MCPClient
+    c = MCPClient.__new__(MCPClient)
+    # `connected` là property suy từ `_session`, không gán thẳng được.
+    c.loop, c._session, c.timeout = _LoopGia(), object(), 5
+    return c
+
+
+def test_chua_ket_noi_thi_NEM_chu_khong_tra_chuoi():
+    from services.mcp_bridge import MCPClient, MCPError
+    c = MCPClient.__new__(MCPClient)
+    c.loop, c._session, c.timeout = None, None, 5
+    with pytest.raises(MCPError) as err:
+        c.call_tool("gws_gmail_search", {"q": "x"})
+    assert "chưa kết nối" in str(err.value).lower()
+
+
+def test_loi_khi_goi_duoc_boc_thanh_MCPError(monkeypatch):
+    from services import mcp_bridge
+    from services.mcp_bridge import MCPError
+
+    def no(coro, *a, **k):
+        coro.close()        # không ai await -> đóng lại, khỏi cảnh báo coroutine bỏ rơi
+        raise RuntimeError("stdio đứt")
+
+    monkeypatch.setattr(mcp_bridge.asyncio, "run_coroutine_threadsafe", no)
+    with pytest.raises(MCPError) as err:
+        _client_gia().call_tool("gws_gmail_search", {"q": "x"})
+    assert "gws_gmail_search" in str(err.value)
+
+
+def test_MCPError_khong_bi_boc_hai_lan(monkeypatch):
+    """Lỗi đã có nghĩa rồi thì giữ nguyên câu chữ, đừng lồng 'thất bại: ...' quanh nó."""
+    from services import mcp_bridge
+    from services.mcp_bridge import MCPError
+
+    def no(coro, *a, **k):
+        coro.close()
+        raise MCPError("hết quyền đọc thư")
+
+    monkeypatch.setattr(mcp_bridge.asyncio, "run_coroutine_threadsafe", no)
+    with pytest.raises(MCPError) as err:
+        _client_gia().call_tool("gws_gmail_read", {"message_id": "m1"})
+    assert str(err.value) == "hết quyền đọc thư"
+
+
+def test_extract_text_van_giu_nguyen_cach_dien_dat_loi():
+    """`_extract_text` vẫn chỉ ĐỊNH DẠNG; việc quyết 'đây là lỗi' nằm ở `_call`."""
+    r = SimpleNamespace(content=[SimpleNamespace(text="hết quyền")], isError=True)
+    assert "(MCP báo lỗi)" in _extract_text(r)

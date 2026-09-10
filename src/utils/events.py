@@ -19,6 +19,8 @@ class AssistantEvent:
     ui: Optional[dict] = None        # lệnh giao diện avatar (scale_delta / opacity_delta...)
     places: Optional[dict] = None    # {rows, need} -> panel kết quả địa điểm
     draft: Optional[dict] = None     # {to, subject, body} -> panel nháp email; {} = đóng panel
+    mail: Optional[dict] = None      # {tu, tieu_de, ngay, than} -> panel THƯ ĐẾN; {} = đóng
+    mails: Optional[dict] = None     # {rows, q} -> panel DANH SÁCH thư; rows rỗng = đóng
 
 
 class AssistantBus:
@@ -48,6 +50,23 @@ class AssistantBus:
         'không có tin gì về nháp' với 'đóng panel đi'.
         """
         self._q.put(AssistantEvent(draft=dict(draft) if draft else {}))
+
+    def emit_mail(self, mail):
+        """Gửi một lá thư ĐẾN cho panel xem. `None`/rỗng = ĐÓNG panel.
+
+        Đây là đường DUY NHẤT nội dung thư tới được mắt người dùng mà KHÔNG đi qua ngữ
+        cảnh LLM. Với nội dung do người ngoài soạn, khác biệt đó có giá trị thật:
+        `untrusted.boc()` chỉ là giảm thiểu, còn không-đưa-vào là triệt tiêu.
+        """
+        self._q.put(AssistantEvent(mail=dict(mail) if mail else {}))
+
+    def emit_mail_list(self, rows, q=None):
+        """Gửi DANH SÁCH thư tìm được cho panel. Danh sách rỗng = ẩn panel.
+
+        Cùng panel với `emit_mail`: bấm một dòng thì chi tiết thư THAY CHỖ danh sách,
+        đúng lối danh-sách-rồi-chi-tiết quen thuộc, không phải hai cửa sổ chồng nhau.
+        """
+        self._q.put(AssistantEvent(mails={"rows": list(rows or []), "q": q}))
 
     def drain(self):
         """Lấy hết event đang chờ (không chặn)."""

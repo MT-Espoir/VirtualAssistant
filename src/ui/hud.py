@@ -37,10 +37,13 @@ import tkinter as tk
 # để vẽ, nếu không nét vẽ cũng bị đục theo.
 TRANSPARENT_KEY = "#010101"
 
-HUD_COLOR = "#ff9d00"
-HUD_DIM = "#995e00"
-HUD_TEXT = "#ffd9a0"
-HUD_QUOTE = "#c9d7a8"
+# Bảng màu XANH BIỂN, cùng tông với dòng báo lỗi của avatar
+# (`ui/avatar.py::HINT_COLOR`) — panel và avatar là một hệ thống, không phải hai cửa sổ
+# của hai ứng dụng khác nhau.
+HUD_COLOR = "#4cc9f0"         # nét chính: viền, tiêu đề, nút chính
+HUD_DIM = "#2c6f8c"           # nét phụ: nhãn, viền thẻ, nút phụ
+HUD_TEXT = "#cbe9f7"          # chữ thường
+HUD_QUOTE = "#a8d7b4"         # TRÍCH DẪN cố ý LỆCH tông: mắt phải phân biệt được ngay
 HUD_BG = "#0b0b0e"            # nền khung, TÔ ĐẶC (xem ghi chú TRONG SUỐT ở đầu file)
 HUD_ALPHA = 0.90              # độ mờ cả cửa sổ; càng thấp càng thấy nền sau, chữ càng nhạt
 

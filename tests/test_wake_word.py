@@ -5,7 +5,8 @@ try:
 except ImportError:
     pytest = None
 
-from voice.wake_word import match_wake_word, parse_wake_words, wake_words_not_in
+from voice.wake_word import (in_follow_up_window, match_wake_word, parse_wake_words,
+                             wake_words_not_in)
 
 WORDS = ["trợ lý", "tro ly", "jarvis", "assistant"]
 
@@ -83,6 +84,34 @@ def test_filter_ignores_accents():
     # câu trả lời không dấu vẫn khớp và loại được từ khoá
     remaining = wake_words_not_in("toi la tro ly cua ban", WORDS)
     assert "trợ lý" not in remaining and "tro ly" not in remaining
+
+
+# --------------------------- cửa sổ nối lời (10s sau câu trả lời) --------------------------- #
+
+def test_follow_up_open_right_after_answer():
+    assert in_follow_up_window(100.0, 103.0, 10.0)
+
+
+def test_follow_up_closed_after_window():
+    assert not in_follow_up_window(100.0, 110.5, 10.0)
+
+
+def test_follow_up_open_at_exact_edge():
+    assert in_follow_up_window(100.0, 110.0, 10.0)
+
+
+def test_follow_up_closed_before_first_answer():
+    """Chưa trả lời lần nào -> chưa có gì để nối lời, từ khoá vẫn bắt buộc."""
+    assert not in_follow_up_window(None, 100.0, 10.0)
+
+
+def test_follow_up_disabled_by_zero_window():
+    assert not in_follow_up_window(100.0, 100.1, 0)
+
+
+def test_follow_up_counts_speech_starting_before_answer_ends():
+    """Nói chen lúc trợ lý chưa dứt câu -> vẫn là nối lời, không phải câu lạ."""
+    assert in_follow_up_window(100.0, 99.0, 10.0)
 
 
 if __name__ == "__main__":

@@ -10,6 +10,7 @@ from unittest.mock import MagicMock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from memory.profile import (UserProfile, apply_update, summarize,
+                                          thay_tham_chieu, THAM_CHIEU_TEN,
                                           _relevant_facts)
 
 from conftest import registry_with
@@ -45,10 +46,39 @@ def test_summarize_empty_is_blank():
     assert summarize(None) == "" and summarize({}) == ""
 
 
-def test_summarize_includes_known_fields():
-    data, _ = apply_update(None, name="Nam", address_form="sếp", location="Huế")
+def test_summarize_dua_xung_ho_vao_prompt():
+    """Xưng hô PHẢI vào prompt: nó quyết giọng của mọi câu trả lời."""
+    data, _ = apply_update(None, address_form="sếp")
+    assert "sếp" in summarize(data)
+
+
+def test_summarize_KHONG_dua_ten_that_vao_prompt():
+    """Tên đi vào dưới dạng THAM CHIẾU. Model không thấy tên thì model bị chiếm cũng
+    không đọc ra được — mạnh hơn cổng duyệt, vì cổng lách được còn dữ liệu vắng mặt thì không."""
+    data, _ = apply_update(None, name="Nam")
     s = summarize(data)
-    assert "Nam" in s and "sếp" in s and "Huế" in s
+    assert "Nam" not in s
+    assert THAM_CHIEU_TEN in s
+
+
+def test_summarize_KHONG_dua_dia_diem_vao_prompt():
+    """Dữ liệu vị trí. Model không cần: `get_weather` để trống `location` thì tầng tool tự lấy."""
+    data, _ = apply_update(None, location="Huế")
+    assert "Huế" not in summarize(data)
+
+
+def test_thay_tham_chieu_bang_ten_that():
+    data, _ = apply_update(None, name="Nam")
+    assert thay_tham_chieu("Chào @ten nhé!", data) == "Chào Nam nhé!"
+
+
+def test_chua_luu_ten_thi_bo_tham_chieu_di():
+    """Đừng để TTS đọc "@ten" cho người dùng nghe."""
+    assert thay_tham_chieu("Chào @ten nhé!", {}) == "Chào nhé!"
+
+
+def test_khong_co_tham_chieu_thi_giu_nguyen():
+    assert thay_tham_chieu("Chào bạn!", {"name": "Nam"}) == "Chào bạn!"
 
 
 def test_summarize_includes_auto_facts():

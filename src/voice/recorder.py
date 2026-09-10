@@ -45,6 +45,10 @@ class Recorder:
         self.frames = []
         self.stream = None
         self.is_recording = False
+        # Mốc (monotonic) lúc BẮT ĐẦU nghe thấy tiếng của lượt gần nhất; None = lượt đó
+        # không có tiếng nào. Dùng monotonic chứ không phải time.time() vì đây là để đo
+        # KHOẢNG CÁCH giữa hai sự kiện, mà đồng hồ hệ thống có thể bị chỉnh giữa chừng.
+        self.speech_started_at = None
         self.audio = pyaudio.PyAudio()
         
         # Silence detection parameters
@@ -183,6 +187,7 @@ class Recorder:
         if silence_limit is None:
             silence_limit = chunks_for_seconds(self.silence_duration, self.rate, self.chunk)
 
+        self.speech_started_at = None      # mốc của lượt TRƯỚC không được sống sót
         self.start_recording()
         if not self.stream:
             return None
@@ -207,6 +212,7 @@ class Recorder:
             if not self.is_silent(data):
                 if not speech_detected:
                     logger.debug("Speech detected")
+                    self.speech_started_at = time.monotonic()
                 speech_detected = True
                 silence_counter = 0
             elif speech_detected:

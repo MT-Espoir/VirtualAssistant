@@ -93,14 +93,19 @@ NGOAI = {
     "find_on_screen",                           # OCR — đọc bất cứ gì đang hiện
     "find_nearby", "find_place", "research_places", "refine_places",   # tên + review
     "get_weather",                              # từ API ngoài
+    # SỬA 2026-08-29 (đợt 6 vá bảo mật). Hai tool này từng bị xếp NOI_BO vì chúng trông
+    # như HÀNH ĐỘNG ("mở", "đóng"). Nhưng phân loại phải theo thứ tool TRẢ VỀ, không
+    # theo thứ nó LÀM — và cả hai đều trả về TIÊU ĐỀ do bên ngoài đặt.
+    "open_search_result",     # trả tiêu đề trang từ kết quả tìm kiếm
+    "browser_close_tab",      # trả tên các tab — do chính trang đó đặt
 }
 
 NOI_BO = {
     "open_app", "close_app", "switch_window", "set_volume", "set_brightness",
     "system_info", "open_website", "play_youtube", "take_screenshot", "scroll_screen",
-    "open_search_result", "open_place_result", "set_my_location",
+    "open_place_result", "set_my_location",
     "schedule_reminder", "schedule_action", "list_reminders", "cancel_reminder",
-    "browser_close_tab", "browser_open_or_reuse", "browser_media_control",
+    "browser_open_or_reuse", "browser_media_control",
     "remember_about_user", "forget_about_user",
     "add_task", "list_tasks", "complete_task", "remove_task",
     "create_routine", "list_routines", "delete_routine",

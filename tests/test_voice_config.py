@@ -186,3 +186,42 @@ def test_vieneu_cung_dung_duong_phat_qua_file():
     for e, mong_doi in (("gtts", True), ("piper", True), ("vieneu", True), ("pyttsx3", False)):
         tu.engine_type = e
         assert tu._phat_qua_file is mong_doi, e
+
+
+# --- đường dẫn trong .env: KHÔNG được phụ thuộc thư mục chạy lệnh --------------------
+
+def test_duong_dan_tuong_doi_quy_ve_goc_du_an(monkeypatch):
+    from utils.config import _ROOT, _get_path
+
+    monkeypatch.setenv("VIENEU_REF_AUDIO", "my_dataset_builder/ref/mau.wav")
+    assert _get_path("VIENEU_REF_AUDIO") == str(_ROOT / "my_dataset_builder" / "ref" / "mau.wav")
+
+
+def test_duong_dan_khong_doi_theo_thu_muc_chay_lenh(monkeypatch, tmp_path):
+    """HỒI QUY: `launch_assistant.vbs` đặt cwd = `src/`, nên `VIENEU_REF_AUDIO` tương đối
+    trỏ vào `src/my_dataset_builder/...` — không có file, trợ lý im lặng rơi về giọng
+    Google. Mở bằng shortcut hay gõ tay từ gốc repo đều phải ra CÙNG một đường dẫn."""
+    from utils.config import _get_path
+
+    monkeypatch.setenv("PIPER_MODEL", "models/giong_rieng.onnx")
+    tu_goc = _get_path("PIPER_MODEL")
+    monkeypatch.chdir(tmp_path)
+    assert _get_path("PIPER_MODEL") == tu_goc
+
+
+def test_duong_dan_tuyet_doi_giu_nguyen(monkeypatch, tmp_path):
+    from utils.config import _get_path
+
+    tuyet_doi = str(tmp_path / "giong.wav")
+    monkeypatch.setenv("VIENEU_REF_AUDIO", tuyet_doi)
+    assert _get_path("VIENEU_REF_AUDIO") == tuyet_doi
+
+
+def test_khong_khai_thi_van_rong(monkeypatch):
+    """Rỗng phải ra rỗng, KHÔNG thành chính gốc dự án — nơi gọi dựa vào '' để dùng mặc định."""
+    from utils.config import _get_path
+
+    monkeypatch.delenv("MEMORY_PATH", raising=False)
+    assert _get_path("MEMORY_PATH") == ""
+    monkeypatch.setenv("MEMORY_PATH", "   ")
+    assert _get_path("MEMORY_PATH") == ""
