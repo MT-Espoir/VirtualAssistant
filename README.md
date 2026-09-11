@@ -59,6 +59,17 @@ Chụp màn hình, tìm chữ bằng OCR, cuộn trang. Chỉ chạy khi bạn b
 
 ---
 
+## Alice — nhân vật trợ lý
+
+| Rảnh | Đang nói | Đang nghĩ | Ngượng | Buồn |
+|:---:|:---:|:---:|:---:|:---:|
+| <img src="src/ui/image/default_emotion.png" width="150" alt="Alice lúc rảnh"> | <img src="src/ui/image/talk_emotion.png" width="150" alt="Alice đang nói"> | <img src="src/ui/image/thinking_emotion.png" width="150" alt="Alice đang nghĩ"> | <img src="src/ui/image/shy_emotion.png" width="150" alt="Alice ngượng"> | <img src="src/ui/image/sad_emotion.png" width="150" alt="Alice buồn"> |
+
+Mặc định đánh thức bằng *"trợ lý"*; muốn gọi thẳng tên thì thêm `alice` vào `WAKE_WORDS`
+trong `src/.env`.
+
+---
+
 ## Kiến trúc
 
 ![Kiến trúc chi tiết](assets/architecture.svg)
