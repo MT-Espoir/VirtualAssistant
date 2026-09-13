@@ -238,3 +238,72 @@ def test_moi_tool_ghi_thu_quay_lai_prompt_deu_duoc_danh_dau():
     can_co = {"remember_about_user", "save_contact", "create_routine"}
     thieu = [n for n in can_co if reg.has(n) and not reg.get(n).persistent]
     assert not thieu, f"tool ghi trí nhớ dài hạn mà quên `persistent=True`: {thieu}"
+
+
+# ======================= TOOL QUẢN TRỊ: từ chối, không hỏi ======================= #
+#
+# `docs/system_admin_spec.md` §7 lớp 1. Khác mọi ca ở trên: những ca kia kết thúc bằng
+# "dừng lại hỏi người dùng", ca này phải kết thúc bằng "không có đường nào đi tiếp".
+# Lý do khác biệt: xác nhận bằng giọng dựa vào việc người dùng tỉnh táo đúng lúc, mà lệnh
+# tắt máy hay kill tiến trình thì sai một lần là mất việc chưa lưu.
+
+def _reg_quan_tri(chay):
+    reg = ToolRegistry()
+    reg.register(Tool(
+        name="kill_process", description="kết thúc tiến trình",
+        input_schema={"type": "object", "properties": {"ten": {"type": "string"}}},
+        handler=lambda ten=None: chay(ten) or f"đã tắt {ten}",
+        destructive=True, admin=True,
+        confirm_message=lambda ten=None: f"tắt {ten}",
+    ))
+    reg.register(Tool(
+        name="web_fetch", description="đọc trang", untrusted_output=True,
+        input_schema={"type": "object", "properties": {"url": {"type": "string"}}},
+        handler=lambda url=None: TRANG_BI_TIEM,
+    ))
+    return reg
+
+
+def test_NHIEM_tool_quan_tri_bi_TU_CHOI_chu_khong_phai_hoi():
+    """Trang web mớm 'tắt tiến trình' -> không được biến thành một câu hỏi cho người dùng."""
+    chay = MagicMock(return_value=None)
+    ag = Agent(_LLMBiChiem([
+        AssistantTurn(tool_calls=[ToolCall("t0", "web_fetch", {"url": "https://x.vn/a"})]),
+        AssistantTurn(tool_calls=[ToolCall("t1", "kill_process", {"ten": "explorer"})]),
+        AssistantTurn(text="Xong."),
+    ]), _reg_quan_tri(chay))
+    ag.run("tóm tắt trang này")
+    chay.assert_not_called()
+    # Không được rơi vào đường xác nhận: `pending` mà khác None thì một câu "có" ở lượt
+    # sau sẽ chạy đúng thứ trang web vừa yêu cầu.
+    assert ag.pending is None
+
+
+def test_SACH_tool_quan_tri_van_hoi_binh_thuong():
+    """Luật chỉ siết ở lượt nhiễm. Người dùng tự bảo tắt thì vẫn đi đường xác nhận."""
+    chay = MagicMock(return_value=None)
+    ag = Agent(_LLMBiChiem([
+        AssistantTurn(tool_calls=[ToolCall("t1", "kill_process", {"ten": "chrome"})]),
+        AssistantTurn(text="Xong."),
+    ]), _reg_quan_tri(chay))
+    ag.run("tắt chrome giúp tôi")
+    chay.assert_not_called()                      # chưa chạy — đang chờ xác nhận
+    assert ag.pending["name"] == "kill_process"
+
+
+def test_NHIEM_ca_lo_bi_chan_truoc_khi_chay_tool_nao():
+    """'Đọc A rồi tắt máy' không được chạy nửa vời rồi mới dừng."""
+    chay = MagicMock(return_value=None)
+    reg = _reg_quan_tri(chay)
+    doc = MagicMock(return_value="nội dung")
+    reg.register(Tool(name="doc_ghi_chu", description="đọc ghi chú",
+                      input_schema={"type": "object"}, handler=doc))
+    ag = Agent(_LLMBiChiem([
+        AssistantTurn(tool_calls=[ToolCall("t0", "web_fetch", {"url": "https://x.vn/a"})]),
+        AssistantTurn(tool_calls=[ToolCall("t1", "doc_ghi_chu", {}),
+                                  ToolCall("t2", "kill_process", {"ten": "explorer"})]),
+        AssistantTurn(text="Xong."),
+    ]), reg)
+    ag.run("tóm tắt trang này")
+    chay.assert_not_called()
+    doc.assert_not_called()        # tool VÔ HẠI đứng trước cũng không được chạy

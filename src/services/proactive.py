@@ -1,8 +1,12 @@
-"""ProactiveMonitor — vòng NỀN chủ động: bản tin sáng (1 lần/ngày) + cảnh báo pin yếu.
+"""ProactiveMonitor — vòng NỀN chủ động: bản tin sáng (1 lần/ngày) + quản trị pin yếu.
 
-Trợ lý TỰ khởi xướng thay vì chỉ phản ứng. Tách logic THUẦN (`check_proactive`: quyết định
-theo mốc thời gian + trạng thái pin) khỏi thread/psutil để test tất định. Fire qua callback
+Trợ lý TỰ khởi xướng thay vì chỉ phản ứng. Tách logic THUẦN (`check_proactive`,
+`muc_sang_khi_pin_yeu`) khỏi thread/psutil để test tất định. Fire qua callback
 `on_brief()` / `on_battery(pct)` — service không biết TTS (app.py nối vào), giống scheduler.
+
+Đường chạy ở đây KHÔNG có người để hỏi, nên nó không được dùng cổng xác nhận như mọi đường
+khác; thay vào đó nó bị chặn bằng danh sách trắng cứng ở tầng registry (`Tool.tu_dong`).
+Xem `docs/system_admin_spec.md` §5.3.
 """
 
 import threading
@@ -36,6 +40,28 @@ def check_proactive(now, brief_time, last_brief_date, battery_pct, plugged,
         battery_warned = True
 
     return events, (last_brief_date, battery_warned)
+
+
+# Mức sáng hạ xuống khi pin yếu. Hằng số chứ không phải tham số env: thêm một núm cấu hình
+# cho thứ chưa ai đòi chỉnh là làm dày `utils/config.py` mà không mua được gì.
+MUC_SANG_PIN_YEU = 40
+
+
+def muc_sang_khi_pin_yeu(do_sang, muc_tieu=MUC_SANG_PIN_YEU):
+    """Mức sáng nên ĐẶT khi pin yếu, hoặc None nếu không nên đụng vào. THUẦN.
+
+    Chỉ HẠ, không bao giờ nâng. Người dùng đã để màn hình tối hơn mức này thì họ biết
+    mình đang làm gì; tự ý kéo lên "cho đúng chuẩn tiết kiệm pin" vừa vô lý vừa tốn pin.
+
+    Vì sao hạ sáng chứ không phải bật Battery Saver của Windows: đường duy nhất tới cái
+    công tắc đó là `PowerSetActiveOverlayScheme`, một API Win32 KHÔNG CÓ TÀI LIỆU, và đây
+    là đường chạy không có ai xác nhận. Xem `docs/system_admin_spec.md` §5.2.
+    """
+    if do_sang is None:                   # không đọc được -> không mò
+        return None
+    if do_sang <= muc_tieu:               # đã đủ tối, hạ nữa là phiền chứ không tiết kiệm thêm
+        return None
+    return muc_tieu
 
 
 def _read_battery():

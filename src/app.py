@@ -24,7 +24,8 @@ from agent.persona import PersonaState, MoodState
 from services.tasks import TaskStore
 from services.routines import RoutineStore
 from services.contacts import ContactStore
-from services.proactive import ProactiveMonitor
+from services.proactive import ProactiveMonitor, muc_sang_khi_pin_yeu
+from actions.system.system_control import read_brightness
 from services.mcp_bridge import MCPClient
 from llm.client import build_default_llm_client
 from utils.events import AssistantBus
@@ -613,14 +614,21 @@ def main():
     #
     # Dựng SAU registry vì bảng case->tool nay suy ra từ `report` chứ không còn là hằng
     # số chép tay — router không thể biết case nào tồn tại trước khi feature nạp xong.
+    from llm import prompts
     surface, system_prompt = None, None
-    if config.use_router():
+    che_do = config.surface_mode()
+    if che_do == "router":
         from agent.router import Router
         surface = Router.from_report(llm, report, mcp_prefix=config.MCP_TOOL_PREFIX)
+    elif che_do == "indexed":
+        from agent.surface import IndexedTools
+        # `base()` chứ KHÔNG phải `merged()`: `IndexedTools` tự gửi sẵn chỉ dẫn của nhóm
+        # có tool lõi, còn nhóm khác nhận chỉ dẫn lúc gọi `mo_nhom`. Gửi sẵn cả 10 bộ ở
+        # đây vừa trùng vừa phá phần tiết kiệm — xem docstring `IndexedTools`.
+        surface = IndexedTools(prompts.base(), report)
     else:
-        from llm import prompts
         system_prompt = prompts.merged(report)
-    logger.info("🧭 router: %s", "bật" if surface else "tắt (prompt gộp)")
+    logger.info("🧭 bề mặt tool: %s", che_do)
 
     agent = Agent(llm=llm,
                   registry=registry,
@@ -655,7 +663,19 @@ def main():
             bus.emit(state="idle")
 
         def _on_battery(pct):
-            _say(synth, bus, f"Pin còn khoảng {int(pct)} phần trăm, bạn nên cắm sạc nhé.", "sad")
+            # Quản trị pin: BÁO rồi LÀM. Hạ sáng là việc duy nhất trợ lý được tự làm ở đây
+            # (`Tool.tu_dong`) — nó tiết kiệm pin thật và hoàn tác được bằng một câu nói,
+            # nên luôn nói ra là đã hạ để người dùng biết đường bảo sáng lại.
+            cau = f"Pin còn khoảng {int(pct)} phần trăm, bạn nên cắm sạc nhé."
+            muc = muc_sang_khi_pin_yeu(read_brightness())
+            if muc is not None:
+                try:
+                    agent.registry.run("set_brightness", {"level": muc}, tu_dong=True)
+                    cau += (f" Tôi hạ độ sáng xuống {muc} phần trăm cho đỡ tốn, "
+                            "muốn sáng lại thì bảo tôi.")
+                except Exception as e:      # không hạ được thì vẫn phải báo pin
+                    logger.warning("Không hạ được độ sáng khi pin yếu: %s", e)
+            _say(synth, bus, cau, "sad")
             bus.emit(state="idle")
 
         monitor = ProactiveMonitor(on_brief=_on_brief, on_battery=_on_battery,

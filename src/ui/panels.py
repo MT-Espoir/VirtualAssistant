@@ -231,3 +231,38 @@ def pending_blocks(payload):
 def pending_title(payload):
     """Tiêu đề panel theo loại hành động đang chờ."""
     return "GỬI RA NGOÀI" if (payload or {}).get("ra_ngoai") else "NHÁP EMAIL"
+
+
+# ============================== QUẢN TRỊ MÁY ==============================
+
+def process_blocks(rows, sort_by="memory"):
+    """Snapshot tiến trình -> khối HUD; không cắt vì đây là kênh danh sách đầy đủ."""
+    if not rows:
+        return []
+    theo_cpu = (sort_by or "memory").strip().lower() == "cpu"
+    nhan = "CPU" if theo_cpu else "RAM"
+    blocks = [("header", f"{len(rows)} ứng dụng — xếp theo {nhan}")]
+    for i, row in enumerate(rows, 1):
+        blocks.append(("card", {
+            "title": f"{i}. {(row.get('name') or '(không rõ tên)').strip()}",
+            "meta": [str(row.get("display") or "")],
+            "lines": [],
+            "photos": [],
+        }, None))
+    return blocks
+
+
+def audio_device_blocks(rows):
+    """Thiết bị phát đang hoạt động -> khối HUD, chỉ đọc và không sinh hành động."""
+    if not rows:
+        return []
+    blocks = [("header", f"{len(rows)} thiết bị phát đang hoạt động")]
+    for i, row in enumerate(rows, 1):
+        meta = ["vừa chuyển sang"] if row.get("selected") else ["sẵn sàng"]
+        blocks.append(("card", {
+            "title": f"{i}. {(row.get('name') or '(không rõ tên)').strip()}",
+            "meta": meta,
+            "lines": [],
+            "photos": [],
+        }, None))
+    return blocks

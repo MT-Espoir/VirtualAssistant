@@ -30,6 +30,15 @@ class RecordingRegistry:
     def has(self, name):
         return self._inner.has(name)
 
+    def register(self, tool):
+        """Chuyển tiếp: `IndexedTools` đăng ký lười meta-tool `mo_nhom` lúc `select()`.
+
+        Bọc mà không chuyển tiếp thì bề mặt đó chết ngay ở lượt đầu — và chết theo kiểu
+        eval báo 0% tool-acc chứ không báo lỗi cấu hình, tức là dễ đọc nhầm thành
+        "IndexedTools kém".
+        """
+        return self._inner.register(tool)
+
     def get(self, name):
         return self._inner.get(name)          # để Agent đọc metadata tool (vd cờ destructive)
 
@@ -38,7 +47,11 @@ class RecordingRegistry:
         bản thật, nếu không ca "xoá hết việc" sẽ chạy trong eval mà ngoài đời thì dừng lại hỏi."""
         return self._inner.gate(name, arguments, nhiem=nhiem)
 
-    def run(self, name, arguments, confirmed=False, nhiem=False):
+    def tu_choi(self, name, arguments, nhiem=False, tu_dong=False):
+        """Cùng lý do với `gate`: eval phải thấy đúng luật từ chối của bản thật."""
+        return self._inner.tu_choi(name, arguments, nhiem=nhiem, tu_dong=tu_dong)
+
+    def run(self, name, arguments, confirmed=False, nhiem=False, tu_dong=False):
         self.calls.append((name, dict(arguments or {})))
         # Trả câu NHƯ THỂ thành công để model coi bước đã xong (giảm gọi lặp vô ích —
         # production tool trả xác nhận thật; stub "trống nghĩa" khiến model tưởng chưa xong).
@@ -140,7 +153,10 @@ def run_case(llm, registry, router, case, max_iterations=4, system=None):
     Trả dict kết quả đã chấm điểm. Không gây tác dụng phụ (tool không thực thi).
     """
     rec_reg = RecordingRegistry(registry)
-    rec_router = RecordingRouter(router) if router is not None else None
+    # CHỈ bọc Router. Các bề mặt khác (`AllTools`, `IndexedTools`) đi thẳng vì hai lẽ:
+    # `RecordingRouter` gọi `inner.classify()` — API riêng của Router — và nó không
+    # chuyển tiếp `expand()`, nên bọc `IndexedTools` là làm chết hẳn việc mở nhóm.
+    rec_router = RecordingRouter(router) if hasattr(router, "classify") else router
     # Đếm lần gọi LLM. Nếu nơi gọi đã bọc sẵn CountingLLM và đưa CHUNG cho router thì tái
     # dùng -> đếm được CẢ lượt classify; chưa bọc thì tự bọc (chỉ đếm lượt của agent).
     counting = llm if isinstance(llm, CountingLLM) else CountingLLM(llm)
@@ -160,7 +176,8 @@ def run_case(llm, registry, router, case, max_iterations=4, system=None):
     # CHỌN đúng tool, vì eval đo độ tin cậy CHỌN tool, không đo việc thực thi.
     if agent.pending is not None:
         called.append(agent.pending["name"])
-    got_case = rec_router.cases[-1] if (rec_router and rec_router.cases) else None
+    cases_da_ghi = getattr(rec_router, "cases", None)     # chỉ RecordingRouter mới có
+    got_case = cases_da_ghi[-1] if cases_da_ghi else None
     return score_case(case, called, got_case, error,
                       calls=counting.calls, seconds=round(counting.seconds, 2),
                       input_chars=counting.input_chars)

@@ -110,6 +110,108 @@
     }
   },
   {
+    "name": "list_processes",
+    "description": "Xem ứng dụng nào đang ngốn RAM hoặc CPU nhất khi máy chậm.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "sort_by": {
+          "type": "string",
+          "enum": [
+            "memory",
+            "cpu"
+          ],
+          "description": "Xếp theo RAM hay CPU"
+        },
+        "limit": {
+          "type": "integer",
+          "description": "Lấy mấy cái đầu"
+        }
+      }
+    }
+  },
+  {
+    "name": "power",
+    "description": "Nguồn máy: khoá màn hình, ngủ, khởi động lại, tắt máy, hoặc huỷ lệnh đã hẹn.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "lock",
+            "sleep",
+            "restart",
+            "shutdown",
+            "cancel"
+          ],
+          "description": "Việc cần làm"
+        },
+        "delay_minutes": {
+          "type": "integer",
+          "description": "Hẹn mấy phút nữa"
+        }
+      },
+      "required": [
+        "action"
+      ]
+    }
+  },
+  {
+    "name": "kill_process",
+    "description": "Kết thúc một ứng dụng đang chạy theo tên hoặc pid, khi nó treo hoặc ngốn máy.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "name_or_pid": {
+          "type": "string",
+          "description": "Tên tiến trình hoặc pid"
+        }
+      },
+      "required": [
+        "name_or_pid"
+      ]
+    }
+  },
+  {
+    "name": "keep_awake",
+    "description": "Giữ máy không tự ngủ (vd đang tải file), hoặc thôi giữ.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "on": {
+          "type": "boolean",
+          "description": "true = giữ thức, false = thôi"
+        },
+        "minutes": {
+          "type": "integer",
+          "description": "Tự thôi sau mấy phút"
+        }
+      }
+    }
+  },
+  {
+    "name": "audio_device",
+    "description": "Xem hoặc đổi thiết bị phát âm thanh (loa, tai nghe).",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "list",
+            "switch"
+          ],
+          "description": "Xem hay đổi"
+        },
+        "name": {
+          "type": "string",
+          "description": "Tên thiết bị muốn chuyển sang"
+        }
+      }
+    }
+  },
+  {
     "name": "web_fetch",
     "description": "Tải nội dung một trang web theo URL để đọc/tóm tắt. Dùng khi người dùng đưa link hoặc muốn tóm tắt một trang cụ thể.",
     "input_schema": {

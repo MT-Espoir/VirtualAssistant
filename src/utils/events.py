@@ -21,6 +21,7 @@ class AssistantEvent:
     draft: Optional[dict] = None     # {to, subject, body} -> panel nháp email; {} = đóng panel
     mail: Optional[dict] = None      # {tu, tieu_de, ngay, than} -> panel THƯ ĐẾN; {} = đóng
     mails: Optional[dict] = None     # {rows, q} -> panel DANH SÁCH thư; rows rỗng = đóng
+    system: Optional[dict] = None    # {kind, rows, ...} -> panel quản trị; rows rỗng = đóng
 
 
 class AssistantBus:
@@ -67,6 +68,16 @@ class AssistantBus:
         đúng lối danh-sách-rồi-chi-tiết quen thuộc, không phải hai cửa sổ chồng nhau.
         """
         self._q.put(AssistantEvent(mails={"rows": list(rows or []), "q": q}))
+
+    def emit_system(self, kind, rows, **context):
+        """Gửi snapshot quản trị máy cho HUD; danh sách rỗng = ẩn panel.
+
+        Sao chép từng dòng vì producer chạy ở thread nền còn Tk đọc sau trên main thread;
+        giữ chung dict sẽ tạo race nếu action tiếp tục đánh dấu/chỉnh dữ liệu sau khi emit.
+        """
+        payload = dict(context, kind=kind,
+                       rows=[dict(row) for row in (rows or [])])
+        self._q.put(AssistantEvent(system=payload))
 
     def drain(self):
         """Lấy hết event đang chờ (không chặn)."""

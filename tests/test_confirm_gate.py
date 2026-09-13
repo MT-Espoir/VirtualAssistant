@@ -22,7 +22,7 @@ try:
 except ImportError:
     pytest = None
 
-from agent.tools import NeedsConfirmation, Tool, ToolRegistry
+from agent.tools import ActionRefused, NeedsConfirmation, Tool, ToolRegistry
 
 
 def _actions():
@@ -185,3 +185,119 @@ def test_fast_path_thuong_van_chay_thang_nhu_cu():
     agent = MagicMock()
     agent.registry = registry_with(actions=actions)
     assert app._run_fast(agent, ("set_volume", {"level": 35})) == "Đã đặt âm lượng 35%."
+
+
+# --------------------------- cờ destructive là HÀM --------------------------- #
+#
+# Ngân sách spec đẩy về phía gom nhiều hành động vào một tool theo enum
+# (`docs/system_admin_spec.md` §2–3). Cờ tĩnh khi đó chỉ có hai kết cục và cả hai đều sai:
+# hoặc hành động nguy hiểm chạy không hỏi, hoặc hành động vô hại cũng phải xác nhận —
+# mà hỏi thường xuyên thì người dùng bấm "có" theo phản xạ, cổng mất hết giá trị.
+
+def _reg_power(chay):
+    """Registry một tool `power(action)` gom hành động vô hại lẫn khó hoàn tác."""
+    reg = ToolRegistry()
+    reg.register(Tool(
+        name="power", description="nguồn máy",
+        input_schema={"type": "object", "properties": {"action": {"type": "string"}}},
+        handler=lambda action=None: chay(action) or f"đã {action}",
+        destructive=lambda action=None, **_: action in ("shutdown", "restart"),
+        confirm_message=lambda action=None: f"{action} máy",
+    ))
+    return reg
+
+
+def test_co_destructive_la_ham_chi_chan_dung_hanh_dong_nguy_hiem():
+    chay = MagicMock(return_value=None)   # trả None để `or` trong handler rơi xuống chuỗi
+    reg = _reg_power(chay)
+    assert reg.run("power", {"action": "lock"}) == "đã lock"    # vô hại -> chạy thẳng
+    chay.assert_called_once_with("lock")
+
+    with pytest.raises(NeedsConfirmation):
+        reg.run("power", {"action": "shutdown"})
+    assert chay.call_count == 1                                  # handler KHÔNG chạy thêm
+
+
+def test_co_destructive_la_ham_van_mo_duoc_bang_confirmed():
+    chay = MagicMock(return_value=None)   # trả None để `or` trong handler rơi xuống chuỗi
+    reg = _reg_power(chay)
+    assert reg.run("power", {"action": "shutdown"}, confirmed=True) == "đã shutdown"
+    chay.assert_called_once_with("shutdown")
+
+
+def test_co_destructive_la_ham_bi_loi_thi_chan_chu_khong_tha():
+    """Cờ rủi ro hỏng -> hỏi thừa một câu là phiền; đoán 'không nguy hiểm' mới là hỏng."""
+    reg = ToolRegistry()
+    reg.register(Tool(
+        name="power", description="nguồn máy", input_schema={"type": "object"},
+        handler=lambda **_: "chạy rồi",
+        destructive=lambda **_: 1 / 0,          # nổ
+        confirm_message=lambda **_: "làm việc đó",
+    ))
+    with pytest.raises(NeedsConfirmation):
+        reg.run("power", {"action": "lock"})
+
+
+def test_co_destructive_bool_van_chay_y_nhu_cu():
+    """Tương thích ngược: 47 tool đang có đều dùng bool, không được đổi hành vi."""
+    reg = registry_with(actions=_actions())
+    assert reg.gate("close_app", {"app_name": "chrome"}) is not None
+    assert reg.gate("list_windows", {}) is None
+
+
+# --------------------------- tool `admin` + lượt nhiễm --------------------------- #
+#
+# `docs/system_admin_spec.md` §7 lớp 1: tool quản trị gặp lượt đã chạm nội dung ngoài thì
+# TỪ CHỐI THẲNG, không hỏi thêm. Xác nhận bằng giọng là lớp phòng thủ chính của hệ này, và
+# nó dựa vào việc người dùng tỉnh táo đúng lúc — không nên để nó là thứ duy nhất đứng
+# trước một lệnh tắt máy do trang web mớm vào.
+
+def _reg_admin(chay):
+    reg = ToolRegistry()
+    reg.register(Tool(
+        name="kill_process", description="kết thúc tiến trình",
+        input_schema={"type": "object", "properties": {"ten": {"type": "string"}}},
+        handler=lambda ten=None: chay(ten) or f"đã tắt {ten}",
+        destructive=True, admin=True,
+        confirm_message=lambda ten=None: f"tắt {ten}",
+    ))
+    return reg
+
+
+def test_tool_admin_bi_tu_choi_khi_luot_nhiem():
+    chay = MagicMock(return_value=None)   # trả None để `or` trong handler rơi xuống chuỗi
+    reg = _reg_admin(chay)
+    with pytest.raises(ActionRefused) as err:
+        reg.run("kill_process", {"ten": "chrome"}, nhiem=True)
+    chay.assert_not_called()
+    assert err.value.name == "kill_process"
+    assert err.value.ly_do                                   # có câu nói được cho người dùng
+
+
+def test_tu_choi_khong_mo_duoc_bang_nguoi_dung_dong_y():
+    """Khác `NeedsConfirmation` ở chỗ này: một câu 'có' cũng không mở được."""
+    chay = MagicMock(return_value=None)   # trả None để `or` trong handler rơi xuống chuỗi
+    reg = _reg_admin(chay)
+    with pytest.raises(ActionRefused):
+        reg.run("kill_process", {"ten": "chrome"}, nhiem=True, confirmed=True)
+    chay.assert_not_called()
+
+
+def test_tool_admin_o_luot_sach_thi_chi_phai_xac_nhan_nhu_thuong():
+    chay = MagicMock(return_value=None)   # trả None để `or` trong handler rơi xuống chuỗi
+    reg = _reg_admin(chay)
+    with pytest.raises(NeedsConfirmation):               # hỏi, chứ không từ chối
+        reg.run("kill_process", {"ten": "chrome"}, nhiem=False)
+    assert reg.run("kill_process", {"ten": "chrome"}, confirmed=True) == "đã tắt chrome"
+    chay.assert_called_once_with("chrome")
+
+
+def test_tool_thuong_khong_bi_luot_nhiem_tu_choi():
+    """Luật chỉ nhắm tool `admin`. Tool đọc vẫn chạy được sau khi đọc web."""
+    reg = registry_with(actions=_actions())
+    assert reg.tu_choi("list_windows", {}, nhiem=True) is None
+
+
+def test_tu_choi_tra_none_cho_tool_khong_ton_tai():
+    reg = _reg_admin(MagicMock())
+    assert reg.tu_choi("khong_co_tool_nay", {}, nhiem=True) is None

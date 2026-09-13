@@ -19,20 +19,22 @@ from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-# Trần TỔNG payload tool specs gửi lên LLM mỗi lượt, tính bằng ký tự JSON.
-# Đo 2026-08-25: 47 tool = 19.351 chars (~6.450 token) — ĐỌC LẠI MỖI LƯỢT.
-# Trần đặt sát baseline có chủ đích: thêm feature mà vượt thì test đỏ NGAY tại đó,
-# buộc phải nén mô tả hoặc nâng trần có cân nhắc, thay vì để chi phí trôi âm thầm.
+# Trần TỔNG kích thước tool specs của cả catalog.
 #
-# HAI LỚP HÀNG RÀO, BẮT HAI LOẠI LỖI KHÁC NHAU — cố ý KHÔNG bắt tổng các trần
-# `Feature.max_spec_chars` phải nằm trong con số này (hiện chúng cộng lại là 22.000):
-#   - Trần TỔNG bắt "mọi thứ nhích dần": từng feature vẫn trong hạn mà cả hệ thống
-#     đã đắt lên. Đây là con số quyết định độ trễ, nên nó là cổng thật.
-#   - Trần TỪNG FEATURE bắt "một feature phình to" ngay cả khi tổng còn chỗ — ví dụ
-#     sau khi gỡ một feature khác, chỗ trống vừa giải phóng sẽ che mất việc phình.
-# Ép hai lớp phải cộng khớp nhau sẽ làm trần từng feature chỉ còn ~74 ký tự dư mỗi
-# cái (đang dùng 96% ngân sách), tức đỏ mỗi lần sửa câu chữ mô tả — vô dụng.
-SPEC_CHARS_BUDGET = 20_000
+# Ý NGHĨA ĐÃ ĐỔI ngày 2026-09-12, đọc kỹ trước khi dùng con số này để lập luận. Trước đó
+# nó là "thứ LLM đọc lại mỗi lượt", vì bề mặt mặc định `AllTools` gửi hết. `IndexedTools`
+# đã tách được chi phí mỗi lượt khỏi cả catalog, nhưng hiện TẮT mặc định sau eval thật
+# (`docs/indexed_tools_spec.md` §7f); payload của nó vẫn được canh riêng để sẵn sàng bật lại
+# ở `tests/test_bo_loi.py` và `test_spec_budget.py::test_payload_moi_luot_*`.
+#
+# Nên từ nay con số dưới đây canh ĐƯỜNG DỰ PHÒNG: `AllTools`, và case `general` của Router
+# (đường mặc định của model local). Nó vẫn phải có trần — bỏ hẳn thì đường dự phòng âm
+# thầm phình tới mức không dùng được — nhưng nó không còn là ràng buộc chặn tính năng.
+#
+# 20.000 -> 21.500 ngày 2026-09-12 để nhận trọn Tầng 1 quản trị (52 tool, 20.515).
+# Đây chính là kết cục `docs/system_admin_spec.md` §2 dự đoán: bộ quản trị đẩy N qua ngưỡng
+# của `AllTools`, và cách đi tiếp là đổi bề mặt chứ không phải nén mô tả thêm nữa.
+SPEC_CHARS_BUDGET = 21_500
 
 # Case "mọi thứ còn lại": không thu hẹp tool, không thuộc feature nào. Đặt ở hợp đồng
 # (chứ không ở router hay prompts) vì cả hai nơi đó đều cần, và cả hai đều nói về cùng

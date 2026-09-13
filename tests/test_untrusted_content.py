@@ -102,7 +102,27 @@ NGOAI = {
 
 NOI_BO = {
     "open_app", "close_app", "switch_window", "set_volume", "set_brightness",
-    "system_info", "open_website", "play_youtube", "take_screenshot", "scroll_screen",
+    "system_info", "open_website",
+    # `power` trả câu do CHÍNH TA sinh ("Sẽ tắt máy sau 1 phút") — không có gì từ ngoài.
+    "power", "kill_process", "keep_awake",
+    # `audio_device` trả tên thiết bị do PHẦN CỨNG/driver đặt. Cùng lằn ranh với
+    # `list_processes` ngay dưới: đặt được tên đó thì phải cắm được thiết bị vào máy này,
+    # tức cần tiếp cận vật lý — không phải thứ một trang web làm từ xa.
+    "audio_device",
+    # `list_processes` trả TÊN TIẾN TRÌNH, và đây là chỗ dễ xếp nhầm nên ghi rõ lằn ranh:
+    # `list_windows` nằm ở NGOAI vì tiêu đề cửa sổ Chrome CHÍNH LÀ tiêu đề trang web — một
+    # trang bất kỳ tự đặt được. Tên tiến trình thì không: muốn đặt tên, kẻ tấn công phải
+    # ghi được file và chạy được mã trên máy này rồi. Lằn ranh là "từ xa đặt được hay
+    # không", không phải "có phải chữ của hệ điều hành hay không".
+    #
+    # Rủi ro còn lại, ghi để đừng quên: người dùng tải rồi chạy "hoá đơn.exe" thì tên đó
+    # vào prompt. Lúc ấy máy đã bị chạy mã lạ, và cổng duyệt của `power`/`kill_process`
+    # vẫn đứng đó — nên đây là phòng thủ chiều sâu, không phải lỗ hổng bỏ ngỏ.
+    #
+    # Đổi lại: xếp nó vào NGOAI thì mỗi lần hỏi "cái gì làm máy chậm" là cả cửa sổ trí nhớ
+    # ngắn hạn bị đánh dấu nhiễm, và luồng "xem cái gì ngốn RAM -> tắt nó" chết vĩnh viễn
+    # chứ không phải "mất thêm một lượt" (`_nhiem` phai dần qua NHIỀU lượt, không phải một).
+    "list_processes", "play_youtube", "take_screenshot", "scroll_screen",
     "open_place_result", "set_my_location",
     "schedule_reminder", "schedule_action", "list_reminders", "cancel_reminder",
     "browser_open_or_reuse", "browser_media_control",

@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from agent import untrusted
 from llm.client import LLMClient, Message, ToolResult
 from agent.surface import AllTools
-from agent.tools import NeedsConfirmation, ToolRegistry
+from agent.tools import ActionRefused, NeedsConfirmation, ToolRegistry
 from memory.short_term import ShortTermMemory
 from memory.consolidation import parse_extracted_facts, EXTRACT_SYSTEM
 from agent.persona import (score_fluster, score_user_valence, parse_trait_nudges,
@@ -236,6 +236,14 @@ class Agent:
             # Chặn hành động khó hoàn tác: nếu model định gọi tool destructive, KHÔNG
             # chạy ngay — hoãn lại + hỏi người dùng, chỉ thực thi khi họ đáp "có" ở lượt
             # sau. Chốt trong CODE nên STT/model nghe nhầm cũng không lỡ tay.
+            # Từ chối xét TRƯỚC cả bước soi destructive: cái này không có đường đi
+            # tiếp, nên không cần dựng câu hỏi xác nhận làm gì.
+            tu_choi = self._find_refused(turn.tool_calls)
+            if tu_choi is not None:
+                self._ghi_nhan_tool(tu_choi["name"], f"{tu_choi['name']}: bị từ chối")
+                final_text = f"Xin lỗi, {tu_choi['ly_do']}."
+                break
+
             deferred = self._find_destructive(turn.tool_calls)
             if deferred is not None:
                 # KHÔNG chốt sổ ở đây: kết quả của lượt này chưa biết, nó nằm ở câu trả
@@ -256,6 +264,20 @@ class Agent:
                 break
 
             results = [self._run_tool(c) for c in turn.tool_calls]
+
+            # Bề mặt tool được quyền MỞ THÊM tool giữa lượt (`IndexedTools` mở một nhóm).
+            # `getattr` chứ không phải method bắt buộc: `AllTools` và `Router` không có
+            # `expand`, và thêm một method rỗng vào hai lớp không bao giờ dùng tới nó là
+            # đúng thứ YAGNI cấm. Xem `docs/indexed_tools_spec.md` §3.
+            them = getattr(self.surface, "expand", None)
+            if them is not None:
+                for call in turn.tool_calls:
+                    moi = them(call.name, call.arguments or {}, self.registry)
+                    if moi:
+                        # NỐI VÀO CUỐI, không chèn giữa và không sắp xếp lại: tool nằm
+                        # trong tiền tố gửi lên LLM, mà đổi tiền tố là mất KV cache —
+                        # 16–20 giây mỗi lượt trên Ollama (`test_prefix_stability.py`).
+                        tools = tools + moi
 
             # Kết quả tool đã là câu hoàn chỉnh -> đọc thẳng, khỏi tốn 1 lượt LLM soạn lời.
             shortcut = self._speakable_shortcut(iteration, turn.tool_calls, results)
@@ -504,6 +526,20 @@ class Agent:
         self._luot["loi"] = loi
 
     # ------------------------- xác nhận hành động khó hoàn tác ------------------------- #
+    def _find_refused(self, tool_calls):
+        """Trả {name, ly_do} cho lời gọi bị TỪ CHỐI đầu tiên trong lô, hoặc None.
+
+        Cùng lý do tồn tại với `_find_destructive`: soi cả lô trước khi chạy lô, để
+        "đọc A rồi tắt máy" không chạy nửa vời. Chính sách nằm ở `ToolRegistry.tu_choi`,
+        đây chỉ là lớp đi trước cho đúng thứ tự.
+        """
+        for call in tool_calls:
+            ly_do = self.registry.tu_choi(call.name, call.arguments or {},
+                                          nhiem=self._nhiem > 0)
+            if ly_do is not None:
+                return {"name": call.name, "ly_do": ly_do}
+        return None
+
     def _find_destructive(self, tool_calls):
         """Trả {name, arguments, phrase, preview} cho lời gọi CẦN DUYỆT đầu tiên, hoặc None.
 
@@ -654,6 +690,13 @@ class Agent:
             return ToolResult(tool_call_id=call.id, name=call.name,
                               content=f"Không có công cụ tên '{call.name}'.",
                               is_error=True)
+        except ActionRefused as e:
+            # Cùng vai với nhánh `NeedsConfirmation` dưới: `_find_refused` đã soi cả lô
+            # ngay trước đó, tới được đây nghĩa là có đường chạy tool bỏ qua bước soi.
+            logger.error("Bỏ sót cổng từ chối cho %s — registry đã chặn.", call.name)
+            self._ghi_nhan_tool(call.name, f"{call.name}: bị từ chối")
+            return ToolResult(tool_call_id=call.id, name=call.name,
+                              content=f"Không thực hiện: {e.ly_do}.", is_error=True)
         except NeedsConfirmation as e:
             # KHÔNG tới được bằng đường bình thường: `_find_destructive` đã soi cả lô ngay
             # trước đó. Tới được nghĩa là có đường chạy tool mới nào đó bỏ qua bước soi —

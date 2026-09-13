@@ -287,6 +287,27 @@ class AvatarWindow:
             logging.getLogger(__name__).warning("Không mở được panel danh sách thư",
                                                 exc_info=True)
 
+    def _show_system(self, payload):
+        """Mở/cập nhật panel quản trị máy; payload rỗng/không có dòng = đóng."""
+        try:
+            from ui.panels import audio_device_blocks, process_blocks
+            kind = payload.get("kind")
+            if kind == "processes":
+                title = "TIẾN TRÌNH"
+                blocks = process_blocks(payload.get("rows"), payload.get("sort_by"))
+            elif kind == "audio_devices":
+                title = "THIẾT BỊ ÂM THANH"
+                blocks = audio_device_blocks(payload.get("rows"))
+            else:
+                return
+            panel = self._panel("system", title, None)
+            panel.title = title
+            panel.show(blocks)
+        except Exception:
+            import logging
+            logging.getLogger(__name__).warning("Không mở được panel quản trị máy",
+                                                exc_info=True)
+
     def set(self, state=None, emotion=None, text=None):
         if state:
             self.state = state
@@ -314,6 +335,9 @@ class AvatarWindow:
                 continue
             if getattr(ev, "mails", None) is not None:
                 self._show_mail_list(ev.mails)
+                continue
+            if getattr(ev, "system", None) is not None:
+                self._show_system(ev.system)
                 continue
             if ev.state:
                 self.state = ev.state

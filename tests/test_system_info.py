@@ -25,6 +25,10 @@ def _install_fake_psutil():
     fake.cpu_percent = lambda interval=0.0: 25.0
     fake.cpu_count = lambda logical=True: 8
     fake.sensors_battery = lambda: types.SimpleNamespace(percent=80.0, power_plugged=True)
+    # Các module khác cũng dùng cùng binding `system_info.psutil` trong lúc pytest
+    # collection. Mock nền phải đủ API đọc trạng thái Windows Update để không làm
+    # sai lệch cổng fail-closed của tool nguồn.
+    fake.process_iter = lambda attrs=None: []
     sys.modules["psutil"] = fake
     return fake
 
@@ -79,6 +83,59 @@ def test_summary_single_section():
 def test_summary_unknown():
     out = system_info.get_system_summary("khong_biet")
     assert "Không hiểu" in out
+
+
+# --------------------- thời gian pin còn lại (docs/system_admin_spec.md §5.1) --------- #
+
+def test_secsleft_sentinel_khong_bao_gio_doc_thanh_so_am():
+    """Hồi quy cho đúng cái bẫy: `secsleft` là SENTINEL ÂM, không phải giây. Đọc thẳng thì
+    thành "còn âm hai giây"."""
+    for gia_tri in (-1, -2, -99):
+        out = system_info.format_battery_left(gia_tri)
+        assert "âm" not in out and "-" not in out
+
+
+def test_dang_sac_thi_khong_uoc_luong():
+    assert system_info.format_battery_left(7412, plugged=True) == ""
+    assert system_info.format_battery_left(-2) == ""          # UNLIMITED = đang sạc
+    assert system_info.format_battery_left(None) == ""
+
+
+def test_chua_du_du_lieu_thi_noi_that():
+    """`-1` là trạng thái HAY GẶP ngay sau khi rút sạc — đúng lúc người ta hỏi nhất."""
+    assert "chưa ước lượng được" in system_info.format_battery_left(-1)
+
+
+def test_lam_tron_theo_cach_nguoi_ta_noi():
+    assert system_info.format_battery_left(30) == "còn dưới một phút"
+    assert system_info.format_battery_left(7 * 60) == "còn khoảng 7 phút"
+    assert system_info.format_battery_left(12 * 60) == "còn khoảng 10 phút"
+    assert system_info.format_battery_left(59 * 60) == "còn khoảng 1 tiếng"
+    assert system_info.format_battery_left(7412) == "còn khoảng 2 tiếng"      # 2h03
+    assert system_info.format_battery_left(150 * 60) == "còn khoảng 2 tiếng 30 phút"
+    assert system_info.format_battery_left(175 * 60) == "còn khoảng 3 tiếng"  # 2h55 -> 3h
+
+
+def test_so_vo_ly_bi_chan():
+    assert system_info.format_battery_left(99 * 3600) == "còn hơn một ngày"
+
+
+def test_battery_info_gop_thoi_gian_con_lai():
+    system_info.psutil.sensors_battery = lambda: types.SimpleNamespace(
+        percent=45.0, power_plugged=False, secsleft=7412)
+    out = system_info.get_battery_info()
+    assert "45%" in out and "dùng pin" in out and "2 tiếng" in out
+    system_info.psutil.sensors_battery = lambda: types.SimpleNamespace(
+        percent=80.0, power_plugged=True)
+
+
+def test_battery_info_thieu_secsleft_van_chay():
+    """psutil trên vài nền tảng không có trường này — không được nổ."""
+    system_info.psutil.sensors_battery = lambda: types.SimpleNamespace(
+        percent=55.0, power_plugged=False)
+    assert "55%" in system_info.get_battery_info()
+    system_info.psutil.sensors_battery = lambda: types.SimpleNamespace(
+        percent=80.0, power_plugged=True)
 
 
 def test_system_info_tool_calls_correct_path():

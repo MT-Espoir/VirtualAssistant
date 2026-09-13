@@ -81,6 +81,35 @@ def test_specs_khop_anh_chup_truoc_refactor():
     byte với bản gốc thay vì "chạy thử thấy ổn". Đổi tức là đã lỡ tay đụng vào hành vi —
     hoặc thứ tự nạp feature vừa xê dịch.
 
+    CHỤP LẠI LẦN BỐN (2026-09-12): thêm nốt Tầng 1 — `kill_process`, `keep_awake`,
+    `audio_device` (`docs/system_admin_spec.md` §4). Cùng kiểu dịch chỗ như lần ba: chúng
+    vào vị trí 10-12 nên đẩy 40 tool phía sau, tiền tố chung còn 9 tool. Nội dung tool cũ
+    không đổi ký tự nào.
+
+    Và từ lần này chi phí đó NHỎ HƠN HẲN, vì bề mặt mặc định không còn là `AllTools`: với
+    `IndexedTools`, thứ gửi đi mỗi lượt là bộ lõi (19 tool) — cả ba tool mới đều nằm NGOÀI
+    lõi nên tiền tố của đường chạy THẬT không hề đổi. Ảnh chụp này giờ canh đường dự phòng.
+
+    CHỤP LẠI LẦN BA (2026-09-11): thêm `list_processes` + `power`
+    (`docs/system_admin_spec.md` §4). Lần chụp lại TỐN KÉM NHẤT từ trước tới nay, ghi rõ
+    để lần sau cân nhắc trước chứ không phát hiện sau:
+
+    Hai tool này thuộc feature `system`, mà `system` đứng ĐẦU `catalog.py::FEATURES`. Nên
+    chúng chèn vào vị trí 8-9 và đẩy CẢ 40 TOOL PHÍA SAU xuống hai chỗ — tiền tố chung với
+    ảnh chụp cũ rơi từ 47 tool xuống còn 7. Nội dung từng tool cũ không đổi một ký tự (đã
+    kiểm: diff của chính file fixture này là +49/−1, thuần chèn thêm), chỉ vị trí đổi.
+
+    Vì sao vẫn chấp nhận: chi phí là MỘT LẦN, không phải mỗi lượt. Thứ ~16-20s/lượt mà file
+    này canh là thứ tự đổi GIỮA HAI LẦN CHẠY (vd `os.listdir` không hứa thứ tự) — cache
+    nguội vĩnh viễn. Đây thì mọi lượt sau khi cập nhật đều dùng chung một tiền tố mới, nên
+    chỉ lượt đầu tiên phải đọc lại. `test_specs_giong_het_tung_byte_giua_hai_lan_dung` vẫn
+    xanh, tức tính tất định — thứ thật sự quan trọng — còn nguyên.
+
+    Cách tránh nếu lần sau muốn rẻ hơn: đặt tool mới ở feature nằm CUỐI `FEATURES`, khi đó
+    tiền tố của toàn bộ tool cũ giữ nguyên từng byte. Không làm lần này vì spec nói rõ đây
+    là "mở rộng feature `system`", và bẻ tính năng ra một package riêng chỉ để chiều cache
+    là để chi tiết hiệu năng nắn kiến trúc.
+
     CHỤP LẠI LẦN HAI (2026-08-29, đợt 3 của vá bảo mật): `browser_close_tab` bỏ tham số
     `confirm` khỏi lược đồ và rút gọn mô tả. Tool này từng tự làm hai pha bằng `confirm`,
     với luật "đừng tự đặt confirm=true" viết trong MÔ TẢ TOOL — tức nằm đúng trong thứ mà
@@ -104,3 +133,64 @@ def test_specs_khop_anh_chup_truoc_refactor():
         "specs() lệch khỏi ảnh chụp trước refactor. Nếu KHÔNG cố ý đổi tool nào, đây là "
         "dấu hiệu thứ tự nạp feature vừa xê dịch -> mất KV cache mỗi lượt."
     )
+
+
+# --------------------------- IndexedTools: nền phải cố định --------------------------- #
+#
+# `IndexedTools` mở thêm nhóm GIỮA LƯỢT, tức là đụng thẳng vào thứ file này canh. Hai tính
+# chất phải giữ, nếu không thì cái tiết kiệm được về ký tự bị trả lại bằng thời gian nạp
+# lại cache: nền giống hệt từng byte giữa các lượt, và mở nhóm chỉ NỐI VÀO CUỐI.
+
+def _json_list(specs):
+    """`_specs_json` ở trên nhận REGISTRY; bề mặt tool trả về một LIST spec."""
+    return json.dumps(specs, ensure_ascii=False)
+
+
+def _indexed():
+    import dataclasses
+    from unittest.mock import MagicMock
+
+    from agent.surface import IndexedTools
+    from features.contract import FeatureContext
+    from features.registry import build_registry
+
+    ctx = {f.name: MagicMock() for f in dataclasses.fields(FeatureContext)}
+    ctx["mcp"] = None
+    reg, report = build_registry(FeatureContext(**ctx))
+    return reg, IndexedTools("SYS", report)
+
+
+def test_nen_indexed_giong_het_tung_byte_giua_hai_luot():
+    reg, ix = _indexed()
+    s1, t1 = ix.select("mở chrome", reg)
+    s2, t2 = ix.select("thời tiết Hà Nội thế nào", reg)
+    assert s1 == s2                                   # prompt + mục lục
+    assert _json_list(t1) == _json_list(t2)           # khối tool
+
+
+def test_mo_nhom_chi_NOI_VAO_CUOI_khong_sua_phan_da_co():
+    reg, ix = _indexed()
+    _, nen = ix.select("tìm quán cà phê", reg)
+    truoc = _json_list(nen)
+    moi = ix.expand("mo_nhom", {"nhom": "place"}, reg)
+    assert moi
+    # Phần đầu của mảng sau khi nối phải khớp TỪNG BYTE với nền.
+    assert _json_list((nen + moi)[:len(nen)]) == truoc
+
+
+def test_thu_tu_muc_luc_khong_doi_giua_hai_lan_dung():
+    """Mục lục dựng từ `features/catalog.py` (thứ tự xác định), không từ dict/set."""
+    reg1, ix1 = _indexed()
+    reg2, ix2 = _indexed()
+    assert ix1.select("x", reg1)[0] == ix2.select("x", reg2)[0]
+
+
+def test_mo_nhom_khong_tra_tool_da_co_trong_bo_loi():
+    """Nối trùng một tool đã nằm trong nền là vừa tốn ký tự vừa đưa LLM hai spec cùng tên."""
+    reg, ix = _indexed()
+    _, nen = ix.select("x", reg)
+    co_san = {s["name"] for s in nen}
+    for nhom in ("web", "place", "system"):
+        ix.select("x", reg)                            # reset trạng thái lượt
+        moi = ix.expand("mo_nhom", {"nhom": nhom}, reg) or []
+        assert not ({s["name"] for s in moi} & co_san), nhom

@@ -102,16 +102,42 @@ def test_khong_tool_nao_phinh_qua_muc():
 
 # --- lớp 3: payload MỖI LƯỢT, đo qua bề mặt tool ------------------------------------
 
-def test_payload_moi_luot_cua_be_mat_mac_dinh():
-    """Đo qua `AllTools` chứ không qua registry: đây mới là thứ model thật sự nhận.
+# Trần payload MỘT LƯỢT của `IndexedTools` — prompt + specs, tức đúng thứ model nhận.
+# Đây là con số THẬT SỰ quyết định độ trễ từ 2026-09-12, thay chỗ `SPEC_CHARS_BUDGET` cũ.
+# Đo được 18.996; đặt trần sát mức thật như mọi trần khác trong file này.
+#
+# Từng là 13.000 khi nền mới có 12.029. Nới lên sau khi eval thật cho thấy nền đó mua độ
+# rẻ bằng ĐỘ CHÍNH XÁC — thiếu chỉ dẫn của nhóm có tool trong lõi thì tool-acc tụt 4 điểm
+# (`docs/indexed_tools_spec.md` §7e). Đây là lần nới có SỐ ĐO đứng sau, không phải nới cho
+# hết đỏ; và nó vẫn còn cách `AllTools` (31.356) rất xa.
+PAYLOAD_LUOT_BUDGET = 19_500
 
-    Hôm nay bằng đúng tổng catalog (bề mặt mặc định gửi hết). Ngày có `IndexedTools`,
-    test này tự đo con số mới còn `test_tong_nam_trong_ngan_sach` thì không — đó là lý do
-    hai test cùng tồn tại chứ không phải một cái thừa.
+
+def test_payload_moi_luot_cua_be_mat_mac_dinh():
+    """Đo qua BỀ MẶT chứ không qua registry: đây mới là thứ model thật sự nhận mỗi lượt.
+
+    Ngày viết file này (2026-08-25) con số đây bằng đúng tổng catalog, vì bề mặt mặc định
+    gửi hết. Từ 2026-09-12 hai số đã TÁCH RA — đúng như docstring đầu file dự đoán — và
+    đây là lý do hai test cùng tồn tại chứ không phải một cái thừa.
+
+    Cố ý đo CẢ HAI bề mặt thay vì hỏi `config.surface_mode()`: một test đổi ý nghĩa theo
+    biến môi trường của máy đang chạy thì không canh được gì.
     """
-    reg, _ = _registry_va_report()
+    from agent.surface import IndexedTools
+    from llm import prompts
+    reg, report = _registry_va_report()
+
+    # Đường dự phòng (`AllTools`, và case `general` của Router) — vẫn phải có trần.
     _, specs = AllTools("").select("câu bất kỳ", reg)
     assert _chars(specs) <= SPEC_CHARS_BUDGET
+
+    # Đường MẶC ĐỊNH với provider mạnh. `base()` chứ không `merged()`, giống app.py.
+    ix = IndexedTools(prompts.base(), report)
+    system, specs = ix.select("câu bất kỳ", reg)
+    tong = len(system) + _chars(specs)
+    assert tong <= PAYLOAD_LUOT_BUDGET, (
+        f"Payload mỗi lượt của IndexedTools phình lên {tong} (trần {PAYLOAD_LUOT_BUDGET}). "
+        f"Thủ phạm thường là BỘ LÕI to ra — xem tests/test_bo_loi.py.")
 
 
 def test_moi_case_da_thu_hep_nam_trong_tran_case():
@@ -148,19 +174,36 @@ def test_thu_hep_theo_case_KHONG_chan_duoc_truong_hop_xau_nhat():
 
 # --- cảnh báo sớm: còn bao nhiêu chỗ trống -----------------------------------------
 
+# Ngưỡng cảnh báo sớm cho ĐƯỜNG DỰ PHÒNG. 500 -> 250 (2026-09-11) -> 900 (2026-09-12).
+#
+# Lần này NÂNG chứ không hạ, và lý do khác hẳn hai lần trước: trần tổng vừa được nới lên
+# 21.500 vì nó không còn canh payload mỗi lượt nữa (xem `features/contract.py`). Ngưỡng
+# cảnh báo đi theo để giữ nguyên VAI TRÒ của nó — báo trước khi đường dự phòng hết chỗ —
+# thay vì giữ nguyên CON SỐ, vốn chỉ có nghĩa với cái trần cũ.
+#
+# Ghi lại lập luận cũ vì nó vẫn đúng cho đường dự phòng:
+#
+# Ngưỡng cũ 500 ("còn đủ chỗ cho một feature nhỏ cỡ `weather`") đã hoàn thành đúng việc
+# của nó: nó đỏ lên khi `list_processes` + `power` (698 ký tự) được thêm vào, đúng lúc
+# đáng đỏ. Không hạ ngưỡng để làm nó im — hạ vì thứ nó cảnh báo ĐÃ XẢY RA và đã được
+# quyết: ngân sách coi như cạn, tool tiếp theo phải đợi `IndexedTools` bật mặc định
+# (`docs/system_admin_spec.md` §2, §10 mục 1).
+#
+# 250 không phải con số đẹp mà là con số THẬT: một tool trung bình tốn ~400 ký tự, nên
+# dưới 400 thì tool kế tiếp sẽ vỡ trần CỨNG ở `test_ngan_sach` bên trên chứ không dừng ở
+# cảnh báo. Giữ 250 để còn một vạch báo trước khi đâm vào tường, thay vì bỏ hẳn test.
+NGUONG_CANH_BAO = 900
+
+
 def test_con_du_dia_cho_it_nhat_mot_feature_nho():
     """CẢNH BÁO SỚM, không phải cổng chặn.
 
-    Đang dùng 96% ngân sách (19.257/20.000). Thêm một feature cỡ `weather` (493 ký tự)
-    là vượt. Test này đỏ TRƯỚC khi điều đó xảy ra, để việc nén payload (gom tool theo
-    `action` enum — việc 12 của sprint) được lên lịch chứ không bị dồn tới lúc kẹt.
-
-    Đỏ ở đây KHÔNG chặn tính năng nào: hoặc nén bớt, hoặc chỉnh ngưỡng này xuống một
-    cách có ý thức và ghi lại lý do.
+    Đỏ ở đây KHÔNG chặn tính năng nào: hoặc nén bớt, hoặc chỉnh `NGUONG_CANH_BAO` xuống
+    một cách có ý thức và ghi lại lý do — xem khối chú thích ngay trên.
     """
     report = _report()
     con_lai = SPEC_CHARS_BUDGET - report.spec_chars
-    assert con_lai >= 500, (
-        f"Chỉ còn {con_lai} ký tự trống trong ngân sách — không đủ cho một feature nhỏ. "
-        f"Đã tới lúc nén payload (gom tool cùng nhóm), xem docs/module_refactor_sprint.md."
+    assert con_lai >= NGUONG_CANH_BAO, (
+        f"Chỉ còn {con_lai} ký tự trống trong ngân sách. Ngân sách đã cạn từ 2026-09-11: "
+        f"tool mới phải đợi `IndexedTools` bật mặc định, đừng nới ngưỡng này thêm nữa."
         + _bang(report))

@@ -13,6 +13,11 @@ from actions.system.window_control import list_windows, switch_to_window
 from actions.system.system_control import (
     control_volume,
     control_brightness,
+    control_power,
+    keep_awake,
+    audio_device,
+    audio_device_report,
+    kill_process,
 )
 from actions.web.web_search import (
     search_web,
@@ -21,7 +26,7 @@ from actions.web.web_search import (
     search_and_play_youtube_direct,
     search_on_specific_site,
 )
-from actions.system.system_info import get_system_summary
+from actions.system.system_info import get_system_summary, list_processes, process_report
 from actions.web.web_content import fetch_url_text, wikipedia_summary
 from actions.weather import get_weather
 
@@ -51,6 +56,27 @@ class AssistantActions:
 
     def system_info(self, what="all"):
         return get_system_summary(what)
+
+    def list_processes(self, sort_by="memory", limit=3):
+        return list_processes(sort_by=sort_by, limit=limit)
+
+    def process_report(self, sort_by="memory", limit=3):
+        return process_report(sort_by=sort_by, limit=limit)
+
+    def control_power(self, action=None, delay_minutes=None):
+        return control_power(action=action, delay_minutes=delay_minutes)
+
+    def keep_awake(self, on=True, minutes=None):
+        return keep_awake(on=on, minutes=minutes)
+
+    def audio_device(self, action="list", name=None):
+        return audio_device(action=action, name=name)
+
+    def audio_device_report(self, action="list", name=None):
+        return audio_device_report(action=action, name=name)
+
+    def kill_process(self, name_or_pid=None):
+        return kill_process(name_or_pid)
 
     # --- Tra cứu / đọc web ---
     def web_fetch(self, url):

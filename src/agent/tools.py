@@ -31,7 +31,14 @@ class Tool:
     description: str
     input_schema: dict          # JSON Schema cho tham số
     handler: Callable[..., str]  # nhận **kwargs theo schema, trả về chuỗi
-    destructive: bool = False    # True = khó hoàn tác -> Agent hỏi xác nhận trước khi chạy
+    # True = khó hoàn tác -> Agent hỏi xác nhận trước khi chạy.
+    #
+    # Nhận cả CALLABLE `(**args) -> bool`, cùng lối với `confirm_message`/`preview` ngay
+    # dưới. Cần cho tool gom nhiều hành động khác nhau về rủi ro vào một enum — ngân sách
+    # spec đẩy ta về phía gom (xem `docs/system_admin_spec.md` §2–3), mà cờ tĩnh thì
+    # `power(action=lock|shutdown)` chỉ có hai kết cục và cả hai đều sai: hoặc tắt máy
+    # không hỏi, hoặc khoá màn hình cũng phải xác nhận.
+    destructive: "bool | Callable[..., bool]" = False
     confirm_message: Callable[..., str] = None  # (**args) -> cụm mô tả việc sẽ làm, để hỏi
     # (**args) -> dict để HIỆN RA cho người dùng xem trước khi xác nhận, hoặc None nếu
     # không có gì đáng xem. Chỉ có nghĩa với tool destructive (Agent gọi lúc hoãn hành
@@ -73,6 +80,33 @@ class Tool:
     # sống một lượt, lỗ này cắm rễ qua nhiều phiên.
     persistent: bool = False
 
+    # QUẢN TRỊ: tool đụng tới chính cái máy chứ không tới dữ liệu (kết thúc tiến trình,
+    # tắt/khởi động lại máy). Khác `destructive` ở BẬC thiệt hại, nên khác cả cách xử:
+    # `destructive` thì HỎI, `admin` gặp lượt nhiễm thì TỪ CHỐI THẲNG — xem `gate()` và
+    # `docs/system_admin_spec.md` §7. Gửi nhầm một email còn xin lỗi được; kill nhầm tiến
+    # trình đang lưu file thì không.
+    admin: bool = False
+
+    # TỰ ĐỘNG: tool được phép chạy trên đường trợ lý TỰ khởi xướng (vòng nền chủ động),
+    # nơi KHÔNG có lượt nào để hỏi ai cả. Mặc định False, và đó là mặc định đúng: thêm
+    # tool mới thì nó nằm ngoài đường tự động cho tới khi có người cân nhắc đưa vào.
+    #
+    # Điều kiện để bật, ghi ở đây vì đây là chỗ người ta nhìn khi định bật nó: hành động
+    # phải HOÀN TÁC ĐƯỢC BẰNG MỘT CÂU NÓI. `set_brightness` đạt (hạ sáng rồi bảo "sáng
+    # lên" là xong); `kill_process` và `power` thì vĩnh viễn không — một hành động khó
+    # hoàn tác do máy tự quyết định thì không còn ai chịu trách nhiệm cho nó.
+    # Xem `docs/system_admin_spec.md` §5.3.
+    tu_dong: bool = False
+
+    # CẤM CỨNG: `(**args) -> lý do | None`. Trả về chuỗi thì lời gọi KHÔNG chạy, kể cả khi
+    # người dùng đã đồng ý — khác `destructive` ở đúng điểm đó.
+    #
+    # Vì sao cần một trục nữa: hai lớp kia (`admin` + `gate`) đều quy về "hỏi người dùng",
+    # mà xác nhận dựa vào việc người dùng tỉnh táo đúng lúc. Người đang bận trả lời "ừ"
+    # theo phản xạ thì cả hai lớp đã làm đúng việc của mình mà máy vẫn hỏng. Nên phải có
+    # những thứ KHÔNG cửa nào mở được. Xem `docs/system_admin_spec.md` §7 lớp 3.
+    cam: Callable[..., str] = None
+
     def spec(self) -> dict:
         """Định nghĩa tool gửi cho LLM (định dạng Anthropic tool-use)."""
         return {
@@ -80,6 +114,36 @@ class Tool:
             "description": self.description,
             "input_schema": self.input_schema,
         }
+
+
+def _co(flag, args):
+    """Đọc một cờ rủi ro: callable thì gọi với `args`, không thì đọc thẳng.
+
+    Callable nổ -> coi như CÓ. Cờ rủi ro hỏng thì hỏi thừa một câu là phiền; đoán là
+    "không nguy hiểm" rồi chạy thẳng mới là hỏng thật.
+    """
+    if callable(flag):
+        try:
+            return bool(flag(**(args or {})))
+        except Exception:
+            logger.warning("Cờ rủi ro lỗi khi chấm %r -> coi như cần duyệt", args,
+                           exc_info=True)
+            return True
+    return bool(flag)
+
+
+class ActionRefused(Exception):
+    """Lời gọi bị TỪ CHỐI THẲNG — không phải "hỏi rồi làm", mà là không làm.
+
+    Khác `NeedsConfirmation` ở chỗ không có đường đi tiếp: người dùng đáp "có" cũng không
+    mở được. Mang theo câu nói được để nơi bắt đọc thẳng cho người dùng nghe.
+    """
+
+    def __init__(self, name, arguments, ly_do):
+        super().__init__(f"Tool {name!r} bị từ chối: {ly_do}")
+        self.name = name
+        self.arguments = arguments
+        self.ly_do = ly_do
 
 
 class NeedsConfirmation(Exception):
@@ -123,6 +187,45 @@ class ToolRegistry:
     def specs(self) -> List[dict]:
         return [t.spec() for t in self._tools.values()]
 
+    def tu_choi(self, name: str, arguments: dict, nhiem: bool = False,
+                tu_dong: bool = False) -> str:
+        """Lý do lời gọi này KHÔNG được phép chạy, hoặc None nếu được phép.
+
+        Tách hẳn khỏi `gate()` vì đây là câu hỏi khác: `gate()` hỏi *có phải hỏi người
+        dùng không*, hàm này hỏi *có được làm không*. Nhập hai câu đó vào một giá trị trả
+        về thì nơi gọi phải phân biệt bằng hình dạng dict — đúng thứ về sau đọc nhầm.
+
+        Ba luật, cùng một lý do nền: có những lúc cổng xác nhận KHÔNG dùng được, và lúc
+        đó câu trả lời phải là "không", không phải "hỏi kỹ hơn".
+
+        1. Tool `admin` gặp lượt đã chạm nội dung ngoài -> từ chối, KHÔNG hỏi thêm
+           (`docs/system_admin_spec.md` §7 lớp 1). Xác nhận bằng giọng là lớp phòng thủ
+           chính của hệ này, mà nó dựa vào việc người dùng tỉnh táo đúng lúc; không nên
+           để nó là thứ duy nhất đứng trước một lệnh tắt máy do trang web mớm vào.
+        2. Đường TỰ ĐỘNG chỉ chạy tool có cờ `tu_dong` (§5.3). Ở đây cổng duyệt không
+           thủng — nó đơn giản là KHÔNG TỒN TẠI, vì cả `gate()` lẫn vết nhiễm đều dựng
+           quanh hình dạng *người dùng hỏi → xác nhận → chạy* mà đường tự động thiếu hẳn
+           vế đầu. Nên chặn bằng danh sách trắng, không bằng cách hỏi.
+        3. `tool.cam(**args)` trả lý do -> cấm cứng, không cửa nào mở (§7 lớp 3). Khác hai
+           luật trên ở chỗ nó xét THAM SỐ chứ không xét ngữ cảnh: cùng một tool, tắt máy
+           lúc bình thường thì được, tắt máy giữa lúc Windows đang cài cập nhật thì không.
+        """
+        tool = self._tools.get(name)
+        if tool is None:
+            return None
+        if nhiem and tool.admin:
+            return ("lượt này đã đọc nội dung từ bên ngoài nên tôi không tự ý đụng vào máy; "
+                    "bạn nói lại giúp tôi ở lượt sau nhé")
+        if tu_dong and not tool.tu_dong:
+            return f"tôi không được tự ý làm việc '{name}' khi bạn chưa bảo"
+        if tool.cam is not None:
+            try:
+                return tool.cam(**(arguments or {})) or None
+            except Exception:      # lệnh cấm hỏng -> cấm. Cùng lối fail-closed với `_co`.
+                logger.warning("Lệnh cấm của %s lỗi -> từ chối cho chắc", name, exc_info=True)
+                return f"tôi không kiểm được việc '{name}' lúc này có an toàn không"
+        return None
+
     def gate(self, name: str, arguments: dict, nhiem: bool = False) -> dict:
         """{name, arguments, phrase, preview} nếu lời gọi này CẦN duyệt; None nếu không.
 
@@ -158,7 +261,7 @@ class ToolRegistry:
         except Exception as e:            # dựng bản xem trước lỗi -> coi như không có
             logger.warning("Không dựng được bản xem trước cho %s: %s", name, e)
             preview = None
-        can_duyet = tool.destructive or bool(preview)
+        can_duyet = _co(tool.destructive, args) or bool(preview)
         if nhiem and (tool.exfil or tool.persistent):
             can_duyet = True
             # CỔNG tự dựng bản xem trước, thay vì gắn `preview` vào từng tool `exfil`: gắn
@@ -176,7 +279,7 @@ class ToolRegistry:
         return {"name": name, "arguments": args, "phrase": phrase, "preview": preview}
 
     def run(self, name: str, arguments: dict, confirmed: bool = False,
-            nhiem: bool = False) -> str:
+            nhiem: bool = False, tu_dong: bool = False) -> str:
         """Thực thi tool. Ném KeyError nếu không có tool tên đó.
 
         Chưa `confirmed` mà `gate()` bảo cần duyệt -> ném `NeedsConfirmation`, handler
@@ -184,8 +287,18 @@ class ToolRegistry:
         gọi đi qua: fast-path và nút trên panel gọi thẳng registry, còn các bề mặt tool
         sau này (meta-tool, code) không có `tool_calls` để agent soi. Xem
         `docs/tool_surface_spec.md` §5.
+
+        `tu_dong=True` = lời gọi đến từ vòng nền chủ động, KHÔNG từ người dùng. Cờ này chỉ
+        SIẾT chứ không bao giờ nới: nó thêm một luật từ chối, và cố ý KHÔNG hàm ý
+        `confirmed` — tool tự động nào lỡ thành `destructive` thì nó dừng lại ở đây chứ
+        không âm thầm chạy, vì đường này không có ai để hỏi.
         """
         tool = self._tools[name]
+        # Từ chối xét TRƯỚC `confirmed`: đây là thứ một câu "có" không mở được, nên nó
+        # phải đứng trên cả đường đã-được-duyệt.
+        ly_do = self.tu_choi(name, arguments, nhiem=nhiem, tu_dong=tu_dong)
+        if ly_do is not None:
+            raise ActionRefused(name, arguments, ly_do)
         if not confirmed:
             can_duyet = self.gate(name, arguments, nhiem=nhiem)
             if can_duyet is not None:

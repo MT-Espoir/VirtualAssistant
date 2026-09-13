@@ -150,6 +150,30 @@ class Config:
     #   (2.86 -> 1.86 call/lượt). Ngược lại qwen 7B từng bỏ router và HỎNG (không gọi
     #   tool khi thấy toàn bộ bộ tool, model local thì lạc).
     ROUTER_MODE = _get("ROUTER_MODE", "auto").strip().lower()
+    # Bề mặt tool (`agent/surface.py`): "auto" (mặc định) | "all" | "indexed".
+    #   all     = gửi TOÀN BỘ tool mỗi lượt. O(N). Rẻ về số vòng, đắt về ký tự.
+    #   indexed = bộ lõi + mục lục nhóm; model gọi `mo_nhom` khi cần nhóm khác. O(√N).
+    #             Đổi KÝ TỰ lấy THỜI GIAN: lượt phải mở nhóm tốn thêm một vòng LLM.
+    #   auto    = ĐO RỒI CHỌN. Hiện là `all` cho mọi provider — xem khối dưới.
+    #
+    # Vì sao `auto` KHÔNG chọn indexed, dù cơ chế đã chạy đúng: eval thật 2026-09-12 trên
+    # Gemini, 54 ca, cùng máy cùng buổi (`docs/indexed_tools_spec.md` §7f):
+    #
+    #     tool-acc  100% -> 96%      (tiêu chí 2 TRƯỢT)
+    #     giây/lượt 7,9  -> 9,1      (tiêu chí 3 TRƯỢT, +15%)
+    #     ký tự/ca  59.296 -> 40.602 (−32%, đây là thứ nó MUA được)
+    #
+    # Ở N = 52 tool, `AllTools` vẫn chọn đúng 54/54 — tức bài toán mà `IndexedTools` sinh
+    # ra để giải CHƯA XẢY RA. Nó không hỏng; nó chưa tới lúc. Đặt lại thành `all` theo đúng
+    # luật spec §7 tự đặt ra ("không đạt cả ba thì giữ AllTools làm mặc định").
+    #
+    # Khi nào xét lại: (a) N vượt ~70-80 và tool-acc của `AllTools` bắt đầu tụt, hoặc
+    # (b) chi phí token API quan trọng hơn độ trễ — lúc đó −32% ký tự là món hời.
+    # Bật bằng `TOOL_SURFACE=indexed`, không phải sửa code.
+    #
+    # Và với model local thì đừng bật kể cả lúc đó: mở nhóm giữa lượt nối tool vào cuối,
+    # tiền tố đổi giữa hai vòng của CÙNG một lượt, Ollama mất 16-20 giây mỗi lần.
+    TOOL_SURFACE = _get("TOOL_SURFACE", "auto").strip().lower()
     # Đọc THẲNG kết quả tool khi tool đó đã trả câu hoàn chỉnh (thời tiết, thông tin máy,
     # "Đã mở Chrome") -> bớt 1 lượt LLM soạn lời.
     # MẶC ĐỊNH TẮT vì 2 đánh đổi: (1) câu trả lời mất giọng persona (nghe khô hơn);
@@ -349,6 +373,27 @@ class Config:
         if self.ROUTER_MODE == "off":
             return False
         return (self.LLM_PROVIDER or "").strip().lower() not in STRONG_PROVIDERS
+
+    def surface_mode(self) -> str:
+        """Bề mặt tool cho phiên này: "router" | "indexed" | "all". MỘT chỗ quyết định.
+
+        Gộp `ROUTER_MODE` và `TOOL_SURFACE` vào một hàm vì cả ba lựa chọn đều là cài đặt
+        của CÙNG một hợp đồng `select()` — chỉ được chọn một. Để hai cờ tự quyết riêng thì
+        có lúc cả hai cùng "bật" và nơi gọi phải tự bịa thứ tự ưu tiên.
+
+        Luật: đặt tường minh thì thắng đặt tự động. `TOOL_SURFACE=indexed` là một lời yêu
+        cầu rõ ràng, nên nó vượt cả `ROUTER_MODE=auto` — còn `ROUTER_MODE=on` vẫn thắng
+        `TOOL_SURFACE=auto` theo đúng lý lẽ đó.
+
+        `auto` hiện quy về `all` cho mọi provider mạnh; lý do bằng số ở khối chú thích của
+        `TOOL_SURFACE`. Giữ ba giá trị chứ không xoá bớt vì `auto` là chỗ ghi câu trả lời
+        ĐANG ĐÚNG — số đo đổi thì sửa đúng một hàm này.
+        """
+        if self.TOOL_SURFACE == "indexed":
+            return "indexed"
+        if self.use_router():
+            return "router"
+        return "all"
 
 
 # Instance dùng chung toàn dự án

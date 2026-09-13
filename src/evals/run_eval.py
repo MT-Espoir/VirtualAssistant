@@ -41,8 +41,18 @@ def _build_parts():
         places=_StubDep(), location=_StubDep(), profile=_StubDep(),
         contacts=_StubDep(), bus=_StubDep()))
     # Dùng CHUNG quyết định với app.py -> eval đo đúng cấu hình production sẽ chạy.
-    router = Router.from_report(llm, report) if config.use_router() else None
-    return llm, registry, router
+    che_do = config.surface_mode()
+    if che_do == "router":
+        surface, system = Router.from_report(llm, report), None
+    elif che_do == "indexed":
+        from agent.surface import IndexedTools
+        # `base()` chứ không `merged()` — giống hệt app.py. Khác đi là eval đo một hệ thống
+        # khác với hệ thống chạy thật. Xem docstring `IndexedTools`.
+        surface, system = IndexedTools(prompts.base(), report), None
+    else:
+        # Không bề mặt -> Agent tự rơi về `AllTools`, và prompt phải là bản GỘP.
+        surface, system = None, prompts.merged(report)
+    return llm, registry, surface, system, che_do
 
 
 def _select(prefixes):
@@ -88,22 +98,17 @@ def main(argv=None):
     argv = argv if argv is not None else sys.argv[1:]
     gap, prefixes = _parse_args(argv)
     cases = _select(prefixes)
-    llm, registry, router = _build_parts()
+    llm, registry, surface, system, che_do = _build_parts()
 
     provider = (config.LLM_PROVIDER or "ollama")
     model = config.OLLAMA_MODEL if provider == "ollama" else config.LLM_MODEL
-    print(f"=== EVAL: provider={provider} model={model} router={'on' if router else 'off'} "
+    print(f"=== EVAL: provider={provider} model={model} bề-mặt={che_do} "
           f"| {len(cases)} ca | nghỉ {gap:g}s/ca ===\n", flush=True)
-
-    # Không router -> dùng prompt GỘP (base + mọi fragment case), KHÔNG phải base trần:
-    # đo đúng thứ production sẽ chạy, nếu không sẽ chấm thiệt cho chế độ không-router.
-    system = None if router else prompts.merged(report)
-
     results = []
     dt = 0.0                      # CHỈ cộng thời gian chạy ca, KHÔNG tính lúc nghỉ
     for i, c in enumerate(cases):
         t0 = time.time()
-        r = run_case(llm, registry, router, c, system=system)
+        r = run_case(llm, registry, surface, c, system=system)
         dt += time.time() - t0
         results.append(r)
         print(_fmt_case(r), flush=True)
@@ -126,6 +131,12 @@ def main(argv=None):
         print(f"Đầu vào LLM   : {s['avg_input_chars']:,.0f} ký tự/ca "
               f"(~{s['avg_input_chars'] / 3:,.0f} token)")
     print(f"Thời gian     : {dt:.1f}s ({dt/max(1,len(cases)):.1f}s/ca)")
+    # Tỉ lệ mở nhóm ĐO TRÊN MODEL THẬT — khác con số tĩnh của `tests/test_bo_loi.py` (vốn
+    # chỉ hỏi "tool mong đợi có nằm trong lõi không"). Ở đây model có thể mở nhóm thừa,
+    # hoặc chọn đúng tool trong lõi mà không cần mở. Tiêu chí 1 của `indexed_tools_spec` §7.
+    if che_do == "indexed":
+        mo = sum(1 for r in results if "mo_nhom" in r["called"])
+        print(f"Mở nhóm       : {mo}/{len(results)} ca ({mo/max(1,len(results))*100:.0f}%)")
     # Không exit khác 0 — đây là ĐO LƯỜNG, không phải cổng CI.
 
 

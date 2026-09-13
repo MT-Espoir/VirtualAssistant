@@ -144,5 +144,12 @@ def test_vuot_tran_van_nap_nhung_co_canh_bao(caplog):
 
 
 def test_ngan_sach_tong_la_mot_con_so_duong():
-    """Khoá hằng số lại — sửa nó phải là hành động có chủ đích, kèm đo lại."""
-    assert SPEC_CHARS_BUDGET == 20_000
+    """Khoá hằng số lại — sửa nó phải là hành động có chủ đích, kèm đo lại.
+
+    20.000 -> 21.500 ngày 2026-09-12. Không phải "nới cho hết đỏ": ý NGHĨA của hằng số đã
+    đổi. Nó từng là "thứ LLM đọc mỗi lượt"; từ khi `IndexedTools` bật mặc định, thứ đó là
+    bộ lõi + mục lục (~12.000) và được canh riêng ở `test_spec_budget.py::
+    test_payload_moi_luot_cua_be_mat_mac_dinh` + `test_bo_loi.py`. Hằng số này nay canh
+    ĐƯỜNG DỰ PHÒNG (`AllTools`, case `general` của Router). Xem `features/contract.py`.
+    """
+    assert SPEC_CHARS_BUDGET == 21_500

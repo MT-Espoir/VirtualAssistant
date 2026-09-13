@@ -19,6 +19,20 @@ CASES = [
     {"id": "sys-close", "text": "đóng ứng dụng chrome", "expect": ["close_app"], "case": "system"},
     {"id": "sys-info", "text": "máy tôi còn bao nhiêu pin", "expect": ["system_info"], "case": "system"},
 
+    # --- quản trị máy (Tầng 1, thêm 2026-09-12) ---
+    # Thêm để đo được MA TRẬN NHẦM LẪN của bộ tool quản trị mới (`docs/system_admin_spec.md`
+    # §10 mục 9). Rủi ro thật cần đo nằm ở các cặp dễ lẫn, nên chúng được xếp cạnh nhau:
+    #   kill_process vs close_app   — "tắt chrome" nghĩa là đóng lịch sự hay giết tiến trình?
+    #   list_processes vs system_info — "máy chậm" hỏi CHỈ SỐ hay hỏi AI ĐANG NGỐN?
+    #   power(lock) vs power(shutdown) — cùng một tool, khác nhau ở mức khó hoàn tác.
+    {"id": "adm-slow", "text": "cái gì đang làm máy tôi chậm thế", "expect": ["list_processes"], "case": "system"},
+    {"id": "adm-ram", "text": "ứng dụng nào đang ngốn ram nhất", "expect": ["list_processes"], "case": "system"},
+    {"id": "adm-kill", "text": "chrome treo cứng rồi, kết thúc tiến trình chrome đi", "expect": ["kill_process"], "case": "system"},
+    {"id": "adm-lock", "text": "khoá màn hình lại giúp tôi", "expect": ["power"], "case": "system"},
+    {"id": "adm-shut", "text": "năm phút nữa tắt máy giúp tôi", "expect": ["power"], "case": "system"},
+    {"id": "adm-awake", "text": "đừng để máy ngủ, tôi đang tải file", "expect": ["keep_awake"], "case": "system"},
+    {"id": "adm-audio", "text": "chuyển âm thanh sang loa ngoài", "expect": ["audio_device"], "case": "system"},
+
     # --- weather ---
     {"id": "wx-today", "text": "thời tiết hôm nay thế nào", "expect": ["get_weather"], "case": "weather"},
     {"id": "wx-rain", "text": "Đà Nẵng hôm nay có mưa không", "expect": ["get_weather"], "case": "weather"},

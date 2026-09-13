@@ -7,6 +7,7 @@ Mỗi hàm trả về một chuỗi tiếng Việt gọn để agent đọc lạ
 
 import os
 import shutil
+import time
 
 import psutil
 
@@ -17,6 +18,13 @@ logger = get_logger(__name__)
 
 def _fmt_gb(num_bytes) -> str:
     return f"{num_bytes / (1024 ** 3):.1f} GB"
+
+
+def _fmt_ram(num_bytes) -> str:
+    """Cỡ bộ nhớ của MỘT ứng dụng: dưới 1 GB thì nói MB, đọc lên tự nhiên hơn "0.3 GB"."""
+    if num_bytes >= 1024 ** 3:
+        return _fmt_gb(num_bytes)
+    return f"{num_bytes / (1024 ** 2):.0f} MB"
 
 
 def get_memory_info() -> str:
@@ -40,12 +48,153 @@ def get_cpu_info() -> str:
     return f"CPU: đang dùng {percent:.0f}% trên {cores} luồng."
 
 
+# `secsleft` KHÔNG phải lúc nào cũng là số giây: psutil trả về hai giá trị SENTINEL ÂM.
+# Đo trên máy này 2026-09-11 -> đúng `-2` khi cắm sạc. Đọc thẳng ra miệng thì thành "còn âm
+# hai giây", nên phải chặn trước khi định dạng. Xem `docs/system_admin_spec.md` §5.1.
+POWER_TIME_UNLIMITED = -2    # đang cắm sạc -> không có "thời gian còn lại"
+POWER_TIME_UNKNOWN = -1      # Windows chưa đủ dữ liệu; HAY GẶP ngay sau khi rút sạc
+
+_MOT_NGAY_PHUT = 24 * 60
+
+
+def format_battery_left(secsleft, plugged=False) -> str:
+    """Cụm "còn khoảng ..." để ĐỌC LÊN, hoặc chuỗi rỗng nếu không có ước lượng dùng được.
+
+    Làm tròn thô có chủ đích: ước lượng pin của Windows nhảy liên tục, nên "còn 7.412 giây"
+    vừa khó nghe vừa chính xác giả. Làm tròn tới 5 phút / 15 phút cho đúng mức tin được.
+    """
+    if plugged or secsleft is None or secsleft == POWER_TIME_UNLIMITED:
+        return ""
+    if secsleft < 0:                      # UNKNOWN, và mọi sentinel lạ khác -> nói thật
+        return "chưa ước lượng được thời gian còn lại"
+
+    mins = int(secsleft // 60)
+    if mins < 1:
+        return "còn dưới một phút"
+    if mins >= _MOT_NGAY_PHUT:            # psutil thỉnh thoảng trả số vô lý lúc pin đầy
+        return "còn hơn một ngày"
+    if mins < 60:
+        mins = int(round(mins / 5.0)) * 5 if mins >= 10 else mins
+    if mins < 60:
+        return f"còn khoảng {mins} phút"
+
+    gio, du = divmod(mins, 60)
+    du = int(round(du / 15.0)) * 15
+    if du >= 60:
+        gio, du = gio + 1, 0
+    return f"còn khoảng {gio} tiếng" + (f" {du} phút" if du else "")
+
+
 def get_battery_info() -> str:
     battery = getattr(psutil, "sensors_battery", lambda: None)()
     if battery is None:
         return "Pin: máy không có pin hoặc không đọc được."
-    status = "đang sạc" if battery.power_plugged else "dùng pin"
-    return f"Pin: {battery.percent:.0f}% ({status})."
+    plugged = bool(battery.power_plugged)
+    status = "đang sạc" if plugged else "dùng pin"
+    con_lai = format_battery_left(getattr(battery, "secsleft", None), plugged)
+    return f"Pin: {battery.percent:.0f}% ({status})" + (f", {con_lai}." if con_lai else ".")
+
+
+# Lấy mẫu CPU: `Process.cpu_percent()` lần gọi ĐẦU luôn trả 0.0 (nó đo giữa hai lần gọi).
+# Không mồi trước thì bảng xếp hạng theo CPU toàn số 0 — sai một cách im lặng.
+_CHO_LAY_MAU = 0.3
+_MAX_TIEN_TRINH = 10
+
+# Tiến trình "rảnh" của Windows: nó chiếm đúng phần CPU KHÔNG ai dùng, nên nó luôn đứng
+# đầu bảng và luôn là câu trả lời vô nghĩa cho "cái gì làm máy chậm".
+_BO_QUA = {"system idle process", "idle"}
+
+
+def process_report(sort_by="memory", limit=3):
+    """Trả ``(câu tóm tắt, toàn bộ dòng)`` cho bảng tiến trình.
+
+    Câu đầu đủ ngắn để đọc bằng giọng. Danh sách có cấu trúc dành cho HUD, để tầng giao
+    diện không phải bóc ngược tên/số liệu từ một câu tiếng Việt. Cả hai được dựng từ cùng
+    MỘT lần lấy mẫu nên không lệch nhau khi CPU thay đổi giữa hai lần đọc.
+    """
+    theo_cpu = (sort_by or "memory").strip().lower() == "cpu"
+    try:
+        n = max(1, min(int(limit or 3), _MAX_TIEN_TRINH))
+    except (TypeError, ValueError):
+        n = 3
+    # Chia cho số luồng: `Process.cpu_percent` tính theo MỘT lõi nên cộng lại vượt 100%
+    # ("975%" đọc lên là vô nghĩa). Chia ra thì khớp đúng con số Task Manager hiện, tức
+    # con số người dùng đối chiếu được bằng mắt.
+    luong = psutil.cpu_count(logical=True) or 1
+
+    if theo_cpu:
+        for p in psutil.process_iter():
+            try:
+                p.cpu_percent()
+            except Exception:            # tiến trình chết giữa vòng lặp là chuyện thường
+                continue
+        time.sleep(_CHO_LAY_MAU)
+
+    gop = {}
+    for p in psutil.process_iter(["name", "memory_info"]):
+        try:
+            ten = p.info.get("name") or "?"
+            if ten.lower() in _BO_QUA:
+                continue
+            if theo_cpu:
+                gia = p.cpu_percent() / luong
+            else:
+                mi = p.info.get("memory_info")
+                gia = mi.rss if mi else 0
+            gop[ten] = gop.get(ten, 0) + gia
+        except Exception:
+            continue
+
+    day_du = sorted(gop.items(), key=lambda kv: -kv[1])
+    rows = [{"name": ten,
+             "value": gia,
+             "display": f"{gia:.0f}%" if theo_cpu else _fmt_ram(gia)}
+            for ten, gia in day_du]
+    top = day_du[:n]
+    if not top:
+        return "Không đọc được danh sách tiến trình.", []
+    if theo_cpu:
+        phan = [f"{ten} {gia:.0f}%" for ten, gia in top if gia >= 1]
+        if not phan:
+            return "Không có tiến trình nào đang ngốn CPU đáng kể.", rows
+        return "Ngốn CPU nhất: " + "; ".join(phan) + ".", rows
+    return ("Ngốn RAM nhất: "
+            + "; ".join(f"{ten} {_fmt_ram(gia)}" for ten, gia in top)
+            + ".", rows)
+
+
+def list_processes(sort_by="memory", limit=3) -> str:
+    """Ứng dụng đang ngốn RAM/CPU nhất — câu trả lời cho "cái gì làm máy chậm?".
+
+    GỘP THEO TÊN, không liệt kê từng tiến trình: Chrome chạy hai chục tiến trình cùng tên,
+    liệt kê rời vừa dài vừa trả lời sai câu được hỏi (người ta hỏi ứng dụng nào, không hỏi
+    PID nào). Kết quả cố ý NGẮN để đọc lên được — danh sách đầy đủ nằm ở `process_report`
+    để đưa lên HUD.
+    """
+    return process_report(sort_by=sort_by, limit=limit)[0]
+
+
+# Tiến trình CÀI cập nhật của Windows. Đây là heuristic, không phải API chính thức: không có
+# cách hỏi Windows "đang cài update không" mà không cần nâng quyền. Nhận nhầm (thấy TiWorker
+# lúc nó chỉ đang dọn dẹp) thì hậu quả là một câu từ chối thừa; bỏ sót thì hậu quả là hỏng
+# bản cài Windows. Lệch về phía từ chối. Xem `docs/system_admin_spec.md` §7 lớp 3.
+_TIEN_TRINH_UPDATE = ("tiworker.exe", "trustedinstaller.exe")
+
+
+def dang_cai_windows_update():
+    """Tên tiến trình cài cập nhật đang chạy, hoặc None."""
+    try:
+        for p in psutil.process_iter(["name"]):
+            ten = (p.info.get("name") or "").lower()
+            if ten in _TIEN_TRINH_UPDATE:
+                return ten
+    except Exception as e:
+        logger.warning("Không kiểm được Windows Update: %s", e)
+        # Đây là đầu vào của lệnh CẤM tắt máy. Trả None ở nhánh lỗi sẽ nhập hai trạng
+        # thái "không có update" và "không kiểm được" thành một, khiến cổng an toàn
+        # fail-open. Ném lên để `ToolRegistry.tu_choi()` bắt và từ chối cho chắc.
+        raise RuntimeError("không kiểm được trạng thái Windows Update") from e
+    return None
 
 
 _SECTIONS = {
