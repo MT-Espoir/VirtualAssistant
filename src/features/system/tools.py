@@ -128,17 +128,20 @@ def register(reg, ctx):
 
     reg.register(Tool(
         name="system_info",
-        description="Xem tình trạng máy tính: RAM, ổ đĩa, CPU, pin.",
+        description="Xem RAM, ổ đĩa, CPU, pin hoặc mạng nội bộ.",
         input_schema={
             "type": "object",
             "properties": {
                 "what": {"type": "string",
-                         "enum": ["all", "memory", "disk", "cpu", "battery"],
-                         "description": "Mục cần xem (mặc định all)"},
+                         "enum": ["all", "memory", "disk", "cpu", "battery", "network"],
+                         "description": "Mục xem; mặc định all"},
             },
         },
         handler=lambda what="all": actions.system_info(what),
         speakable=True,      # "RAM: đã dùng 9.8 GB/15.4 GB (64%)..."
+        # SSID do bên ngoài đặt. Đánh dấu cả tool vì cờ hiện nằm ở cấp tool, không ở enum;
+        # đổi lại mọi lần xem chỉ số đều đi theo nhánh an toàn hơn.
+        untrusted_output=True,
     ))
 
     reg.register(Tool(

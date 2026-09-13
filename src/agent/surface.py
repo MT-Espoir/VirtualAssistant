@@ -172,6 +172,7 @@ class IndexedTools:
                 "required": ["nhom"],
             },
             handler=self._mo_nhom,
+            group="meta",
         ))
 
     def _mo_nhom(self, nhom=None):

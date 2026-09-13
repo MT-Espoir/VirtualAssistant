@@ -111,3 +111,64 @@ CASES = [
     {"id": "multi", "text": "mở notepad rồi tăng âm lượng lên 60",
      "expect": ["open_app", "set_volume"], "case": "system"},
 ]
+
+
+# Bộ phủ CATALOG — cố ý tách khỏi CASES.
+#
+# CASES là mẫu đại diện dùng để so độ trễ/tỉ lệ mở nhóm, nên nhân tạo một ca cho mỗi tool
+# hiếm sẽ bóp méo phân bố. COVERAGE_CASES trả lời câu hỏi khác: "có tool nào chưa từng
+# được model kiểm không?". Chạy riêng bằng `python -m evals.run_eval cov`, hoặc chạy cả hai
+# bằng tiền tố `all`. Tool hiếm nhờ vậy không phải chờ người dùng tình cờ gọi ngoài đời.
+COVERAGE_CASES = [
+    # system
+    {"id": "cov-network", "text": "máy tôi đang nối Wi-Fi nào và có IP nội bộ bao nhiêu",
+     "expect": ["system_info"], "case": "system"},
+    {"id": "cov-list-windows", "text": "liệt kê các cửa sổ ứng dụng đang mở",
+     "expect": ["list_windows"], "case": "system"},
+    {"id": "cov-switch-window", "text": "chuyển sang cửa sổ Visual Studio Code",
+     "expect": ["switch_window"], "case": "system"},
+
+    # web — mỗi đường có ý định riêng, tránh để tool cũ bị web_search_list che hết
+    {"id": "cov-web-fetch", "text": "đọc và tóm tắt nội dung https://example.com/bai-viet",
+     "expect": ["web_fetch"], "case": "web"},
+    {"id": "cov-web-search", "text": "tìm từ khoá python dataclass bằng Bing",
+     "expect": ["web_search"], "case": "web"},
+    {"id": "cov-search-site", "text": "tìm các repository RAG trên GitHub",
+     "expect": ["search_on_site"], "case": "web"},
+    {"id": "cov-open-result", "text": "mở kết quả tìm kiếm số 2 tôi vừa chọn",
+     "expect": ["open_search_result"], "case": "web"},
+
+    # schedule / browser / screen
+    {"id": "cov-cancel-reminder", "text": "huỷ lịch nhắc họp lúc 3 giờ chiều",
+     "expect": ["cancel_reminder"], "case": "schedule"},
+    {"id": "cov-close-tab", "text": "đóng tab trình duyệt hiện tại",
+     "expect": ["browser_close_tab"], "case": "browser"},
+    {"id": "cov-reuse-tab", "text": "mở GitHub, nếu đã có tab thì dùng lại tab đó",
+     "expect": ["browser_open_or_reuse"], "case": "browser"},
+    {"id": "cov-scroll", "text": "cuộn màn hình xuống dưới",
+     "expect": ["scroll_screen"], "case": "screen"},
+
+    # profile / task
+    {"id": "cov-remember", "text": "hãy nhớ rằng tôi dị ứng với đậu phộng",
+     "expect": ["remember_about_user"], "case": "profile"},
+    {"id": "cov-forget", "text": "hãy quên thông tin tôi dị ứng với đậu phộng",
+     "expect": ["forget_about_user"], "case": "profile"},
+    {"id": "cov-remove-task", "text": "xoá việc mua sữa khỏi danh sách",
+     "expect": ["remove_task"], "case": "task"},
+    {"id": "cov-list-routines", "text": "liệt kê các routine của tôi",
+     "expect": ["list_routines"], "case": "task"},
+    {"id": "cov-delete-routine", "text": "xoá routine buổi sáng",
+     "expect": ["delete_routine"], "case": "task"},
+
+    # pim / danh bạ
+    {"id": "cov-save-contact", "text": "lưu số điện thoại của An là 0901234567",
+     "expect": ["save_contact"], "case": "pim"},
+    {"id": "cov-find-contact", "text": "tìm số điện thoại của An",
+     "expect": ["find_contact"], "case": "pim"},
+    {"id": "cov-list-contacts", "text": "liệt kê danh bạ của tôi",
+     "expect": ["list_contacts"], "case": "pim"},
+    {"id": "cov-remove-contact", "text": "xoá An khỏi danh bạ",
+     "expect": ["remove_contact"], "case": "pim"},
+]
+
+ALL_CASES = CASES + COVERAGE_CASES

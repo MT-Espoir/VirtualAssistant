@@ -81,6 +81,15 @@ def test_case_tools_suy_ra_dung_tool_cua_tung_feature():
                                    "web": ["web_search", "open_website"]}
 
 
+def test_bo_nap_gan_nhom_cho_tool_nhung_khong_day_len_llm():
+    """Nhóm phục vụ outcome log, không được làm payload/prefix phình thêm."""
+    reg = ToolRegistry()
+    load_features(reg, FeatureContext(), [_feature("web", ["web_search"])])
+
+    assert reg.get("web_search").group == "web"
+    assert "group" not in reg.get("web_search").spec()
+
+
 def test_feature_khong_co_tool_thi_khong_thanh_case():
     reg = ToolRegistry()
     features = [_feature("web", ["web_search"]),

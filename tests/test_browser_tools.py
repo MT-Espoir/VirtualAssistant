@@ -177,6 +177,20 @@ def test_web_search_tools_registered_with_browser():
     assert "web_search_list" not in [s["name"] for s in _registry(None).specs()]
 
 
+def test_mo_tab_va_doc_noi_dung_co_mo_ta_loai_tru_nhau():
+    """Hai tool cùng nhận index nhưng khác hẳn ý định; mô tả phải chặn nhầm hai chiều."""
+    reg = _registry(_FakeBrowser(_SEARCH_RESP))
+    mo = reg.get("open_search_result").description
+    doc = reg.get("read_search_result").description
+    tim = reg.get("web_search_list").description
+    wiki = reg.get("wikipedia_lookup").description
+
+    assert "KHÔNG dùng" in mo and "read_search_result" in mo
+    assert "KHÔNG mở" in doc and "CÙNG lượt" in doc
+    assert "CÙNG lượt" in tim and "Wikipedia" in tim
+    assert "PHẢI dùng" in wiki and "web_search_list" in wiki
+
+
 def test_search_list_sends_command_and_reads_titles():
     br = _FakeBrowser(_SEARCH_RESP)
     reg = _registry(br)

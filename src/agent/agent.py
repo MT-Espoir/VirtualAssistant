@@ -480,7 +480,7 @@ class Agent:
     # ------------------------- nhật ký kết quả ------------------------- #
     def _bat_dau_luot(self, user_text):
         """Mở sổ theo dõi cho một lượt. Xem `memory/outcomes.py` cho ý nghĩa các trường."""
-        self._luot = {"cau": user_text, "dap": "", "tool": [], "so_vong": 0,
+        self._luot = {"cau": user_text, "dap": "", "tool": [], "nhom": [], "so_vong": 0,
                       "nguon_ngoai": False, "loi": "", "ket": None}
 
     def _danh_dau_ket(self, ket_qua):
@@ -513,10 +513,13 @@ class Agent:
         self.outcomes.record(ban_ghi)
 
     def _ghi_nhan_tool(self, name, loi=""):
-        """Ghi một lời gọi tool vào sổ đang mở. Không có sổ (lượt xác nhận) -> bỏ qua."""
+        """Ghi tool + nhóm thẳng hàng. Không có sổ (lượt xác nhận) -> bỏ qua."""
         if self._luot is None:
             return
         self._luot["tool"].append(name)
+        group = getattr(self.registry.get(name), "group", None) if self.registry.has(name) \
+            else None
+        self._luot["nhom"].append(group)
         self._ghi_nhan_loi(loi)
 
     def _ghi_nhan_loi(self, loi):

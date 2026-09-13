@@ -28,6 +28,10 @@ khác gì một lượt trò chuyện bình thường. Chỉ khi đọc `cau` + 
 dùng ở bản ghi KẾ TIẾP mới nhận ra được. Vì vậy mới có `phien`: chỉ được nối hai bản ghi
 liền nhau khi chúng cùng một lần chạy.
 
+`tool` và `nhom` là hai danh sách THẲNG HÀNG: mỗi lời gọi giữ cả tên tool lẫn feature sở
+hữu nó. `nhom` được gắn ở bộ nạp feature, không suy đoán lại từ tên lúc đọc log. Bản ghi
+cũ chưa có trường này vẫn đọc bình thường.
+
 Định dạng JSONL NỐI THÊM, không phải JSON ghi đè. Ghi nối không có bước đọc–sửa–ghi nên
 không có cửa sổ cắt trắng file (`utils/atomic_json.py` nói vì sao điều đó quan trọng), và
 đây cũng là dạng duy nhất còn đọc được khi file đang được ghi dở.

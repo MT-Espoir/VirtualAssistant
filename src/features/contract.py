@@ -211,6 +211,13 @@ def load_features(registry, ctx: FeatureContext, features) -> LoadReport:
             feature.register(registry, ctx)
         added = tuple(n for n in registry.names() if n not in before)
 
+        # Gắn nguồn sở hữu ngay lúc thông tin còn chắc chắn. Outcome log cần biết NHÓM
+        # của tool để đo phân bố dùng thật; suy lại từ tên ở một bảng chép tay sẽ lệch
+        # ngay khi feature thêm/đổi tool. `Tool.spec()` không chứa trường này nên payload
+        # và tiền tố gửi LLM không đổi.
+        for name in added:
+            registry.get(name).group = feature.name
+
         spec_chars = sum(len(json.dumps(registry.get(n).spec(), ensure_ascii=False))
                          for n in added)
         if spec_chars > feature.max_spec_chars:

@@ -7,6 +7,7 @@ máy và kiểm tra logic định dạng chuỗi + định tuyến theo `what`.
 from conftest import registry_with
 
 import sys
+import socket
 import types
 from unittest.mock import MagicMock
 
@@ -29,12 +30,30 @@ def _install_fake_psutil():
     # collection. Mock nền phải đủ API đọc trạng thái Windows Update để không làm
     # sai lệch cổng fail-closed của tool nguồn.
     fake.process_iter = lambda attrs=None: []
+    fake.net_if_stats = lambda: {
+        "Wi-Fi": types.SimpleNamespace(isup=True),
+        "Loopback": types.SimpleNamespace(isup=True),
+        "Ethernet": types.SimpleNamespace(isup=False),
+    }
+    fake.net_if_addrs = lambda: {
+        "Wi-Fi": [types.SimpleNamespace(family=socket.AF_INET, address="192.168.1.25")],
+        "Loopback": [types.SimpleNamespace(family=socket.AF_INET, address="127.0.0.1")],
+        "Ethernet": [types.SimpleNamespace(family=socket.AF_INET, address="10.0.0.5")],
+    }
+    fake.net_connections = lambda kind="tcp": [
+        types.SimpleNamespace(status="ESTABLISHED"),
+        types.SimpleNamespace(status="LISTEN"),
+        types.SimpleNamespace(status="ESTABLISHED"),
+    ]
     sys.modules["psutil"] = fake
     return fake
 
 
-_install_fake_psutil()
+_FAKE_PSUTIL = _install_fake_psutil()
 from actions.system import system_info  # noqa: E402  (import sau khi tiêm psutil giả)
+# Module có thể đã được test khác import trong giai đoạn collection. Khi đó thay
+# `sys.modules` không đổi binding cũ; gán tường minh để test không phụ thuộc thứ tự file.
+system_info.psutil = _FAKE_PSUTIL
 
 # Giả disk_usage để không phụ thuộc ổ đĩa thật
 system_info.shutil = MagicMock()
@@ -73,11 +92,34 @@ def test_battery_no_battery():
 def test_summary_all_has_every_section():
     out = system_info.get_system_summary("all")
     assert "RAM" in out and "Ổ đĩa" in out and "CPU" in out and "Pin" in out
+    assert "Mạng" not in out  # mạng có thể chứa SSID: chỉ đọc khi người dùng hỏi rõ
 
 
 def test_summary_single_section():
     out = system_info.get_system_summary("cpu")
     assert "CPU" in out and "RAM" not in out
+
+
+def test_network_info_chi_lay_interface_dang_hoat_dong(monkeypatch):
+    monkeypatch.setattr(system_info, "_wifi_ssid", lambda: "Nha cua toi")
+    out = system_info.get_system_summary("network")
+    assert 'Wi-Fi "Nha cua toi"' in out
+    assert "192.168.1.25 (Wi-Fi)" in out
+    assert "127.0.0.1" not in out and "10.0.0.5" not in out
+    assert "2 kết nối TCP" in out
+
+
+def test_parse_wifi_ssid_khong_nham_bssid_va_bo_ky_tu_dieu_khien():
+    raw = "    BSSID : aa:bb:cc\n    SSID : Nha\x00 cua toi\n"
+    assert system_info._parse_wifi_ssid(raw) == "Nha  cua toi"
+
+
+def test_network_info_that_bai_tung_phan_van_tra_duoc(monkeypatch):
+    monkeypatch.setattr(system_info, "_wifi_ssid", lambda: "")
+    monkeypatch.setattr(system_info, "_active_ipv4", lambda: [])
+    monkeypatch.setattr(system_info.psutil, "net_connections",
+                        MagicMock(side_effect=PermissionError("denied")))
+    assert system_info.get_network_info() == "Mạng: không đọc được thông tin mạng đang hoạt động."
 
 
 def test_summary_unknown():

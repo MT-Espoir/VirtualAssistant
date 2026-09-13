@@ -1,12 +1,15 @@
 """
-Truy vấn thông tin & tình trạng máy tính (RAM, ổ đĩa, CPU, pin) qua psutil.
+Truy vấn thông tin & tình trạng máy tính (RAM, ổ đĩa, CPU, pin, mạng) qua psutil.
 
 Mỗi hàm trả về một chuỗi tiếng Việt gọn để agent đọc lại cho người dùng.
 `get_system_summary(what)` là điểm vào chính, gộp theo yêu cầu.
 """
 
 import os
+import re
 import shutil
+import socket
+import subprocess
 import time
 
 import psutil
@@ -93,6 +96,85 @@ def get_battery_info() -> str:
     status = "đang sạc" if plugged else "dùng pin"
     con_lai = format_battery_left(getattr(battery, "secsleft", None), plugged)
     return f"Pin: {battery.percent:.0f}% ({status})" + (f", {con_lai}." if con_lai else ".")
+
+
+def _parse_wifi_ssid(output: str) -> str:
+    """Rút SSID khỏi output netsh và vô hiệu ký tự điều khiển."""
+    match = re.search(r"(?mi)^\s*SSID\s*:\s*(.+?)\s*$", output or "")
+    if not match:
+        return ""
+    ssid = re.sub(r"[\x00-\x1f\x7f]", " ", match.group(1)).strip()
+    return ssid[:64]
+
+
+def _wifi_ssid() -> str:
+    """SSID đang nối trên Windows, hoặc chuỗi rỗng nếu không đọc được.
+
+    `netsh` là lệnh chỉ đọc có sẵn trên Windows. Không dùng shell và đặt timeout ngắn để
+    một driver Wi-Fi lỗi không làm treo cả lượt trợ lý. SSID bị bỏ ký tự điều khiển và
+    cắt ngắn trước khi đưa vào câu trả lời vì đây là tên do bên ngoài đặt.
+    """
+    if os.name != "nt":
+        return ""
+    try:
+        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        result = subprocess.run(
+            ["netsh", "wlan", "show", "interfaces"],
+            capture_output=True, text=True, errors="replace", timeout=2,
+            creationflags=flags, check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+    # Bắt đúng khóa SSID, không bắt nhầm BSSID. Tên khóa này là thuật ngữ giao thức và
+    # `netsh` giữ nguyên trên các bản Windows đã kiểm; nếu bản địa hoá khác thì bỏ qua.
+    return _parse_wifi_ssid(result.stdout)
+
+
+def _active_ipv4():
+    """Các IPv4 nội bộ trên interface đang hoạt động; không gọi ra Internet."""
+    stats = psutil.net_if_stats()
+    found = []
+    for name, addresses in psutil.net_if_addrs().items():
+        if not getattr(stats.get(name), "isup", False):
+            continue
+        for addr in addresses:
+            value = getattr(addr, "address", "")
+            if (getattr(addr, "family", None) == socket.AF_INET
+                    and value and not value.startswith(("127.", "169.254."))):
+                found.append((name, value))
+    return found
+
+
+def get_network_info() -> str:
+    """Tóm tắt mạng cục bộ, hoàn toàn chỉ đọc và không phát sinh lưu lượng Internet."""
+    parts = []
+    ssid = _wifi_ssid()
+    if ssid:
+        parts.append(f'Wi-Fi "{ssid}"')
+
+    try:
+        addresses = _active_ipv4()
+    except Exception as e:
+        logger.warning("Không đọc được địa chỉ mạng: %s", e)
+        addresses = []
+    if addresses:
+        shown = ", ".join(f"{address} ({name})" for name, address in addresses[:3])
+        parts.append(f"IPv4 nội bộ {shown}")
+
+    try:
+        established = sum(
+            1 for conn in psutil.net_connections(kind="tcp")
+            if str(getattr(conn, "status", "")).upper() == "ESTABLISHED"
+        )
+        parts.append(f"{established} kết nối TCP đang hoạt động")
+    except Exception as e:
+        # Một số máy không cho đọc connection của tiến trình khác nếu không nâng quyền.
+        logger.warning("Không đếm được kết nối mạng: %s", e)
+
+    if not parts:
+        return "Mạng: không đọc được thông tin mạng đang hoạt động."
+    return "Mạng: " + "; ".join(parts) + "."
 
 
 # Lấy mẫu CPU: `Process.cpu_percent()` lần gọi ĐẦU luôn trả 0.0 (nó đo giữa hai lần gọi).
@@ -204,11 +286,13 @@ _SECTIONS = {
     "cpu": get_cpu_info,
     "battery": get_battery_info,
     "pin": get_battery_info,
+    "network": get_network_info,
+    "mạng": get_network_info,
 }
 
 
 def get_system_summary(what: str = "all") -> str:
-    """Trả về thông tin hệ thống. what: all | memory | disk | cpu | battery."""
+    """Trả về thông tin hệ thống. what: all | memory | disk | cpu | battery | network."""
     what = (what or "all").lower()
 
     if what == "all":

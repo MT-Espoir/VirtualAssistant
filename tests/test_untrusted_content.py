@@ -93,6 +93,7 @@ NGOAI = {
     "find_on_screen",                           # OCR — đọc bất cứ gì đang hiện
     "find_nearby", "find_place", "research_places", "refine_places",   # tên + review
     "get_weather",                              # từ API ngoài
+    "system_info",                              # enum network trả SSID do bên ngoài đặt
     # SỬA 2026-08-29 (đợt 6 vá bảo mật). Hai tool này từng bị xếp NOI_BO vì chúng trông
     # như HÀNH ĐỘNG ("mở", "đóng"). Nhưng phân loại phải theo thứ tool TRẢ VỀ, không
     # theo thứ nó LÀM — và cả hai đều trả về TIÊU ĐỀ do bên ngoài đặt.
@@ -102,7 +103,7 @@ NGOAI = {
 
 NOI_BO = {
     "open_app", "close_app", "switch_window", "set_volume", "set_brightness",
-    "system_info", "open_website",
+    "open_website",
     # `power` trả câu do CHÍNH TA sinh ("Sẽ tắt máy sau 1 phút") — không có gì từ ngoài.
     "power", "kill_process", "keep_awake",
     # `audio_device` trả tên thiết bị do PHẦN CỨNG/driver đặt. Cùng lằn ranh với

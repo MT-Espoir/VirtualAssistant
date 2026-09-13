@@ -107,6 +107,11 @@ class Tool:
     # những thứ KHÔNG cửa nào mở được. Xem `docs/system_admin_spec.md` §7 lớp 3.
     cam: Callable[..., str] = None
 
+    # Nhóm feature sở hữu tool, do `load_features()` gắn sau khi đăng ký. Metadata này
+    # chỉ dùng để đo phân bố sử dụng thật; `spec()` cố ý không gửi nó lên LLM. Đặt cuối
+    # để không đổi ý nghĩa các lời gọi `Tool(...)` positional cũ.
+    group: str = None
+
     def spec(self) -> dict:
         """Định nghĩa tool gửi cho LLM (định dạng Anthropic tool-use)."""
         return {

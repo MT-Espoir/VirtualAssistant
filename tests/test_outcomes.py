@@ -138,7 +138,17 @@ def test_xong_khi_khong_co_gi_no():
             AssistantTurn(text="Đã mở rồi nhé.")], so).run("mở notepad")
     assert so.ban_ghi[0]["ket_qua"] == "xong"
     assert so.ban_ghi[0]["tool"] == ["open_app"]
+    assert so.ban_ghi[0]["nhom"] == ["system"]
     assert so.ban_ghi[0]["cau"] == "mở notepad"
+
+
+def test_tool_va_nhom_thang_hang_ke_ca_ten_tool_khong_ton_tai():
+    so = _So()
+    _agent([AssistantTurn(tool_calls=[ToolCall("t1", "tool_ma_khong_ai_co", {})]),
+            AssistantTurn(text="Xin lỗi.")], so).run("làm gì đó")
+
+    assert so.ban_ghi[0]["tool"] == ["tool_ma_khong_ai_co"]
+    assert so.ban_ghi[0]["nhom"] == [None]
 
 
 def test_loi_tool_khi_tool_no():

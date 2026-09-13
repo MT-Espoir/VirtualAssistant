@@ -24,6 +24,8 @@ CASE_WEB = (
     'tóm tắt chung chung kiểu "mình tìm được mấy trang" mà bỏ mất tiêu đề.\n'
     'Không rõ là ý định nào -> mặc định coi là (1), vì hầu hết câu hỏi bằng giọng nói cần '
     'câu trả lời ngay hơn là một danh sách để chọn.\n'
+    "Nếu người dùng nói rõ 'Wikipedia', gọi wikipedia_lookup; KHÔNG thay bằng "
+    'web_search_list.\n'
     'Với YouTube (tìm/mở/phát video): dùng play_youtube (phát video đầu tiên) hoặc '
     "search_on_site với site='youtube'. TUYỆT ĐỐI KHÔNG dùng web_search (Google) cho yêu "
     'cầu về YouTube.\n'

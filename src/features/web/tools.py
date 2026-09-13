@@ -32,8 +32,9 @@ def register(reg, ctx):
 
     reg.register(Tool(
         name="wikipedia_lookup",
-        description="Tra cứu nhanh một chủ đề trên Wikipedia (trả đoạn tóm tắt). "
-                    "Dùng khi người dùng hỏi 'X là gì', tra cứu khái niệm/nhân vật.",
+        description=("Tra cứu một chủ đề trên Wikipedia và trả đoạn tóm tắt. Nếu yêu cầu "
+                     "nói rõ 'Wikipedia', PHẢI dùng tool này, KHÔNG dùng web_search_list. "
+                     "Cũng phù hợp khi tra cứu khái niệm hoặc nhân vật kiểu bách khoa."),
         input_schema={
             "type": "object",
             "properties": {
@@ -157,10 +158,10 @@ def _register_web_search_tools(reg: ToolRegistry, browser, actions):
 
     reg.register(Tool(
         name="web_search_list",
-        description=("Tìm thông tin trên web rồi ĐỌC danh sách vài kết quả đầu để người "
-                     "dùng chọn (KHÔNG mở thẳng). Dùng khi người dùng muốn 'tìm thông tin "
-                     "về X', 'tra cứu X', 'tìm hiểu về X' — trừ YouTube/Wikipedia. Sau đó "
-                     "người dùng chọn số nào thì dùng open_search_result."),
+        description=("Tìm trên web và trả danh sách vài kết quả. KHÔNG dùng nếu yêu cầu "
+                     "nói rõ Wikipedia (dùng wikipedia_lookup). Với CÂU HỎI cần trả lời, "
+                     "gọi tool này rồi read_search_result trong CÙNG lượt. Chỉ gọi "
+                     "open_search_result khi người dùng yêu cầu MỞ một kết quả theo số."),
         input_schema={
             "type": "object",
             "properties": {
@@ -177,9 +178,10 @@ def _register_web_search_tools(reg: ToolRegistry, browser, actions):
 
     reg.register(Tool(
         name="open_search_result",
-        description=("Mở một kết quả trong danh sách VỪA tìm bằng web_search_list, theo "
-                     "SỐ THỨ TỰ. Dùng khi người dùng nói 'mở kết quả số 2', 'vào link 1', "
-                     "'cái đầu tiên'..."),
+        description=("CHỈ MỞ TAB của một kết quả trong danh sách vừa tìm, theo SỐ THỨ TỰ. "
+                     "Chỉ dùng khi người dùng nói rõ 'mở/vào kết quả số...'. KHÔNG dùng "
+                     "tool này để đọc nội dung hay trả lời câu hỏi; khi đó phải dùng "
+                     "read_search_result."),
         input_schema={
             "type": "object",
             "properties": {
@@ -210,11 +212,10 @@ def _register_web_search_tools(reg: ToolRegistry, browser, actions):
 
     reg.register(Tool(
         name="read_search_result",
-        description=("Tải NỘI DUNG THẬT của một kết quả trong danh sách VỪA tìm bằng "
-                     "web_search_list, theo SỐ THỨ TỰ (mặc định số 1) — để ĐỌC rồi TRẢ LỜI "
-                     "CÂU HỎI của người dùng bằng nội dung đó. Dùng cho câu hỏi cần thông "
-                     "tin cụ thể (vd 'hôm nay có sự kiện gì...', 'vì sao...', 'X là ai'), "
-                     "KHÁC với open_search_result (chỉ mở tab, không đọc nội dung)."),
+        description=("ĐỌC NỘI DUNG THẬT của kết quả vừa tìm để TRẢ LỜI CÂU HỎI; KHÔNG mở "
+                     "tab. Sau web_search_list, phải gọi tool này trong CÙNG lượt cho câu "
+                     "hỏi như 'vì sao', 'có sự kiện gì', 'X là ai/là gì'. Khác hẳn "
+                     "open_search_result: tool kia chỉ dành cho yêu cầu mở tab theo số."),
         input_schema={
             "type": "object",
             "properties": {

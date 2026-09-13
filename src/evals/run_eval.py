@@ -1,7 +1,9 @@
 """
 Chạy eval với LLM THẬT (theo config.LLM_PROVIDER) + router + toàn bộ tool thật.
 
-    cd src && python -m evals.run_eval          # chạy hết
+    cd src && python -m evals.run_eval          # bộ đại diện, giữ tương thích số đo cũ
+    cd src && python -m evals.run_eval cov      # bộ phủ mọi tool hiếm
+    cd src && python -m evals.run_eval all      # cả hai bộ
     cd src && python -m evals.run_eval sys web  # chỉ ca có id bắt đầu bằng tiền tố
 
 Tool KHÔNG thực thi (RecordingRegistry) nên chạy an toàn, không mở app/đổi âm lượng.
@@ -18,7 +20,7 @@ from features.contract import FeatureContext
 from features.registry import build_registry
 from llm import prompts
 from utils.config import config
-from evals.cases import CASES
+from evals.cases import ALL_CASES, CASES
 from evals.harness import run_case, summarize, CountingLLM
 
 
@@ -58,7 +60,9 @@ def _build_parts():
 def _select(prefixes):
     if not prefixes:
         return CASES
-    return [c for c in CASES if any(c["id"].startswith(p) for p in prefixes)]
+    if "all" in prefixes:
+        return ALL_CASES
+    return [c for c in ALL_CASES if any(c["id"].startswith(p) for p in prefixes)]
 
 
 def _parse_args(argv):

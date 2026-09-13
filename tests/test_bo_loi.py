@@ -5,7 +5,12 @@ Khác `test_tool_surface.py`: ở đó là test CƠ CHẾ (mở nhóm có nối 
 SỐ ĐO (bộ lõi chọn thế có đủ tốt không). Tách ra vì chúng hỏng vì hai lý do khác nhau và
 người sửa cũng khác nhau.
 
-Đo trên `evals/cases.py` (51 ca có gọi tool) chứ không trên `logs/outcomes.jsonl`: log lệch
+Đo trên `evals/cases.py::CASES` (51 ca có gọi tool) chứ không trên bộ phủ catalog:
+thêm một ca nhân tạo cho mỗi tool hiếm sẽ bóp méo phép đo tần suất/tỉ lệ mở nhóm. Log thật
+vẫn lệch theo thói quen người dùng, nên bộ đại diện giữ vai trò mốc so sánh ổn định;
+`COVERAGE_CASES` chỉ canh việc không tool nào bị bỏ quên hoàn toàn.
+
+Trước đây phép đo cũng không dùng `logs/outcomes.jsonl`: log lệch
 theo việc đang phát triển lúc ghi — nhóm `system` xuất hiện 0 lần dù là nhóm lâu đời nhất —
 còn bộ ca eval được viết để phủ đều mọi feature, đúng thứ một bộ lõi cần.
 
