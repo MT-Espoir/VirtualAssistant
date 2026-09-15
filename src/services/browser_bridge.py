@@ -55,10 +55,17 @@ class BrowserBridge:
         self._client = None            # kết nối extension hiện tại
         self._pending = {}             # request_id -> asyncio.Future
         self._started = threading.Event()
+        # None = extension chưa kết nối/chưa gửi snapshot; bool = duy nhất dữ liệu Meet
+        # được phép rời extension. Không URL/title/tab id.
+        self._meeting_open = None
 
     @property
     def connected(self) -> bool:
         return self._client is not None
+
+    @property
+    def meeting_open(self):
+        return self._meeting_open
 
     # ------------------------- vòng đời ------------------------- #
     def start(self) -> bool:
@@ -148,6 +155,7 @@ class BrowserBridge:
         finally:
             if self._client is ws:
                 self._client = None
+                self._meeting_open = None
 
     async def _handshake(self, ws):
         """Chờ HELLO {token}. Sai token -> đóng. Trả True nếu hợp lệ."""
@@ -169,6 +177,11 @@ class BrowserBridge:
         try:
             data = json.loads(message)
         except ValueError:
+            return
+        if data.get("type") == "MEETING_STATE":
+            value = data.get("meeting_tab_open")
+            if isinstance(value, bool):
+                self._meeting_open = value
             return
         rid = data.get("request_id")
         if not rid:

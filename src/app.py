@@ -16,6 +16,10 @@ from agent.tools import NeedsConfirmation
 from features.contract import FeatureContext
 from features.registry import build_registry
 from features.places.service import PlacesService
+from features.salm import InterventionGate, ProactiveDispatcher, SalmRuntime
+from features.salm.intervention import Intervention
+from features.salm.welcome import (STARTUP_GREETING_TEXT,
+                                   WELCOME_BACK_GREETING_TEXT)
 from services.location import LocationStore
 from memory.habits import HabitLog
 from memory.outcomes import OutcomeLog
@@ -45,6 +49,56 @@ logger = get_logger(__name__)
 _NO_INPUT = object()
 MAX_INPUT_FAILS = 5
 SPEAK_TAIL_GUARD_S = 0.4
+STARTUP_GREETING_VOICE_TIMEOUT_S = 90.0
+
+
+class _VoiceTurnCoordinator:
+    """Nhường mic cho TTS chủ động mà không để hai luồng tự nghe/đè lên nhau."""
+
+    def __init__(self):
+        self._turn = threading.Lock()
+        self._state_lock = threading.Lock()
+        self._proactive_requested = threading.Event()
+        self._user_input_at = None
+        self._cancelled = set()
+
+    def next_input(self, producer):
+        """Chạy một lượt nghe; request TTS đã tới sẽ được ưu tiên ở biên lượt."""
+        while True:
+            while self._proactive_requested.is_set():
+                time.sleep(0.02)
+            with self._turn:
+                if self._proactive_requested.is_set():
+                    continue
+                value = producer()
+                if value is not None and value is not _NO_INPUT and bool(value):
+                    with self._state_lock:
+                        self._user_input_at = time.monotonic()
+                return value
+
+    def present(self, token, callback):
+        """Chờ lượt nghe hiện tại xong; nếu người dùng vừa nói thì nhường và bỏ cue."""
+        self._proactive_requested.set()
+        try:
+            with self._turn:
+                with self._state_lock:
+                    if token in self._cancelled:
+                        return False
+                    if (self._user_input_at is not None
+                            and time.monotonic() - self._user_input_at <= 2.0):
+                        return False
+                callback()
+                return True
+        finally:
+            with self._state_lock:
+                self._cancelled.discard(token)
+            self._proactive_requested.clear()
+
+    def cancel(self, token, callback=None):
+        with self._state_lock:
+            self._cancelled.add(token)
+        if callback is not None:
+            callback()
 
 def _make_speaker():
     """Tạo bộ tổng hợp giọng nói (TTS); lỗi thì trả None (hệ thống vẫn chạy, mất giọng)."""
@@ -92,14 +146,14 @@ def _make_voice_input():
         return None
 
 
-def _say(synth, bus, text, emotion):
+def _say(synth, bus, text, emotion, proactive=False):
     """Phát trạng thái 'speaking' rồi NÓI ĐỒNG BỘ — chặn tới khi phát xong.
 
     Đây là chốt chặn half-duplex: vì hàm chạy trong chính thread của vòng nghe và
     speak_sync() chặn tới khi loa im, mic sẽ KHÔNG mở lại giữa lúc AI đang nói —
     loại bỏ vòng vọng âm (AI tự nghe lại giọng mình rồi tự trả lời).
     """
-    bus.emit(state="speaking", emotion=emotion, text=text)
+    bus.emit(state="speaking", emotion=emotion, text=text, proactive=proactive)
     if synth:
         try:
             synth.speak_sync(text)     # chặn tới khi phát xong
@@ -217,13 +271,16 @@ def _next_input(voice_io, bus):
 _AGENT_LOCK = threading.Lock()
 
 
-def _dispatch(agent, text, bus, fast_match=None):
+def _dispatch(agent, text, bus, fast_match=None, proactive=False):
     """Xử lý MỘT câu lệnh -> (response, emotion). KHÔNG tự nói (người gọi lo phần NÓI).
 
     Cùng đường với lượt thường: fast-path giao diện/cuộn/chụp, hoặc agent. Tách ra để
     routine + lịch 'do' tái dùng ĐÚNG pipeline này.
     """
-    bus.emit(state="thinking", text="")
+    # Scheduled action vẫn được thực thi trong DND, nhưng không được lộ trạng thái UI
+    # trước gate. Phần thông báo kết quả sẽ đi qua ProactiveDispatcher sau đó.
+    if not proactive:
+        bus.emit(state="thinking", text="")
     # Lệnh TOOL tất định (âm lượng/media/cuộn/chụp) ưu tiên TRƯỚC lệnh giao diện avatar:
     # cụm cỡ chữ chung ("to lên/nhỏ hơn") vừa là chỉnh avatar vừa xuất hiện trong "âm lượng
     # video to lên" -> phải để fast_command (đòi từ khoá đặc thù 'âm lượng') giành trước.
@@ -272,7 +329,8 @@ def _run_routine(agent, routines, name, bus, synth, voice_io, fast_match=None):
     _say(synth, bus, tail, "happy")
 
 
-def _assistant_loop(agent, bus, synth, voice_io, routines=None, fast_match=None):
+def _assistant_loop(agent, bus, synth, voice_io, routines=None, fast_match=None,
+                    intervention_gate=None, voice_turn=None, salm_care_response=None):
     """Vòng xử lý (thread nền): nghe/gõ -> agent -> phát trạng thái cho avatar + nói.
 
     Chu trình half-duplex nghiêm ngặt cho từng lượt: NGHE -> NGHĨ -> NÓI (chặn) ->
@@ -317,7 +375,10 @@ def _assistant_loop(agent, bus, synth, voice_io, routines=None, fast_match=None)
             pending = None
         else:
             try:
-                raw = _next_input(voice_io, bus)
+                if voice_io and voice_turn is not None:
+                    raw = voice_turn.next_input(lambda: _next_input(voice_io, bus))
+                else:
+                    raw = _next_input(voice_io, bus)
                 fails = 0
             except Exception as e:   # lỗi thiết bị/mạng: thử lại, không quay vô hạn
                 fails += 1
@@ -334,6 +395,15 @@ def _assistant_loop(agent, bus, synth, voice_io, routines=None, fast_match=None)
                 continue
             if raw.lower() in ("thoát", "exit", "quit"):
                 break
+
+            # SALM-1.1 chỉ nhận phản hồi thuộc check-in đang mở (cùng escape hatch bật
+            # lại DND). unrelated/fail-closed trả None nên câu gốc vẫn đi Agent pipeline.
+            if salm_care_response is not None:
+                care_reply = salm_care_response(raw)
+                if care_reply:
+                    answered_at = _reply_and_idle(
+                        synth, bus, voice_io, care_reply, "happy")
+                    continue
 
             # Đang CHỜ xác nhận một hành động khó hoàn tác + câu là 'có'/'không' -> nhận
             # trực tiếp, không cần gọi tên (đối thoại tự nhiên). Câu KHÁC vẫn cần wake word
@@ -370,6 +440,8 @@ def _assistant_loop(agent, bus, synth, voice_io, routines=None, fast_match=None)
             mode = match_mode_command(text)
             if mode is not None:
                 work_mode = (mode == "work")
+                if intervention_gate is not None:
+                    intervention_gate.set_work_mode(work_mode)
                 msg = ("Đã bật chế độ làm việc. Bạn ra lệnh trực tiếp, không cần gọi tên tôi nữa."
                        if work_mode else
                        "Đã trở lại chế độ bình thường. Hãy gọi tên tôi trước mỗi yêu cầu.")
@@ -419,6 +491,8 @@ def _assistant_loop(agent, bus, synth, voice_io, routines=None, fast_match=None)
 
     if voice_io:
         voice_io[0].close()
+    if intervention_gate is not None:
+        intervention_gate.set_work_mode(False)
     bus.emit(state="idle", text="Đã dừng nhận lệnh.")
     print("\n(Đã dừng nhận lệnh. Đóng cửa sổ avatar để thoát hẳn.)")
 
@@ -528,17 +602,82 @@ def _compose_brief(profile, tasks):
     return " ".join(parts)
 
 
-def _run_scheduled(bus, synth, agent, message, kind, fast_match=None):
+def _submit_proactive_speech(dispatcher, synth, bus, text, emotion, kind):
+    """Đưa một lời chủ động qua gate duy nhất; gate đóng thì bỏ, không xếp backlog."""
+    def present():
+        _say(synth, bus, text, emotion, proactive=True)
+        bus.emit(state="idle", proactive=True)
+
+    return dispatcher.submit(Intervention(
+        kind=kind,
+        scope="global",
+        present=present,
+        cancel=(lambda: synth.stop()) if synth is not None else None,
+    ))
+
+
+def _start_with_greeting(dispatcher, synth, bus, on_complete):
+    """Đợi giọng chính sẵn sàng, chào xong mới mở input để tránh mic tự thu lời chào.
+
+    Gate chặn hoặc item bị drop giữa queue vẫn phải gọi ``on_complete`` đúng một lần;
+    lời chào không bao giờ được biến thành blocker khiến trợ lý không nhận lệnh. VieNeu
+    nạp ở nền; chờ xảy ra trong dispatcher thread, không chặn Tk mainloop.
+    """
+    completed = threading.Event()
+    cancelled = threading.Event()
+    complete_lock = threading.Lock()
+
+    def complete_once():
+        with complete_lock:
+            if completed.is_set():
+                return
+            completed.set()
+        on_complete()
+
+    def present():
+        try:
+            if synth is None:
+                logger.warning("Bỏ lời chào khởi động: TTS không khả dụng.")
+                return
+            waiter = getattr(synth, "wait_until_voice_ready", None) if synth else None
+            if waiter is not None and not waiter(STARTUP_GREETING_VOICE_TIMEOUT_S):
+                logger.warning("Bỏ lời chào khởi động: giọng chính nạp lỗi hoặc chưa "
+                               "sẵn sàng trong %.0fs.",
+                               STARTUP_GREETING_VOICE_TIMEOUT_S)
+                return
+            if cancelled.is_set():
+                return
+            _say(synth, bus, STARTUP_GREETING_TEXT, "happy", proactive=True)
+            bus.emit(state="idle", proactive=True)
+        finally:
+            complete_once()
+
+    def cancel():
+        cancelled.set()
+        if synth is not None:
+            synth.stop()
+
+    accepted = dispatcher.submit(Intervention(
+        kind="startup_greeting", scope="global", present=present,
+        cancel=cancel,
+        on_drop=complete_once))
+    if not accepted:
+        complete_once()
+    return accepted
+
+
+def _run_scheduled(bus, synth, agent, dispatcher, message, kind, fast_match=None):
     """Callback khi một mục lịch tới hạn. kind='do' -> THỰC THI lệnh qua _dispatch (có khoá
     trong _dispatch chống chạy song song vòng lặp chính); 'remind' -> chỉ đọc lời nhắc."""
     if kind == "do":
         print(f"\n⏰ Thực thi theo lịch: {message}")
-        response, emotion = _dispatch(agent, message, bus, fast_match)
-        _say(synth, bus, response, emotion or guess_emotion(response))
+        response, emotion = _dispatch(agent, message, bus, fast_match, proactive=True)
+        _submit_proactive_speech(dispatcher, synth, bus, response,
+                                 emotion or guess_emotion(response), "scheduled_result")
     else:
         print(f"\n🔔 Nhắc: {message}")
-        _say(synth, bus, _frame_reminder(message), "happy")
-    bus.emit(state="idle")
+        _submit_proactive_speech(dispatcher, synth, bus, _frame_reminder(message),
+                                 "happy", "scheduled_reminder")
 
 
 def main():
@@ -553,11 +692,69 @@ def main():
         return
 
     synth = _make_speaker()
+    voice_turn = _VoiceTurnCoordinator()
+
+    # Mọi output KHÔNG do người dùng vừa yêu cầu đều đi qua đúng một cổng. Trạng thái
+    # thinking/speaking của luồng trực tiếp đóng cổng; event do dispatcher tự phát được
+    # đánh dấu proactive để không tự triệt tiêu chính mình.
+    intervention_gate = InterventionGate(salm_enabled=config.SALM_ENABLED)
+    bus.subscribe_state(intervention_gate.set_assistant_state)
+    proactive_dispatcher = ProactiveDispatcher(intervention_gate)
+    proactive_dispatcher.start()
 
     scheduler = ReminderScheduler()      # notify + start() đặt SAU khi có agent (lịch 'do' cần agent)
 
     browser = _make_browser_bridge()
     screen = _make_screen_controller()
+
+    # SALM là feature nền (không phải LLM tool): ownership nằm trọn trong
+    # `features/salm`, app.py chỉ làm composition root và quản lý start/stop.
+    salm = None
+    if config.SALM_ENABLED:
+        try:
+            def on_return(_event):
+                _submit_proactive_speech(
+                    proactive_dispatcher, synth, bus,
+                    WELCOME_BACK_GREETING_TEXT, "happy", "welcome_back")
+
+            def on_checkin(action, decision, text):
+                token = decision.candidate_id
+                if action == "cancel":
+                    voice_turn.cancel(
+                        token, (lambda: synth.stop()) if synth is not None else None)
+                    bus.emit(state="idle", proactive=True)
+                    return True
+                if synth is None:
+                    return False
+
+                def speak():
+                    _say(synth, bus, text, "happy", proactive=True)
+                    bus.emit(state="idle", proactive=True)
+
+                return voice_turn.present(token, speak)
+
+            salm = SalmRuntime(
+                data_dir=config.SALM_DATA_DIR,
+                browser=browser,
+                poll_seconds=config.SALM_POLL_SECONDS,
+                wasapi_fallback=config.SALM_WASAPI_MEDIA_FALLBACK,
+                ttl_days=14,
+                gate=intervention_gate,
+                dispatcher=proactive_dispatcher,
+                policy_shadow=config.SALM_POLICY_SHADOW_ENABLED,
+                silent_care=config.SALM_SILENT_CARE_ENABLED,
+                on_care=bus.emit_care,
+                on_return=(on_return if config.SALM_WELCOME_BACK_ENABLED else None),
+                gentle_checkin=config.SALM_GENTLE_CHECKIN_ENABLED,
+                on_checkin=on_checkin,
+                care_llm=llm,
+                care_llm_intent=config.SALM_CARE_LLM_INTENT_ENABLED,
+                user_dnd=config.SALM_USER_DND_ENABLED,
+            )
+            salm.start()
+        except Exception as e:
+            logger.warning("Không bật được SALM-0A shadow: %s", e)
+            salm = None
 
     # MCP client (lịch/email qua server ngoài) — opt-in; cần server + OAuth do người dùng dựng.
     mcp = None
@@ -645,9 +842,8 @@ def main():
                   on_pending=bus.emit_draft)
 
     # Giờ đã có agent -> nối callback lịch (remind đọc / do thực thi) rồi chạy scheduler.
-    scheduler.notify = lambda msg, kind="remind": _run_scheduled(bus, synth, agent, msg,
-                                                                 kind, fast_match)
-    scheduler.start()
+    scheduler.notify = lambda msg, kind="remind": _run_scheduled(
+        bus, synth, agent, proactive_dispatcher, msg, kind, fast_match)
 
     # Chủ động: bản tin sáng + theo dõi pin (vòng nền).
     monitor = None
@@ -659,36 +855,42 @@ def main():
 
         def _on_brief():
             print("\n☀️ Bản tin sáng")
-            _say(synth, bus, _compose_brief(profile, tasks), "happy")
-            bus.emit(state="idle")
+            _submit_proactive_speech(proactive_dispatcher, synth, bus,
+                                     _compose_brief(profile, tasks), "happy",
+                                     "morning_brief")
 
         def _on_battery(pct):
             # Quản trị pin: BÁO rồi LÀM. Hạ sáng là việc duy nhất trợ lý được tự làm ở đây
             # (`Tool.tu_dong`) — nó tiết kiệm pin thật và hoàn tác được bằng một câu nói,
             # nên luôn nói ra là đã hạ để người dùng biết đường bảo sáng lại.
-            cau = f"Pin còn khoảng {int(pct)} phần trăm, bạn nên cắm sạc nhé."
-            muc = muc_sang_khi_pin_yeu(read_brightness())
-            if muc is not None:
-                try:
-                    agent.registry.run("set_brightness", {"level": muc}, tu_dong=True)
-                    cau += (f" Tôi hạ độ sáng xuống {muc} phần trăm cho đỡ tốn, "
-                            "muốn sáng lại thì bảo tôi.")
-                except Exception as e:      # không hạ được thì vẫn phải báo pin
-                    logger.warning("Không hạ được độ sáng khi pin yếu: %s", e)
-            _say(synth, bus, cau, "sad")
-            bus.emit(state="idle")
+            def present_battery_alert():
+                cau = f"Pin còn khoảng {int(pct)} phần trăm, bạn nên cắm sạc nhé."
+                muc = muc_sang_khi_pin_yeu(read_brightness())
+                if muc is not None:
+                    try:
+                        agent.registry.run("set_brightness", {"level": muc}, tu_dong=True)
+                        cau += (f" Tôi hạ độ sáng xuống {muc} phần trăm cho đỡ tốn, "
+                                "muốn sáng lại thì bảo tôi.")
+                    except Exception as e:  # không hạ được thì vẫn phải báo pin
+                        logger.warning("Không hạ được độ sáng khi pin yếu: %s", e)
+                _say(synth, bus, cau, "sad", proactive=True)
+                bus.emit(state="idle", proactive=True)
+
+            proactive_dispatcher.submit(Intervention(
+                kind="battery_alert", scope="global", present=present_battery_alert,
+                cancel=(lambda: synth.stop()) if synth is not None else None))
 
         monitor = ProactiveMonitor(on_brief=_on_brief, on_battery=_on_battery,
                                    brief_time=(_bh, _bm),
                                    battery_threshold=config.BATTERY_ALERT_THRESHOLD)
-        monitor.start()
 
     voice_io = _make_voice_input()
 
     worker = threading.Thread(target=_assistant_loop,
-                              args=(agent, bus, synth, voice_io, routines, fast_match),
+                              args=(agent, bus, synth, voice_io, routines, fast_match,
+                                    intervention_gate, voice_turn,
+                                    (salm.try_care_response if salm is not None else None)),
                               daemon=True)
-    worker.start()
 
     # Persona bật -> tâm trạng dẫn khuôn mặt: tắt tự reset về neutral (emotion_hold_ms=0).
     # Bấm một thẻ trên panel = gọi đúng tool `open_place_result`, không dựng đường mở
@@ -734,9 +936,33 @@ def main():
                        on_open_place=_open_place_from_panel,
                        on_draft_decision=_decide_draft,
                        on_open_mail=_open_mail_from_panel)
+    app_closing = threading.Event()
+
+    def start_background_and_input():
+        # Chỉ mở các producer khác và micro SAU câu chào khởi động. Nếu không, brief
+        # buổi sáng có thể chen trước hoặc mic thu lại chính giọng của trợ lý.
+        if app_closing.is_set():
+            return
+        try:
+            scheduler.start()
+        except Exception:
+            logger.warning("Không khởi động được scheduler", exc_info=True)
+        if monitor is not None:
+            try:
+                monitor.start()
+            except Exception:
+                logger.warning("Không khởi động được proactive monitor", exc_info=True)
+        worker.start()  # greeting/producer phụ lỗi vẫn không được chặn input chính
+
+    if config.STARTUP_GREETING_ENABLED:
+        win.root.after(250, lambda: _start_with_greeting(
+            proactive_dispatcher, synth, bus, start_background_and_input))
+    else:
+        win.root.after(250, start_background_and_input)
     try:
         win.run()          # Tk mainloop (main thread) — chặn tới khi đóng cửa sổ
     finally:
+        app_closing.set()
         # Trích nốt điều đáng nhớ TRƯỚC khi tắt: phiên ngắn thì đệm củng cố không bao giờ
         # đầy, không có bước này là mọi thứ vừa nghe được bay sạch (xem Agent.flush_memory).
         try:
@@ -748,6 +974,9 @@ def main():
             monitor.stop()
         if mcp is not None:
             mcp.stop()
+        if salm is not None:
+            salm.stop()
+        proactive_dispatcher.stop()
         if browser is not None:
             browser.stop()
 

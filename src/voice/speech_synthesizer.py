@@ -166,6 +166,23 @@ class SpeechSynthesizer:
         """
         return self.engine_type in ("gtts", "piper", "vieneu")
 
+    def wait_until_voice_ready(self, timeout=None):
+        """Chờ engine chính sẵn sàng trước một lời nói cần đúng giọng.
+
+        VieNeu nạp bất đồng bộ nên cần chờ tín hiệu thật từ backend. Các engine khác đã
+        sẵn sàng ở đây (Piper sẽ nạp đồng bộ trong chính lần synth đầu). Nếu cấu hình
+        VieNeu nhưng backend không dựng được, trả False để caller bỏ lời chủ động thay vì
+        âm thầm phát nó bằng giọng fallback.
+        """
+        if self.engine_type != "vieneu":
+            return True
+        if self._giong_rieng is None:
+            return False
+        waiter = getattr(self._giong_rieng, "doi_san_sang", None)
+        if waiter is None:
+            return bool(getattr(self._giong_rieng, "san_sang", False))
+        return bool(waiter(timeout))
+
     def _start_speaking_thread(self):
         """Start a background thread to handle speech synthesis"""
         self.speak_thread = threading.Thread(target=self._process_speech_queue, daemon=True)

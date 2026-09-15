@@ -100,6 +100,18 @@ def test_bus_emit_and_drain_order():
     assert bus.drain() == []   # đã rút hết
 
 
+def test_bus_care_event_and_state_observer_ignore_proactive_output():
+    bus = AssistantBus()
+    states = []
+    bus.subscribe_state(states.append)
+    bus.emit(state="thinking")
+    bus.emit(state="speaking", proactive=True)
+    bus.emit_care("pulse", "cycle-1")
+    events = bus.drain()
+    assert states == ["thinking"]
+    assert events[-1].care == {"action": "pulse", "token": "cycle-1"}
+
+
 if __name__ == "__main__":
     if pytest is not None:
         raise SystemExit(pytest.main([__file__, "-v"]))

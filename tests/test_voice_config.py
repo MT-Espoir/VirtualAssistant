@@ -1,7 +1,9 @@
 """Test module giọng nói: gom cấu hình + cắm giọng riêng đã fine-tune."""
 
 import os
+import sys
 import tempfile
+from types import ModuleType
 from types import SimpleNamespace
 
 from voice import config as vcfg
@@ -144,6 +146,51 @@ def test_chua_nap_xong_thi_synth_tra_False_chu_khong_no():
     v = vieneu_voice.VieneuVoice(vcfg.NoiConfig(engine="vieneu", vieneu_ref_audio="x.wav"))
     assert v.san_sang is False
     assert v.synth_wav("bất kỳ", "khong_ghi_gi.wav") is False
+
+
+def test_vieneu_bao_hoan_tat_ke_ca_khi_nap_loi(monkeypatch):
+    """Startup waiter phải được đánh thức cả ở nhánh lỗi, không thể treo đến vô hạn."""
+    from voice import vieneu_voice
+
+    fake_module = ModuleType("vieneu")
+
+    class _BrokenVieneu:
+        def __init__(self, **_kwargs):
+            raise RuntimeError("model broken")
+
+    fake_module.Vieneu = _BrokenVieneu
+    monkeypatch.setitem(sys.modules, "vieneu", fake_module)
+    v = vieneu_voice.VieneuVoice(
+        vcfg.NoiConfig(engine="vieneu", vieneu_ref_audio="x.wav"))
+
+    v._nap()
+
+    assert v.nap_xong is True
+    assert v.doi_san_sang(timeout=0) is False
+
+
+def test_speech_synth_waits_for_vieneu_but_not_other_engines():
+    from voice.speech_synthesizer import SpeechSynthesizer
+
+    class _Voice:
+        def __init__(self):
+            self.timeout = None
+
+        def doi_san_sang(self, timeout=None):
+            self.timeout = timeout
+            return True
+
+    voice = _Voice()
+    synth = SpeechSynthesizer.__new__(SpeechSynthesizer)
+    synth.engine_type = "vieneu"
+    synth._giong_rieng = voice
+    assert synth.wait_until_voice_ready(12) is True
+    assert voice.timeout == 12
+
+    synth._giong_rieng = None
+    assert synth.wait_until_voice_ready(0) is False
+    synth.engine_type = "gtts"
+    assert synth.wait_until_voice_ready(0) is True
 
 
 def test_dang_nap_KHONG_bi_tat_vinh_vien():

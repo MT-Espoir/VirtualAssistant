@@ -13,6 +13,12 @@ có cửa sổ terminal. Muốn thoát: Esc hoặc chuột phải lên nhân v�
 | `assistant.ico` (gốc) | Icon cho shortcut — khuôn mặt nhân vật, cắt từ chính ảnh avatar |
 | `packaging/make_icon.py` | Script tạo lại icon; cắt đầu từ `src/ui/image/default_emotion.png` |
 | `packaging/make_avatar_frames.py` | Script cắt ảnh gốc thành khung hình avatar (`src/ui/image/frames/`) |
+| `packaging/preview_salm_care.py` | Preview care pulse SALM ở 3 mức opacity + ca cancel; không LLM/mic/TTS |
+| `packaging/probe_salm.py` | Chạy SALM policy-shadow độc lập 20s và in diagnostic hẹp |
+| `packaging/pilot_salm_vlc.py` | Pilot VLC headless + tone nhỏ để đo GSMTC/WASAPI theo process |
+| `packaging/pilot_salm_chrome.py` | Pilot Chrome profile tạm + audio local; không đụng phiên Chrome hiện có |
+| `packaging/pilot_salm_checkin.py` | Pilot SALM-1 policy→dispatcher→VieNeu, snooze 10 phút và DND; dữ liệu/clock giả trong bộ nhớ |
+| `packaging/pilot_salm_dialogue.py` | Eval 20 paraphrase SALM-1.1a qua LLM thật; chỉ classify, không mutate SALM/DND |
 | Shortcut trên Desktop | Trỏ tới `launch_assistant.vbs`, dùng `assistant.ico` |
 
 ## Xem log / chẩn đoán
@@ -28,6 +34,43 @@ Cần biết "vừa nãy màn hình hiện gì" → `assistant.log`. Cần lần
 hôm trước** hoặc ở lần chạy trước → `logs/app.log`.
 
 Chỉnh bằng `src/.env`: `LOG_FILE` (rỗng = tắt ghi file), `LOG_MAX_BYTES`, `LOG_BACKUP_COUNT`.
+
+Kiểm tra care pulse SALM (tự đóng sau khoảng 11 giây):
+
+```bash
+python packaging/preview_salm_care.py
+```
+
+Probe collector/policy SALM trên desktop thật (không phát cue):
+
+```bash
+python packaging/probe_salm.py --seconds 20 --wasapi
+```
+
+Pilot media VLC cô lập (tự từ chối nếu VLC của người dùng đang chạy):
+
+```bash
+python packaging/pilot_salm_vlc.py
+```
+
+Pilot Chrome cô lập bằng trang audio local:
+
+```bash
+python packaging/pilot_salm_chrome.py
+```
+
+Pilot SALM-1 bằng giọng VieNeu thật (đọc hai câu ngắn, không ghi log SALM):
+
+```bash
+python packaging/pilot_salm_checkin.py
+python packaging/pilot_salm_checkin.py --dry-run  # không phát TTS
+```
+
+Eval intent SALM-1.1a bằng provider LLM hiện tại (20 câu, không đổi state):
+
+```bash
+python packaging/pilot_salm_dialogue.py
+```
 
 Đọc bằng PowerShell phải ép UTF-8, không thì ra mojibake:
 

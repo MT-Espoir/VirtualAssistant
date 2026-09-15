@@ -7,7 +7,8 @@ qua Tk .after(). Tách UI khỏi core — core không import Tkinter.
 """
 
 import queue
-from dataclasses import dataclass, field
+import threading
+from dataclasses import dataclass
 from typing import Optional
 
 
@@ -22,14 +23,38 @@ class AssistantEvent:
     mail: Optional[dict] = None      # {tu, tieu_de, ngay, than} -> panel THƯ ĐẾN; {} = đóng
     mails: Optional[dict] = None     # {rows, q} -> panel DANH SÁCH thư; rows rỗng = đóng
     system: Optional[dict] = None    # {kind, rows, ...} -> panel quản trị; rows rỗng = đóng
+    care: Optional[dict] = None      # {action: pulse|cancel, token} -> silent avatar cue
 
 
 class AssistantBus:
     def __init__(self):
         self._q = queue.Queue()
+        self._state_listeners = []
+        self._listeners_lock = threading.Lock()
 
-    def emit(self, state=None, emotion=None, text=None):
+    def emit(self, state=None, emotion=None, text=None, proactive=False):
         self._q.put(AssistantEvent(state=state, emotion=emotion, text=text))
+        if state is not None and not proactive:
+            with self._listeners_lock:
+                listeners = tuple(self._state_listeners)
+            for callback in listeners:
+                try:
+                    callback(state)
+                except Exception:
+                    # Producer UI không được chết chỉ vì một observer phụ trợ.
+                    pass
+
+    def subscribe_state(self, callback):
+        """Theo dõi trạng thái của luồng trực tiếp để gate chặn output chủ động.
+
+        Event do chính dispatcher chủ động tạo truyền ``proactive=True`` nên không tự
+        coi giọng/cue của mình là một luồng cạnh tranh và tự huỷ giữa chừng.
+        """
+        with self._listeners_lock:
+            self._state_listeners.append(callback)
+
+    def emit_care(self, action, token):
+        self._q.put(AssistantEvent(care={"action": action, "token": token}))
 
     def emit_ui(self, **ui):
         """Gửi lệnh điều chỉnh giao diện avatar (đổi kích thước / độ mờ) tới main thread."""

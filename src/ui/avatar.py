@@ -11,6 +11,8 @@ import random
 import tkinter as tk
 from pathlib import Path
 
+from features.salm.presenter import (CARE_PULSE_TICK_MS, care_opacity,
+                                     care_progress_steps)
 from ui.avatar_face import BLINK_FRAME, blink_frame, frame_spec
 
 try:
@@ -89,6 +91,9 @@ class AvatarWindow:
         self.emotion_hold_ms = EMOTION_HOLD_MS if emotion_hold_ms is None else emotion_hold_ms
         self._blinking = False
         self._emotion_reset_id = None
+        self._care_token = None
+        self._care_after_ids = []
+        self._care_base_opacity = None
         self._drag_origin = (0, 0)
         self._frames = _load_frames()
         # Ảnh đã thu về đúng cỡ đang hiển thị. Tk KHÔNG giữ tham chiếu ảnh nên phải tự
@@ -140,6 +145,8 @@ class AvatarWindow:
         self.set_scale(self.scale + delta)
 
     def set_opacity(self, value):
+        if self._care_token is not None:
+            self._cancel_care()
         self.opacity = _clamp(value, OPACITY_MIN, OPACITY_MAX)
         self._apply_opacity()
 
@@ -321,6 +328,14 @@ class AvatarWindow:
     def _poll(self):
         emotion_changed = False
         for ev in self.bus.drain():
+            if getattr(ev, "care", None) is not None:
+                action = ev.care.get("action")
+                token = ev.care.get("token")
+                if action == "pulse":
+                    self._start_care(token)
+                elif action == "cancel":
+                    self._cancel_care(token)
+                continue
             if getattr(ev, "ui", None):        # lệnh giao diện (đổi size/độ mờ)
                 self._apply_ui(ev.ui)
                 continue
@@ -352,6 +367,49 @@ class AvatarWindow:
         self.root.after(100, self._poll)
 
     # ------------------------- chớp mắt ------------------------- #
+    def _start_care(self, token):
+        """Phát một nhịp quan tâm im lặng bằng chính default frame + opacity.
+
+        Không đổi size/vị trí, không lấy focus, không text và không TTS. Token khiến
+        callback/cancel cũ không thể đụng nhầm một cue mới hơn.
+        """
+        self._cancel_care()
+        self._care_token = token
+        self._care_base_opacity = self.opacity
+        self._render()
+        for index, progress in enumerate(care_progress_steps()[1:], start=1):
+            after_id = self.root.after(
+                index * CARE_PULSE_TICK_MS,
+                lambda p=progress, t=token: self._apply_care_step(t, p))
+            self._care_after_ids.append(after_id)
+
+    def _apply_care_step(self, token, progress):
+        if token != self._care_token:
+            return
+        try:
+            self.root.wm_attributes(
+                "-alpha", care_opacity(self._care_base_opacity, progress))
+        except tk.TclError:
+            pass
+        if progress >= 1.0:
+            self._cancel_care(token)
+
+    def _cancel_care(self, token=None):
+        if token is not None and token != self._care_token:
+            return
+        if self._care_token is None:
+            return
+        self._care_token = None
+        for after_id in self._care_after_ids:
+            try:
+                self.root.after_cancel(after_id)
+            except tk.TclError:
+                pass
+        self._care_after_ids.clear()
+        self._care_base_opacity = None
+        self._apply_opacity()
+        self._render()
+
     def _schedule_blink(self):
         """Hẹn lần chớp mắt kế tiếp. Chưa có ảnh chớp mắt thì không hẹn gì cả."""
         if BLINK_FRAME not in self._frames:
@@ -370,8 +428,9 @@ class AvatarWindow:
 
     # ------------------------- vẽ ------------------------- #
     def _render(self):
-        name = frame_spec(self.state, self.emotion)["frame"]
-        if self._blinking:
+        name = ("default" if self._care_token is not None
+                else frame_spec(self.state, self.emotion)["frame"])
+        if self._blinking and self._care_token is None:
             # Chỉ vài tư thế chớp được, và chỉ khi ảnh chớp đã có mặt.
             blink = blink_frame(name)
             if blink in self._frames:

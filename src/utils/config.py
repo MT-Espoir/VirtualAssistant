@@ -120,6 +120,29 @@ class Config:
     # Rỗng = bỏ kiểm token (chỉ nên vậy khi thử cục bộ); nên đặt token để an toàn.
     BROWSER_BRIDGE_TOKEN = _get("BROWSER_BRIDGE_TOKEN", "")
 
+    # --- SALM: activity/app lifecycle + policy nghỉ 0B ---
+    SALM_ENABLED = _get_bool("SALM_ENABLED", True)
+    SALM_DATA_DIR = _get_path("SALM_DATA_DIR", "logs/salm")
+    SALM_POLL_SECONDS = _get_float("SALM_POLL_SECONDS", 1.0)
+    # GSMTC là nguồn chính. Pilot thật 2026-09-14 chứng minh runtime Python 3.13 không
+    # có binding trong khi WASAPI bắt được VLC 22/26 và Chrome 27/31 mẫu, nên fallback
+    # per-process được bật mặc định; rolling filter + hang-time 8s chặn peak chập chờn.
+    SALM_WASAPI_MEDIA_FALLBACK = _get_bool("SALM_WASAPI_MEDIA_FALLBACK", True)
+    # Policy tiếp tục ghi bằng chứng thật. Care pulse đã qua manual visual QA ở opacity
+    # 1.0/0.7/0.25 ngày 2026-09-14; cue chỉ tác động avatar và không bao giờ phát TTS.
+    SALM_POLICY_SHADOW_ENABLED = _get_bool("SALM_POLICY_SHADOW_ENABLED", True)
+    SALM_SILENT_CARE_ENABLED = _get_bool("SALM_SILENT_CARE_ENABLED", True)
+    # SALM-1 đã có code nhưng còn chờ pilot sai-lúc/Spotify/Teams trước khi bật rộng.
+    # Khi true, L2 TTS thay thế L1 pulse cho opportunity được policy cho phép.
+    SALM_GENTLE_CHECKIN_ENABLED = _get_bool("SALM_GENTLE_CHECKIN_ENABLED", False)
+    # SALM-1.1a: intent LLM chạy trong lane riêng chỉ có một schema đóng; User DND chỉ
+    # chặn scope break_care. Hai cờ độc lập để rollback interpretation/state riêng.
+    SALM_CARE_LLM_INTENT_ENABLED = _get_bool("SALM_CARE_LLM_INTENT_ENABLED", False)
+    SALM_CARE_LLM_LANGUAGE_ENABLED = _get_bool("SALM_CARE_LLM_LANGUAGE_ENABLED", False)
+    SALM_USER_DND_ENABLED = _get_bool("SALM_USER_DND_ENABLED", False)
+    STARTUP_GREETING_ENABLED = _get_bool("STARTUP_GREETING_ENABLED", True)
+    SALM_WELCOME_BACK_ENABLED = _get_bool("SALM_WELCOME_BACK_ENABLED", True)
+
     # --- Điều khiển/đọc màn hình (chụp, OCR tìm chữ, cuộn) — NHẠY CẢM, mặc định TẮT ---
     # Bảo mật: chỉ bật khi bạn chủ động cho phép. Nội dung màn hình (chữ OCR) sẽ đi
     # tới LLM -> chỉ hoạt động với LLM LOCAL (ollama); app tự từ chối nếu dùng online.

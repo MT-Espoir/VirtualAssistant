@@ -12,10 +12,10 @@ này; VieNeu clone thẳng từ ~3 giây audio mẫu. Đo 2026-08-26 trên máy 
 
 ## Vì sao nạp NỀN
 
-~20s cộng lại. Chặn khởi động ngần ấy thì câu đầu tiên người dùng nói phải chờ 20 giây —
-không chấp nhận được. Nên nạp trong thread nền và trả False khi CHƯA sẵn sàng; người gọi
-tự rơi về gtts. Trợ lý nói được ngay từ giây đầu, rồi tự đổi sang giọng riêng khi model
-xong. Người dùng thấy giọng đổi giữa chừng, nhưng không bao giờ thấy im lặng.
+~20s cộng lại. Vì vậy model vẫn nạp trong thread nền. Các câu thông thường có thể rơi về
+gTTS trong lúc chờ; riêng lời chào khởi động dùng ``doi_san_sang()`` để chỉ phát sau khi
+giọng clone thật sự dùng được. Sự kiện hoàn tất cũng được bật khi nạp lỗi, để nơi gọi
+không bao giờ phải chờ vô hạn.
 
 MODE `v3turbo` (mặc định) chạy ONNX Runtime, KHÔNG cần torch, KHÔNG cần llama_cpp.
 """
@@ -41,6 +41,7 @@ class VieneuVoice:
         self._loi_nap = None
         self._ly_do = None
         self._thread = None
+        self._nap_xong = threading.Event()
 
     # --- kiểm tra trước khi dùng --------------------------------------------------
 
@@ -95,10 +96,31 @@ class VieneuVoice:
         except Exception as e:
             self._loi_nap = e
             logger.error("Không nạp được giọng riêng (%s) — dùng giọng mặc định.", e)
+        finally:
+            # Thành công hay thất bại đều phải đánh thức bên đang chờ. Nếu chỉ set ở
+            # nhánh thành công, startup greeting có thể giữ ứng dụng mãi khi model lỗi.
+            self._nap_xong.set()
 
     @property
     def san_sang(self) -> bool:
         return self._tts is not None
+
+    @property
+    def nap_xong(self) -> bool:
+        """True khi lượt nạp đã kết thúc, kể cả kết thúc bằng lỗi."""
+        return self._nap_xong.is_set()
+
+    def doi_san_sang(self, timeout=None) -> bool:
+        """Chờ lượt nạp kết thúc và trả True chỉ khi giọng dùng được.
+
+        ``timeout`` giữ nguyên ngữ nghĩa của ``threading.Event.wait``. False có thể là
+        nạp lỗi hoặc hết thời gian; cả hai trường hợp nơi gọi phải tiếp tục chạy thay vì
+        giữ startup.
+        """
+        if self.san_sang:
+            return True
+        self._nap_xong.wait(timeout)
+        return self.san_sang
 
     # --- tổng hợp ------------------------------------------------------------------
 
