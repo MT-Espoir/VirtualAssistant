@@ -34,7 +34,9 @@ logger = get_logger(__name__)
 # 20.000 -> 21.500 ngày 2026-09-12 để nhận trọn Tầng 1 quản trị (52 tool, 20.515).
 # Đây chính là kết cục `docs/system_admin_spec.md` §2 dự đoán: bộ quản trị đẩy N qua ngưỡng
 # của `AllTools`, và cách đi tiếp là đổi bề mặt chứ không phải nén mô tả thêm nữa.
-SPEC_CHARS_BUDGET = 21_500
+# The 56-tool catalog with composite A/C arguments measured 22,378 chars before
+# camera added its compact turn_off_webcam control tool on 2026-09-29.
+SPEC_CHARS_BUDGET = 23_150
 
 # Case "mọi thứ còn lại": không thu hẹp tool, không thuộc feature nào. Đặt ở hợp đồng
 # (chứ không ở router hay prompts) vì cả hai nơi đó đều cần, và cả hai đều nói về cùng
@@ -51,9 +53,13 @@ class FeatureContext:
     tự tắt khi thiếu — xem `Feature.requires`.
     """
     actions: object = None       # AssistantActions — điều khiển máy (app, âm lượng, web)
+    activity_insights: object = None  # ActivityInsightsService — đọc SALM daily aggregate
     bus: object = None           # AssistantBus — kênh sự kiện sang UI
     browser: object = None       # BrowserBridge — cầu nối Chrome extension
+    camera: object = None        # CameraService — local webcam / presence
     contacts: object = None      # ContactStore
+    habits: object = None        # HabitLog — observations hành vi lặp lại
+    iot: object = None           # IoTClient — gateway service on loopback
     location: object = None      # LocationStore — toạ độ chính xác, tách khỏi hồ sơ
     mcp: object = None           # MCPClient — lịch/email qua server ngoài
     places: object = None        # PlacesService

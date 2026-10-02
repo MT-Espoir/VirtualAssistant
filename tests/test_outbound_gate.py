@@ -20,10 +20,11 @@ except ImportError:
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from conftest import registry_with
+from conftest import full_registry, registry_with
 from features.pim.tools import la_nguoi_nhan_la
 from ui.panels import outbound_blocks, pending_blocks, pending_title
-from utils.outbound import lay_mien, mo_ta_ra_ngoai
+from utils.outbound import (duoc_nguoi_dung_cung_cap, lay_mien,
+                            mo_ta_ra_ngoai)
 
 
 # --------------------------- rút miền thật --------------------------- #
@@ -65,6 +66,27 @@ def test_khong_co_gi_di_ra_ngoai_thi_None():
     assert mo_ta_ra_ngoai({}) is None and mo_ta_ra_ngoai(None) is None
 
 
+# --------------------------- provenance của dữ liệu outbound --------------------------- #
+
+def test_truy_van_cong_khai_viet_lai_cau_user_duoc_nhan_ra():
+    assert duoc_nguoi_dung_cung_cap(
+        {"query": "sự khác nhau giữa yêu và thương"},
+        "Alice em nghĩ giữa yêu và thương khác nhau như nào") is True
+
+
+def test_model_tu_chen_du_lieu_la_vao_query_khong_duoc_cho_qua():
+    assert duoc_nguoi_dung_cung_cap(
+        {"query": "sự khác nhau giữa yêu và thương hồ sơ Minh"},
+        "Alice em nghĩ giữa yêu và thương khác nhau như nào") is False
+
+
+def test_url_user_noi_duoc_cho_qua_nhung_query_path_la_thi_khong():
+    assert duoc_nguoi_dung_cung_cap(
+        {"url": "https://vnexpress.net"}, "mở vnexpress") is True
+    assert duoc_nguoi_dung_cung_cap(
+        {"url": "https://vnexpress.net/?secret=Minh"}, "mở vnexpress") is False
+
+
 # --------------------------- panel --------------------------- #
 
 def test_MIEN_dung_rieng_va_dung_TRUOC_url_day_du():
@@ -100,6 +122,23 @@ def test_cong_TU_dung_ban_xem_truoc_khi_gac_vi_vet_nhiem():
     g = reg.gate("web_fetch", {"url": "https://evil.example/c?d=x"}, nhiem=True)
     assert g is not None
     assert g["preview"]["mien"] == "evil.example"
+
+
+def test_luot_nhiem_khong_hoi_lai_voi_query_bat_nguon_tu_cau_user():
+    reg = full_registry(actions=MagicMock())
+    assert reg.gate(
+        "web_search_list", {"query": "sự khác nhau giữa yêu và thương"},
+        nhiem=True,
+        user_text="Alice em nghĩ giữa yêu và thương khác nhau như nào") is None
+
+
+def test_luot_nhiem_van_hoi_neu_query_co_du_lieu_model_tu_chen():
+    reg = full_registry(actions=MagicMock())
+    g = reg.gate(
+        "web_search_list", {"query": "yêu và thương hồ sơ Minh"},
+        nhiem=True,
+        user_text="yêu và thương khác nhau thế nào")
+    assert g is not None and g["preview"]["truy_van"].endswith("Minh")
 
 
 def test_luot_SACH_khong_dung_ban_xem_truoc_va_khong_hoi():

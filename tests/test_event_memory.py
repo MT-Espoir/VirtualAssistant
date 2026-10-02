@@ -209,3 +209,32 @@ def test_forget_tool_is_destructive():
     reg = registry_with(profile=MagicMock())
     assert reg.has("forget_about_user")
     assert reg.get("forget_about_user").destructive is True
+
+
+def test_profile_data_control_tools_export_and_gate_full_delete(tmp_path):
+    from agent.tools import NeedsConfirmation
+    from conftest import registry_with
+    from memory.habits import HabitLog
+
+    profile = UserProfile(path=str(tmp_path / "profile.json"))
+    profile.remember(name="Lan", note="thích cà phê")
+    habits = HabitLog(path=str(tmp_path / "habits.json"))
+    habits.record("Chrome", "mở {}")
+    reg = registry_with(profile=profile, habits=habits)
+
+    exported = reg.run("manage_user_memory", {"action": "export"})
+    assert "Đã xuất dữ liệu" in exported
+    assert (tmp_path / "exports").is_dir()
+
+    try:
+        reg.run("manage_user_memory", {"action": "delete_all"})
+        assert False, "xóa toàn bộ memory phải cần xác nhận"
+    except NeedsConfirmation:
+        pass
+    assert profile.data["name"] == "Lan"
+
+    result = reg.run("manage_user_memory", {"action": "delete_all"}, confirmed=True)
+    assert "Đã xóa toàn bộ" in result
+    assert profile.data["name"] is None
+    assert habits.data == {"items": {}}
+    assert not (tmp_path / "habits.json").exists()

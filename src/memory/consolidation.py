@@ -5,7 +5,10 @@ còn đây lo BIẾN chúng thành trí nhớ dài hạn (prompt trích + phân 
 Agent điều phối lượt gọi LLM; file này chỉ có prompt + hàm THUẦN.
 """
 
+import hashlib
 import re
+
+from utils.text_norm import norm
 
 
 EXTRACT_SYSTEM = (
@@ -21,6 +24,8 @@ EXTRACT_SYSTEM = (
     "[BEN] Thích uống cà phê sữa buổi sáng\n"
     "[SUKIEN 2026-08-08T14:00] Có buổi phỏng vấn với anh Nam\n"
     "TUYỆT ĐỐI không bịa điều không có trong hội thoại; bỏ qua chuyện vặt nhất thời. "
+    "Chỉ rút điều có thể đối chiếu với một câu do chính Người dùng nói; không lấy câu "
+    "của Trợ lý làm bằng chứng. "
     "Nếu không có gì đáng nhớ, chỉ trả đúng: NONE."
 )
 
@@ -52,3 +57,45 @@ def parse_extracted_facts(text, max_facts=3, max_len=120):
         if len(facts) >= max_facts:
             break
     return facts
+
+
+_EVIDENCE_STOPWORDS = frozenset({
+    "toi", "minh", "em", "anh", "chi", "ban", "la", "co", "mot", "nhung",
+    "va", "voi", "cua", "cho", "nay", "do", "thi", "hay", "rat", "dang",
+})
+
+
+def supporting_evidence(transcript, fact_text, max_quote=240):
+    """Find the strongest exact user utterance supporting an extracted candidate.
+
+    The extractor may paraphrase, but it may not create durable memory from assistant
+    text or an unrelated user sentence. The result contains a bounded quote, confidence
+    and a transcript fingerprint suitable for ``memory_evidence.source_id``.
+    """
+    fact_tokens = {token for token in norm(fact_text or "").split()
+                   if len(token) > 1 and token not in _EVIDENCE_STOPWORDS}
+    if not fact_tokens:
+        return None
+    best = None
+    for line in (transcript or "").splitlines():
+        prefix, separator, raw = line.partition(":")
+        if not separator or norm(prefix).strip() != "nguoi dung":
+            continue
+        quote = raw.strip()
+        quote_tokens = {token for token in norm(quote).split()
+                        if len(token) > 1 and token not in _EVIDENCE_STOPWORDS}
+        overlap = len(fact_tokens & quote_tokens)
+        if overlap <= 0:
+            continue
+        coverage = overlap / max(1, len(fact_tokens))
+        score = (overlap, coverage, len(quote_tokens))
+        if best is None or score > best[0]:
+            best = (score, quote)
+    if best is None:
+        return None
+    overlap, coverage, _ = best[0]
+    confidence = min(0.9, 0.5 + 0.08 * overlap + 0.22 * coverage)
+    source_id = "stm:" + hashlib.sha256(
+        (transcript or "").encode("utf-8")).hexdigest()
+    return {"quote": best[1][:max_quote], "confidence": round(confidence, 3),
+            "source_id": source_id}

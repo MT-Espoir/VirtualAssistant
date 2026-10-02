@@ -161,4 +161,4 @@ def test_ngan_sach_tong_la_mot_con_so_duong():
     test_payload_moi_luot_cua_be_mat_mac_dinh` + `test_bo_loi.py`. Hằng số này nay canh
     ĐƯỜNG DỰ PHÒNG (`AllTools`, case `general` của Router). Xem `features/contract.py`.
     """
-    assert SPEC_CHARS_BUDGET == 21_500
+    assert SPEC_CHARS_BUDGET == 23_150

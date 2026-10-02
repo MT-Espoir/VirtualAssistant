@@ -15,14 +15,18 @@ Phụ thuộc tiêm vào (llm, registry) nên test được với LLM giả.
 """
 
 import re
+import json
+import time
 from dataclasses import dataclass
 
 from agent import untrusted
 from llm.client import LLMClient, Message, ToolResult
 from agent.surface import AllTools
 from agent.tools import ActionRefused, NeedsConfirmation, ToolRegistry
+from features.iot.fast import match_ac_off_timer, describe_ac_result
 from memory.short_term import ShortTermMemory
-from memory.consolidation import parse_extracted_facts, EXTRACT_SYSTEM
+from memory.consolidation import (EXTRACT_SYSTEM, parse_extracted_facts,
+                                  supporting_evidence)
 from agent.persona import (score_fluster, score_user_valence, parse_trait_nudges,
                            PERSONA_TUNE_SYSTEM)
 from voice.fast_commands import match_confirmation
@@ -79,6 +83,12 @@ def _clean_text(text):
         lines.append(line)
     t = re.sub(r"\n\s*\n+", "\n", "\n".join(lines))    # bỏ dòng trống xen giữa
     return re.sub(r"[ \t]{2,}", " ", t).strip()
+
+
+def _visible_whitespace(text):
+    """Raw model text on one debug line, with control whitespace made explicit."""
+    # json.dumps already renders CR/LF/tab as \r/\n/\t and keeps Vietnamese readable.
+    return json.dumps(text or "", ensure_ascii=False)[1:-1]
 
 
 class Agent:
@@ -171,6 +181,15 @@ class Agent:
             summary = self.profile.summary(query=user_text)
             if summary:
                 parts.append(summary)
+            # Phase 4-lite: outcome chỉ giữ trace ẩn danh (hash/source/score), không sao
+            # chép query hoặc nội dung memory. Instrumentation lỗi không được làm vỡ lượt.
+            try:
+                trace_reader = getattr(self.profile, "last_retrieval_trace", None)
+                trace = trace_reader() if callable(trace_reader) else None
+                if trace is not None and self._luot is not None:
+                    self._luot["memory_retrieval"] = trace
+            except Exception as e:
+                logger.warning("Không ghi được memory retrieval trace: %s", e)
 
         # Thói quen SUY từ hành vi (hay nghe bài gì, hay mở app nào). Đặt sau hồ sơ vì đây
         # là suy đoán, còn hồ sơ là lời người dùng nói ra — thứ chắc chắn hơn đứng trước.
@@ -211,6 +230,7 @@ class Agent:
 
         # Bề mặt tool quyết định lượt này model thấy prompt gì + tool nào.
         system, tools = self.surface.select(user_text, self.registry)
+        tools = [spec for spec in tools if not self.registry.has(spec["name"]) or self.registry.is_enabled(spec["name"])]
 
         system = self._compose_system(system, user_text)
 
@@ -218,8 +238,17 @@ class Agent:
 
         final_text = ""
         spoke_tool_output = False        # đã cắt lượt soạn lời? (dùng để chấm tâm trạng)
+        ac_timer_requested = match_ac_off_timer(user_text) is not None
+        ac_timer_saved = False
+        from features.iot.fast import match_ac_automation, describe_automation_result
+        ac_rule_requested = match_ac_automation(user_text) is not None
+        ac_rule_result = None
         for iteration in range(self.max_iterations):
+            llm_started = time.perf_counter()
             turn = self.llm.generate(system=system, messages=messages, tools=tools)
+            self._debug_llm_turn(
+                turn, iteration + 1,
+                duration_ms=(time.perf_counter() - llm_started) * 1000)
             if self._luot is not None:
                 self._luot["so_vong"] = iteration + 1
             messages.append(Message(role="assistant", text=turn.text,
@@ -230,7 +259,10 @@ class Agent:
             # sau: 'mở A, B, C' mà không có từ nối vẫn phải chạy đủ). Đổi lại mỗi lệnh
             # tốn thêm 1 lượt LLM soạn lời — chấp nhận để đúng & dễ đoán.
             if not turn.wants_tools:
-                final_text = turn.text
+                final_text = (turn.text if not ac_timer_requested or ac_timer_saved else
+                              "Tôi chưa đặt được lịch tắt máy lạnh. Bạn kiểm tra kết nối thiết bị rồi thử lại.")
+                if ac_rule_requested:
+                    final_text = describe_automation_result(ac_rule_result)
                 break
 
             # Chặn hành động khó hoàn tác: nếu model định gọi tool destructive, KHÔNG
@@ -240,12 +272,32 @@ class Agent:
             # tiếp, nên không cần dựng câu hỏi xác nhận làm gì.
             tu_choi = self._find_refused(turn.tool_calls)
             if tu_choi is not None:
+                debug_tool = getattr(self.registry, "debug_event", None)
+                if debug_tool is not None:
+                    debug_tool(
+                        f"Model yêu cầu {tu_choi['name']} nhưng bị từ chối",
+                        {"name": tu_choi["name"], "reason": tu_choi["ly_do"]},
+                        level="WARNING")
                 self._ghi_nhan_tool(tu_choi["name"], f"{tu_choi['name']}: bị từ chối")
                 final_text = f"Xin lỗi, {tu_choi['ly_do']}."
                 break
 
-            deferred = self._find_destructive(turn.tool_calls)
+            # A single explicit duration must survive model omissions and confirmation.
+            ac_request = match_ac_off_timer(user_text)
+            if ac_request:
+                for call in turn.tool_calls:
+                    if call.name == "control_room_ac":
+                        call.arguments.update(ac_request[1])
+            deferred = self._find_destructive(turn.tool_calls, user_text)
             if deferred is not None:
+                debug_tool = getattr(self.registry, "debug_event", None)
+                if debug_tool is not None:
+                    debug_tool(
+                        f"Model yêu cầu {deferred['name']} — đang chờ người dùng duyệt",
+                        {"name": deferred["name"],
+                         "arguments": deferred.get("arguments") or {},
+                         "phrase": deferred.get("phrase")},
+                        level="WARNING")
                 # KHÔNG chốt sổ ở đây: kết quả của lượt này chưa biết, nó nằm ở câu trả
                 # lời của người dùng lượt sau (tu_choi / bo_giua_chung / xong). Sổ được
                 # mang theo cùng `self.pending` và do `_resolve_pending` chốt.
@@ -254,6 +306,7 @@ class Agent:
                 # (case, tool, ket_qua), nên thiếu tên thì mọi bản ghi `tu_choi` giống hệt
                 # nhau và không học được gì. Tool bị từ chối vẫn là tool model đã CHỌN.
                 self._ghi_nhan_tool(deferred["name"])
+                deferred["_camera_gesture_ready_at"] = time.monotonic()
                 self.pending = deferred
                 shown = self._show_pending(deferred.get("preview"))
                 # Có gì để NHÌN thì đừng bắt người dùng nghe lại — mắt đọc một lá thư
@@ -263,7 +316,22 @@ class Agent:
                               f"Nói 'có' để tôi làm, 'không' để bỏ qua.")
                 break
 
-            results = [self._run_tool(c) for c in turn.tool_calls]
+            results = [self._run_tool(c, user_text=user_text) for c in turn.tool_calls]
+            if ac_rule_requested:
+                for call, result in zip(turn.tool_calls, results):
+                    if call.name == "configure_climate_automation" and not getattr(result, "is_error", False):
+                        ac_rule_result = result.content
+            if ac_timer_requested:
+                for call, result in zip(turn.tool_calls, results):
+                    if call.name != "control_room_ac" or getattr(result, "is_error", False):
+                        continue
+                    try:
+                        saved = json.loads(result.content or "{}")
+                    except (TypeError, ValueError):
+                        continue
+                    if saved.get("status") in ("scheduled", "queued_for_mqtt", "published_to_broker",
+                                              "received", "ir_sent", "node_result_ok_uncorrelated") and saved.get("run_until"):
+                        ac_timer_saved = True
 
             # Bề mặt tool được quyền MỞ THÊM tool giữa lượt (`IndexedTools` mở một nhóm).
             # `getattr` chứ không phải method bắt buộc: `AllTools` và `Router` không có
@@ -324,6 +392,28 @@ class Agent:
 
         self._remember(user_text, text)
         return AgentReply(text=text, emotion=emotion)
+
+    def _debug_llm_turn(self, turn, iteration, duration_ms):
+        """Expose the provider-neutral raw turn before emotion/text cleanup."""
+        emit = getattr(self.registry, "debug_event", None)
+        if emit is None:
+            return
+        raw = turn.text or ""
+        blank_lines = len(re.findall(r"(?:\r?\n)[ \t]*(?:\r?\n)", raw))
+        tool_names = [call.name for call in (turn.tool_calls or [])]
+        shown = _visible_whitespace(raw) or "(không có text)"
+        emit(
+            f"LLM phản hồi vòng {iteration}: {shown}",
+            {
+                "iteration": iteration,
+                "duration_ms": round(max(0.0, duration_ms), 1),
+                "characters": len(raw),
+                "line_breaks": raw.count("\n"),
+                "blank_line_boundaries": blank_lines,
+                "tool_calls": tool_names,
+            },
+            category="llm",
+        )
 
     # ------------------------- lối tắt: đọc thẳng kết quả tool ------------------------- #
     def _speakable_shortcut(self, iteration, tool_calls, results):
@@ -425,13 +515,23 @@ class Agent:
         facts = parse_extracted_facts(raw)
         ghi = 0
         for fact in facts:
+            evidence = supporting_evidence(transcript, fact["text"])
+            if evidence is None:
+                logger.info("🛡 bỏ candidate không có câu người dùng làm bằng chứng")
+                continue
             # Sự kiện có thời điểm đi vào kho SỰ KIỆN (tự hết hạn) thay vì kho sự thật bền
             # vững — nếu không, "có phỏng vấn lúc 2h" sẽ được nhắc mãi như sắp diễn ra.
             if fact.get("kind") == "event":
-                self.profile.add_event(fact["text"], when=fact.get("when"))
+                self.profile.add_event(
+                    fact["text"], when=fact.get("when"),
+                    evidence={"quote": evidence["quote"], "extractor_output": fact},
+                    confidence=evidence["confidence"], source_id=evidence["source_id"])
                 ghi += 1
             elif config.LTM_AUTO_FACTS:
-                self.profile.add_auto_fact(fact["text"])
+                self.profile.add_auto_fact(
+                    fact["text"],
+                    evidence={"quote": evidence["quote"], "extractor_output": fact},
+                    confidence=evidence["confidence"], source_id=evidence["source_id"])
                 ghi += 1
         if ghi:
             logger.info("🧠 củng cố %d điều vào trí nhớ dài hạn", ghi)
@@ -543,7 +643,7 @@ class Agent:
                 return {"name": call.name, "ly_do": ly_do}
         return None
 
-    def _find_destructive(self, tool_calls):
+    def _find_destructive(self, tool_calls, user_text=None):
         """Trả {name, arguments, phrase, preview} cho lời gọi CẦN DUYỆT đầu tiên, hoặc None.
 
         Chính sách "lời gọi nào cần duyệt" nằm ở `ToolRegistry.gate` — hàm này chỉ soi CẢ
@@ -553,7 +653,8 @@ class Agent:
         """
         for call in tool_calls:
             can_duyet = self.registry.gate(call.name, call.arguments or {},
-                                           nhiem=self._nhiem > 0)
+                                           nhiem=self._nhiem > 0,
+                                           user_text=user_text)
             if can_duyet is not None:
                 return can_duyet
         return None
@@ -624,6 +725,8 @@ class Agent:
         try:
             output = str(self.registry.run(name, arguments, confirmed=True))
             logger.info("🔧 (đã xác nhận) tool %s(%s) → %s", name, arguments, output[:150])
+            if name == "control_room_ac":
+                output = describe_ac_result(output, arguments)
             self._note_habit(name, arguments)
             # Chỉ ghi LỖI, không ghi lại tên: tên đã vào sổ từ lúc hoãn để hỏi, và đường
             # duy nhất tới đây là qua cổng duyệt đó.
@@ -662,9 +765,11 @@ class Agent:
             logger.warning("Không ghi được thói quen cho %s: %s", name, e)
 
     # ------------------------- tool ------------------------- #
-    def _run_tool(self, call) -> ToolResult:
+    def _run_tool(self, call, user_text=None) -> ToolResult:
         try:
-            output = self.registry.run(call.name, call.arguments, nhiem=self._nhiem > 0)
+            output = self.registry.run(
+                call.name, call.arguments, nhiem=self._nhiem > 0,
+                user_text=user_text)
             # Log rõ tool nào được gọi + kết quả -> thấy ngay model có gọi tool không,
             # hay chỉ bịa câu trả lời (phân biệt lỗi tool vs lỗi model yếu).
             logger.info("🔧 tool %s(%s) → %s", call.name, call.arguments, str(output)[:150])

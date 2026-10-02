@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from memory.profile import (UserProfile, apply_update, summarize,
                                           thay_tham_chieu, THAM_CHIEU_TEN,
-                                          _relevant_facts)
+                                          _relevant_facts, retrieve_profile_facts)
 
 from conftest import registry_with
 
@@ -50,6 +50,13 @@ def test_summarize_dua_xung_ho_vao_prompt():
     """Xưng hô PHẢI vào prompt: nó quyết giọng của mọi câu trả lời."""
     data, _ = apply_update(None, address_form="sếp")
     assert "sếp" in summarize(data)
+
+
+def test_profile_address_reader_tracks_updates(tmp_path):
+    profile = UserProfile(str(tmp_path / "profile.json"))
+    assert profile.get_address_form() is None
+    profile.remember(address_form="cậu chủ")
+    assert profile.get_address_form() == "cậu chủ"
 
 
 def test_summarize_KHONG_dua_ten_that_vao_prompt():
@@ -107,6 +114,27 @@ def test_summarize_retrieves_only_relevant_when_many():
 def test_summarize_dumps_all_when_few_facts():
     data = {"notes": ["thích cà phê"], "auto_facts": [], "preferences": {}}
     assert "Cần nhớ" in summarize(data, query="bất kỳ câu gì")   # dưới ngưỡng -> bơm hết
+
+
+def test_retrieval_trace_an_danh_khong_chua_query_hoac_noi_dung():
+    secret = "bí mật thích cà phê Ethiopia"
+    query = "cà phê nào phù hợp"
+    data = {"notes": [secret, *[f"nhiễu riêng {i}" for i in range(7)]],
+            "auto_facts": [], "events": [], "preferences": {}}
+    selected, trace = retrieve_profile_facts(data, query=query)
+    encoded = json.dumps(trace, ensure_ascii=False)
+    assert selected and trace["mode"] == "top_k"
+    assert secret not in encoded and query not in encoded
+    assert len(trace["selected"][0]["id"]) == 16
+
+
+def test_user_profile_exposes_copy_of_last_retrieval_trace(tmp_path):
+    profile = UserProfile(str(tmp_path / "profile.json"))
+    profile.data["notes"] = [f"ghi chú {i}" for i in range(8)]
+    profile.summary(query="ghi chú 7")
+    trace = profile.last_retrieval_trace()
+    trace["selected"].clear()
+    assert profile.last_retrieval_trace()["selected"]
 
 
 # --------------------------- UserProfile (I/O) --------------------------- #

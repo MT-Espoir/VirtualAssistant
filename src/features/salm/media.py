@@ -6,7 +6,7 @@ import threading
 import time
 from collections import defaultdict, deque
 
-from features.salm.windows import normalize_app_id
+from features.salm.windows import is_process_in_current_session, normalize_app_id
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -78,12 +78,15 @@ class WasapiProbe:
             for session in AudioUtilities.GetAllSessions():
                 try:
                     process = session.Process
+                    if process and not is_process_in_current_session(process.pid):
+                        continue
                     app_id = normalize_app_id(process.name() if process else None)
                     meter = session._ctl.QueryInterface(IAudioMeterInformation)
                     peak = meter.GetPeakValue()
                     state = session.State
                     state_value = getattr(state, "value", state)
-                    samples.append((app_id, peak, int(state_value) == 1))
+                    if process is None or int(process.pid) != os.getpid():
+                        samples.append((app_id, peak, int(state_value) == 1))
                 except Exception:
                     continue
         except Exception as exc:

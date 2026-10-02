@@ -12,6 +12,206 @@ from utils.units import say_distance
 
 MAX_CARDS = 8
 
+_ACTIVITY_CATEGORY_LABELS = {
+    "work": "Công việc",
+    "communication": "Liên lạc",
+    "media": "Nội dung & giải trí",
+    "personal": "Cá nhân",
+    "unknown": "Chưa phân loại",
+}
+
+
+def _duration_text(seconds):
+    try:
+        total_minutes = int(round(max(0.0, float(seconds or 0)) / 60.0))
+    except (TypeError, ValueError):
+        total_minutes = 0
+    hours, minutes = divmod(total_minutes, 60)
+    if hours and minutes:
+        return f"{hours}h {minutes:02d}m"
+    if hours:
+        return f"{hours}h"
+    return f"{minutes}m"
+
+
+def _activity_classification_summary(payload):
+    """Các block quản lý preference, kể cả khi kỳ hiện tại chưa có activity."""
+    quality = (payload or {}).get("data_quality") or {}
+    classification = list((payload or {}).get("classification_apps") or [])
+    if not classification:
+        return []
+    blocks = [("header", "Phân loại ứng dụng")]
+    coverage = float(quality.get("classification_coverage") or 0.0)
+    blocks.append(("body", f"Đã phân loại {round(coverage * 100)}% thời gian "
+                           "tương tác đủ điều kiện."))
+    # Preference đã lưu luôn đứng trước để thao tác exclude có đường khôi phục rõ ràng.
+    classification.sort(key=lambda app: (
+        not bool(app.get("source")),
+        not bool(app.get("excluded")),
+        -float(app.get("interactive_seconds") or 0),
+        str(app.get("app_id") or "").casefold(),
+    ))
+    for app in classification:
+        category = _ACTIVITY_CATEGORY_LABELS.get(
+            app.get("category"), "Chưa phân loại")
+        if app.get("excluded"):
+            status = "Đã loại khỏi thống kê"
+        elif not app.get("classifiable", True):
+            status = "Tên tiến trình chung · chỉ có thể loại trừ"
+        else:
+            status = category
+        blocks.append(("card", {
+            "title": str(app.get("display_name") or app.get("app_id")),
+            "meta": [status, _duration_text(app.get("interactive_seconds"))],
+            "lines": ["Bấm để chỉnh nhóm hoặc loại trừ."],
+            "photos": [],
+        }, {"action": "choose_app", "app_id": app.get("app_id")}))
+    return blocks
+
+
+def activity_insights_blocks(payload):
+    """SALM daily aggregate -> HUD blocks; không tính analytics ở tầng UI."""
+    if not payload:
+        return []
+    period_labels = {"today": "Hôm nay", "7_days": "7 ngày", "30_days": "30 ngày"}
+    period = period_labels.get(payload.get("period"), str(payload.get("period") or ""))
+    date_range = payload.get("range") or {}
+    quality = payload.get("data_quality") or {}
+    totals = payload.get("totals") or {}
+    view = payload.get("view") or "overview"
+
+    blocks = [("header", f"Tổng quan · {period}")]
+    if payload.get("preference_error"):
+        blocks.append(("badge", str(payload["preference_error"]), "warn"))
+    elif payload.get("preference_notice"):
+        blocks.append(("badge", str(payload["preference_notice"]), "info"))
+    if date_range.get("start") and date_range.get("end"):
+        shown_range = (date_range["end"] if date_range["start"] == date_range["end"]
+                       else f"{date_range['start']} → {date_range['end']}")
+        blocks.append(("field", "Khoảng", shown_range))
+
+    if not quality.get("valid_days"):
+        blocks.append(("body", "Chưa có dữ liệu hoạt động trong khoảng thời gian này."))
+        blocks.append(("body", "SALM cần chạy và ghi nhận activity trước khi panel có "
+                               "thể hiển thị thống kê."))
+        blocks.extend(_activity_classification_summary(payload))
+        return blocks
+
+    blocks.extend((
+        ("field", "Tương tác", _duration_text(totals.get("interactive_seconds"))),
+        ("field", "Màn hình", _duration_text(totals.get("screen_exposure_seconds"))),
+        ("field", "Nhịp làm việc", _duration_text(
+            totals.get("work_engagement_seconds"))),
+        ("field", "Nghỉ xác nhận", _duration_text(
+            totals.get("confirmed_break_seconds"))),
+    ))
+
+    if view in ("overview", "apps"):
+        top_apps = list(payload.get("top_apps") or [])[:8]
+        blocks.append(("header", "Ứng dụng tương tác nhiều nhất"))
+        if top_apps:
+            maximum = max(float(row.get("interactive_seconds") or 0)
+                          for row in top_apps) or 1.0
+            blocks.append(("bar_chart", [{
+                # Tên đầy đủ do identity policy sinh; app_id vẫn được giữ riêng để nhóm.
+                "label": str(row.get("display_name") or row.get("app_id")
+                             or "(không rõ tên)"),
+                "value": float(row.get("interactive_seconds") or 0),
+                "max_value": maximum,
+                "display_value": _duration_text(row.get("interactive_seconds")),
+            } for row in top_apps]))
+        else:
+            blocks.append(("body", "Chưa có ứng dụng nào có thời gian tương tác."))
+
+    if view in ("overview", "trend"):
+        trend = list(payload.get("trend") or [])
+        blocks.append(("header", "Xu hướng tương tác theo ngày"))
+        blocks.append(("sparkline", [{
+            "label": str(point.get("day") or "")[-5:],
+            "value": float(point.get("interactive_seconds") or 0),
+            "has_data": bool(point.get("has_data")),
+        } for point in trend]))
+
+    valid = int(quality.get("valid_days") or 0)
+    missing = int(quality.get("missing_days") or 0)
+    blocks.append(("body", f"Dữ liệu: {valid} ngày có ghi nhận"
+                           + (f", {missing} ngày chưa có dữ liệu." if missing else ".")))
+    if quality.get("partial_days"):
+        blocks.append(("badge", "Hôm nay vẫn đang được cập nhật", "info"))
+
+    if view in ("overview", "apps"):
+        blocks.extend(_activity_classification_summary(payload))
+    blocks.append(("body", "Số liệu phản ánh activity đã ghi nhận, không phải điểm năng "
+                           "suất hay đánh giá trạng thái tâm lý."))
+    return blocks
+
+
+def activity_classification_blocks(payload, app_id):
+    """Màn chỉnh một app; action có cấu trúc để UI không tự ghi database."""
+    apps = list((payload or {}).get("classification_apps") or [])
+    app = next((row for row in apps if row.get("app_id") == app_id), None)
+    if app is None:
+        return [("header", "Phân loại ứng dụng"),
+                ("body", "Ứng dụng này không còn trong dữ liệu hiện tại."),
+                ("buttons", [("QUAY LẠI", {"action": "back"}, "off")])]
+
+    blocks = [("header", str(app.get("display_name") or app_id))]
+    blocks.append(("field", "Hiện tại", "Đã loại khỏi thống kê"
+                   if app.get("excluded") else _ACTIVITY_CATEGORY_LABELS.get(
+                       app.get("category"), "Chưa phân loại")))
+    if app.get("classifiable", True):
+        blocks.append(("body", "Chọn nhóm do chính bạn xác định:"))
+        for category in ("work", "communication", "media", "personal", "unknown"):
+            blocks.append(("card", {
+                "title": _ACTIVITY_CATEGORY_LABELS[category],
+                "meta": ["đang chọn"] if (
+                    not app.get("excluded") and app.get("category") == category) else [],
+                "lines": [], "photos": [],
+            }, {"action": "classify", "app_id": app_id, "category": category}))
+    else:
+        blocks.append(("badge", "Không thể phân loại an toàn vì tên tiến trình quá "
+                                 "chung.", "warn"))
+
+    if app.get("excluded"):
+        blocks.append(("card", {
+            "title": "Đưa lại vào thống kê", "meta": [], "lines": [], "photos": [],
+        }, {"action": "include", "app_id": app_id}))
+    else:
+        blocks.append(("card", {
+            "title": "Loại khỏi thống kê", "meta": [], "lines": [], "photos": [],
+        }, {"action": "exclude", "app_id": app_id}))
+    if app.get("source"):
+        blocks.append(("card", {
+            "title": "Đặt lại thành chưa phân loại", "meta": [], "lines": [],
+            "photos": [],
+        }, {"action": "reset", "app_id": app_id}))
+    blocks.append(("buttons", [("QUAY LẠI", {"action": "back"}, "off")]))
+    return blocks
+
+
+def care_style_blocks(payload):
+    """Preference SALM-2 hiện tại; chỉ xem và reset, không có dữ liệu activity thô."""
+    if not payload:
+        return []
+    labels = {
+        "concise": "Ngắn gọn", "balanced": "Cân bằng",
+        "gentle": "Nhẹ nhàng", "direct": "Trực tiếp",
+        "low": "Ít thay đổi", "high": "Đa dạng",
+        "sparse": "Ít gọi", "frequent": "Gọi thường xuyên",
+    }
+    shown = lambda value: labels.get(value, "Cân bằng")
+    return [
+        ("header", "Phong cách nhắc nghỉ"),
+        ("field", "Cách gọi", str(payload.get("address_form") or "bạn")),
+        ("field", "Độ dài", shown(payload.get("length"))),
+        ("field", "Mức trực tiếp", shown(payload.get("directness"))),
+        ("field", "Độ đa dạng", shown(payload.get("variation"))),
+        ("field", "Tần suất xưng hô", shown(payload.get("address_frequency"))),
+        ("body", "Chỉ học từ yêu cầu bạn nói rõ; không suy từ việc bỏ qua lời nhắc "
+                 "và không tự đổi ngưỡng sức khỏe."),
+        ("buttons", [("ĐẶT LẠI", "reset", "off")]),
+    ]
+
 
 # ============================== ĐỊA ĐIỂM ==============================
 #

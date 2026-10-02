@@ -1,0 +1,20 @@
+user alice-gateway
+topic readwrite alice/iot/healthcheck
+topic read home/esp32s3-ir-gateway/availability
+topic read home/esp32s3-ir-gateway/dht20/state
+topic read home/esp32s3-ir-gateway/ac/state
+topic read home/esp32s3-ir-gateway/ac/result
+topic read home/esp32s3-ir-gateway/ac/ack
+topic readwrite home/esp32s3-ir-gateway/ac/command
+topic readwrite home/esp32s3-ir-gateway/ac/command_v2
+
+user esp32s3-ir-gateway
+topic write home/esp32s3-ir-gateway/availability
+topic write home/esp32s3-ir-gateway/dht20/state
+topic write home/esp32s3-ir-gateway/dht20/temperature
+topic write home/esp32s3-ir-gateway/dht20/humidity
+topic write home/esp32s3-ir-gateway/ac/state
+topic write home/esp32s3-ir-gateway/ac/result
+topic write home/esp32s3-ir-gateway/ac/ack
+topic read home/esp32s3-ir-gateway/ac/command
+topic read home/esp32s3-ir-gateway/ac/command_v2

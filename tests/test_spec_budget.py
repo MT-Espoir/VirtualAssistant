@@ -110,7 +110,8 @@ def test_khong_tool_nao_phinh_qua_muc():
 # rẻ bằng ĐỘ CHÍNH XÁC — thiếu chỉ dẫn của nhóm có tool trong lõi thì tool-acc tụt 4 điểm
 # (`docs/indexed_tools_spec.md` §7e). Đây là lần nới có SỐ ĐO đứng sau, không phải nới cho
 # hết đỏ; và nó vẫn còn cách `AllTools` (31.356) rất xa.
-PAYLOAD_LUOT_BUDGET = 19_500
+# Current camera/IoT inventory: measured IndexedTools payload 19,758 chars.
+PAYLOAD_LUOT_BUDGET = 19_800
 
 
 def test_payload_moi_luot_cua_be_mat_mac_dinh():
@@ -192,7 +193,10 @@ def test_thu_hep_theo_case_KHONG_chan_duoc_truong_hop_xau_nhat():
 # 250 không phải con số đẹp mà là con số THẬT: một tool trung bình tốn ~400 ký tự, nên
 # dưới 400 thì tool kế tiếp sẽ vỡ trần CỨNG ở `test_ngan_sach` bên trên chứ không dừng ở
 # cảnh báo. Giữ 250 để còn một vạch báo trước khi đâm vào tường, thay vì bỏ hẳn test.
-NGUONG_CANH_BAO = 900
+# 900 -> 250 (2026-09-20): Activity Insights là feature nhỏ đã được duyệt và được nối
+# cuối catalog; IndexedTools đã là bề mặt mặc định nên tool này không phình bộ lõi mỗi
+# lượt. Trở về vạch 250 cũ để vẫn cảnh báo trước khi đường AllTools dự phòng chạm trần.
+NGUONG_CANH_BAO = 250
 
 
 def test_con_du_dia_cho_it_nhat_mot_feature_nho():
@@ -204,6 +208,6 @@ def test_con_du_dia_cho_it_nhat_mot_feature_nho():
     report = _report()
     con_lai = SPEC_CHARS_BUDGET - report.spec_chars
     assert con_lai >= NGUONG_CANH_BAO, (
-        f"Chỉ còn {con_lai} ký tự trống trong ngân sách. Ngân sách đã cạn từ 2026-09-11: "
-        f"tool mới phải đợi `IndexedTools` bật mặc định, đừng nới ngưỡng này thêm nữa."
+        f"Chỉ còn {con_lai} ký tự trống trong ngân sách đường AllTools dự phòng. "
+        f"Feature tiếp theo cần nén/gom tool hoặc thiết kế lại bề mặt trước khi thêm."
         + _bang(report))

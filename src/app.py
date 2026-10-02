@@ -7,23 +7,37 @@ sang gõ phím nếu không có/lỗi (xem INPUT_MODE trong .env.example).
 Chạy:  cd src && python app.py
 """
 
+import sys
+import re
 import threading
 import time
 
 from agent.agent import Agent
 from agent.actions_facade import AssistantActions
-from agent.tools import NeedsConfirmation
+from agent.tools import NeedsConfirmation, ActionRefused
 from features.contract import FeatureContext
+from features.activity_insights import ActivityInsightsService
+from features.camera.service import CameraService
+from features.camera.commands import extract_camera_off_command, turn_off_webcam
+from features.camera.return_coordinator import WorkstationReturnCoordinator
+from features.camera.visual_confirmation import VisualConfirmationArbiter
+from features.camera.welcome import CameraReturnWelcome, build_camera_welcome_client
+from features.iot.alerts import VoiceAlertPoller
+from features.iot.client import IoTClient
+from features.iot.fast import describe_ac_result, describe_automation_result
 from features.registry import build_registry
 from features.places.service import PlacesService
 from features.salm import InterventionGate, ProactiveDispatcher, SalmRuntime
+from features.salm.app_identity import display_app_name
 from features.salm.intervention import Intervention
-from features.salm.welcome import (STARTUP_GREETING_TEXT,
-                                   WELCOME_BACK_GREETING_TEXT)
+from features.salm.welcome import (STARTUP_GREETING_TEXT, WelcomeDialogue,
+                                   welcome_fallback)
 from services.location import LocationStore
 from memory.habits import HabitLog
 from memory.outcomes import OutcomeLog
 from memory.profile import UserProfile
+from persistence import LocalDatabase
+from features.salm.storage import SalmStorage
 from agent.persona import PersonaState, MoodState
 from services.tasks import TaskStore
 from services.routines import RoutineStore
@@ -35,11 +49,16 @@ from llm.client import build_default_llm_client
 from utils.events import AssistantBus
 from voice.wake_word import (in_follow_up_window, match_wake_word, parse_wake_words,
                              wake_words_not_in)
+from voice.recovery import VoiceUtterance, assess_voice_utterance
 from features import fast as feature_fast
-from voice.fast_commands import (match_avatar_command, match_mode_command,
+from voice.fast_commands import (explicit_ui_target, match_avatar_command,
+                                 match_hud_command, match_mode_command,
                                  match_confirmation, match_persona_command,
                                  match_routine_command)
 from services.scheduler import ReminderScheduler
+from services.control_panel import SystemControls
+from utils.control_settings import controls
+from voice.fast_commands import match_control_panel_command
 from ui.avatar import AvatarWindow
 from ui.avatar_face import guess_emotion
 from utils.config import config
@@ -48,7 +67,8 @@ from utils.logger import get_logger
 logger = get_logger(__name__)
 _NO_INPUT = object()
 MAX_INPUT_FAILS = 5
-SPEAK_TAIL_GUARD_S = 0.4
+# Chỉ là trần số mẫu ĐÃ buffer được phép dọn, không phải thời gian chờ mù.
+SPEAK_BUFFER_FLUSH_MAX_S = 5.0
 STARTUP_GREETING_VOICE_TIMEOUT_S = 90.0
 
 
@@ -136,7 +156,9 @@ def _make_voice_input():
             channels=config.CHANNELS, rate=config.SAMPLE_RATE,
             chunk=config.CHUNK_SIZE, speech_threshold_ratio=config.SPEECH_THRESHOLD_RATIO,
             silence_duration=config.SILENCE_DURATION,
-            max_utterance_s=config.MAX_UTTERANCE_SECONDS)
+            max_utterance_s=config.MAX_UTTERANCE_SECONDS,
+            speech_start_timeout_s=config.SPEECH_START_TIMEOUT_SECONDS,
+            pre_roll_s=config.SPEECH_PRE_ROLL_SECONDS)
         recognizer = SpeechRecognizer(language=config.STT_LANGUAGE, engine=config.STT_ENGINE)
         return recorder, recognizer
     except Exception as e:
@@ -146,6 +168,21 @@ def _make_voice_input():
         return None
 
 
+def _emit_tts_input(bus, text, emotion, proactive=False, mode="sync"):
+    """Log exact speech input on one line so blank lines remain visible as escapes."""
+    raw_text = str(text or "")
+    visible = (raw_text.replace("\\", "\\\\").replace("\r", "\\r")
+               .replace("\n", "\\n").replace("\t", "\\t"))
+    bus.emit_debug("assistant", f"Văn bản đưa vào TTS: {visible}",
+                   {"emotion": emotion, "proactive": proactive,
+                    "mode": mode,
+                    "characters": len(raw_text),
+                    "line_breaks": raw_text.count("\n"),
+                    "blank_line_boundaries": len(re.findall(
+                        r"(?:\r?\n)[ \t]*(?:\r?\n)", raw_text))})
+    return raw_text
+
+
 def _say(synth, bus, text, emotion, proactive=False):
     """Phát trạng thái 'speaking' rồi NÓI ĐỒNG BỘ — chặn tới khi phát xong.
 
@@ -153,12 +190,20 @@ def _say(synth, bus, text, emotion, proactive=False):
     speak_sync() chặn tới khi loa im, mic sẽ KHÔNG mở lại giữa lúc AI đang nói —
     loại bỏ vòng vọng âm (AI tự nghe lại giọng mình rồi tự trả lời).
     """
+    raw_text = _emit_tts_input(bus, text, emotion, proactive, mode="sync")
     bus.emit(state="speaking", emotion=emotion, text=text, proactive=proactive)
     if synth:
+        started = time.perf_counter()
         try:
             synth.speak_sync(text)     # chặn tới khi phát xong
         except Exception as e:
             logger.error("Lỗi khi phát giọng nói: %s", e)
+        finally:
+            bus.emit_debug(
+                "assistant", "TTS hoàn tất",
+                {"duration_ms": round((time.perf_counter() - started) * 1000, 1),
+                 "characters": len(raw_text), "mode": "sync",
+                 "interrupted": False}, level="SUCCESS")
 
 
 def _reply_and_idle(synth, bus, voice_io, text, emotion="happy"):
@@ -176,9 +221,8 @@ def _reply_and_idle(synth, bus, voice_io, text, emotion="happy"):
 
 
 def _flush_mic_after_speaking(recorder):
-    """Sau khi AI nói xong: đọc-bỏ mic trong lúc đuôi âm loa tắt (vừa lọc vọng âm
-    vừa làm nóng phần cứng mic sớm) rồi làm mới recorder trước khi nghe lại."""
-    recorder.drain(SPEAK_TAIL_GUARD_S)
+    """Bỏ audio TTS đã tồn đọng nhưng không tạo thêm khoảng mù sau khi nói xong."""
+    recorder.discard_buffered(SPEAK_BUFFER_FLUSH_MAX_S)
     recorder.reset()
 
 
@@ -203,29 +247,43 @@ def _speak_and_watch(synth, bus, text, emotion, voice_io, wake_words):
     có trong chính câu trả lời (tránh AI tự ngắt lời mình khi đọc trúng từ khoá).
     """
     recorder, recognizer = voice_io
+    raw_text = _emit_tts_input(bus, text, emotion, mode="async_barge_in")
     bus.emit(state="speaking", emotion=emotion, text=text)
 
     bargein_words = wake_words_not_in(text, wake_words)   # bỏ từ khoá trùng câu trả lời
-    synth.speak(text)                                     # phát bất đồng bộ
+    started = time.perf_counter()
+    interrupted = False
 
     try:
+        synth.speak(text)                                 # phát bất đồng bộ
         while _tts_active(synth):
-            audio = recorder.listen_once(max_seconds=BARGE_IN_LISTEN_SECONDS)
+            audio = recorder.listen_once(
+                max_seconds=BARGE_IN_LISTEN_SECONDS,
+                start_timeout_s=BARGE_IN_LISTEN_SECONDS)
             recorder.reset()
-            if not _tts_active(synth):
-                break                                    # TTS vừa xong -> thôi nghe
-            if audio is None or not bargein_words:
-                continue
-            heard = recognizer.recognize_speech_from_data(audio)
-            if not heard:
-                continue
-            matched, remainder = match_wake_word(heard, bargein_words)
-            if matched:
-                synth.stop()                             # ngắt lời AI ngay
-                print(f"⏸ Ngắt lời (barge-in): {heard}")
-                return remainder or None
+            active = _tts_active(synth)
+            # Audio thu đúng lúc TTS kết thúc vẫn phải được nhận dạng; bản cũ break trước
+            # bước này nên nuốt trọn wake word/câu lệnh của người dùng.
+            if audio is not None and bargein_words:
+                heard = recognizer.recognize_speech_from_data(audio)
+                if heard:
+                    matched, remainder = match_wake_word(heard, bargein_words)
+                    if matched:
+                        interrupted = active
+                        if active:
+                            synth.stop()                 # ngắt lời AI ngay
+                        print(f"⏸ Ngắt lời (barge-in): {heard}")
+                        return remainder or None
+            if not active:
+                break
     except Exception as e:
         logger.error("Lỗi khi nghe ngắt lời: %s", e)
+    finally:
+        bus.emit_debug(
+            "assistant", "TTS hoàn tất",
+            {"duration_ms": round((time.perf_counter() - started) * 1000, 1),
+             "characters": len(raw_text), "mode": "async_barge_in",
+             "interrupted": interrupted}, level="SUCCESS")
     return None
 
 
@@ -247,8 +305,23 @@ def _listen_voice(recorder, recognizer, bus):
     if not text:
         print("Không nghe rõ, vui lòng thử lại.")
         return _NO_INPUT
+    result = getattr(recognizer, "last_result", None)
+    capture = getattr(recorder, "last_capture", None)
+    capture_data = (capture.to_dict() if hasattr(capture, "to_dict") else {})
+    utterance = VoiceUtterance(
+        text,
+        confidence=getattr(result, "confidence", None),
+        alternatives=getattr(result, "alternatives", (text,)),
+        capture=capture_data,
+        engine=getattr(result, "engine", getattr(recognizer, "engine", None)))
     print(f"🎤 Đã nghe: {text}")
-    return text
+    bus.emit_debug(
+        "voice", f"Người dùng: {text}",
+        {"source": "microphone", "stt_engine": utterance.engine,
+         "stt_confidence": utterance.confidence,
+         "alternative_count": len(utterance.alternatives),
+         "capture": utterance.capture})
+    return utterance
 
 
 def _next_input(voice_io, bus):
@@ -261,7 +334,10 @@ def _next_input(voice_io, bus):
         recorder, recognizer = voice_io
         return _listen_voice(recorder, recognizer, bus)
     try:
-        return input("Bạn: ").strip()
+        text = input("Bạn: ").strip()
+        if text:
+            bus.emit_debug("voice", f"Người dùng: {text}", {"source": "keyboard"})
+        return text
     except (EOFError, KeyboardInterrupt):
         return None
 
@@ -277,6 +353,11 @@ def _dispatch(agent, text, bus, fast_match=None, proactive=False):
     Cùng đường với lượt thường: fast-path giao diện/cuộn/chụp, hoặc agent. Tách ra để
     routine + lịch 'do' tái dùng ĐÚNG pipeline này.
     """
+    bus.emit_debug("agent", f"Xử lý yêu cầu: {text}", {"proactive": proactive})
+    control_action = match_control_panel_command(text)
+    if control_action is not None and not proactive:
+        bus.emit_control(control_action)
+        return ("Đã mở bảng điều khiển." if control_action == "show" else "Đã đóng bảng điều khiển."), "neutral"
     # Scheduled action vẫn được thực thi trong DND, nhưng không được lộ trạng thái UI
     # trước gate. Phần thông báo kết quả sẽ đi qua ProactiveDispatcher sau đó.
     if not proactive:
@@ -285,13 +366,35 @@ def _dispatch(agent, text, bus, fast_match=None, proactive=False):
     # cụm cỡ chữ chung ("to lên/nhỏ hơn") vừa là chỉnh avatar vừa xuất hiện trong "âm lượng
     # video to lên" -> phải để fast_command (đòi từ khoá đặc thù 'âm lượng') giành trước.
     fast = fast_match(text) if (fast_match and config.FAST_COMMANDS) else None
-    ui_cmd = match_avatar_command(text) if (config.FAST_COMMANDS and fast is None) else None
+    ui_cmd = None
+    ui_resolution = None
+    if config.FAST_COMMANDS and fast is None:
+        named_target = explicit_ui_target(text)
+        current_target = (bus.current_ui_target()
+                          if hasattr(bus, "current_ui_target") else "avatar")
+        # Tên đích rõ ràng luôn thắng lịch sử. Nếu câu chỉ còn "phóng to nó lên",
+        # bề mặt gần nhất/đang mở quyết định trước khi luật avatar chung được xét.
+        if named_target == "hud":
+            ui_cmd = match_hud_command(text)
+            ui_resolution = "explicit_hud"
+        elif named_target == "avatar":
+            ui_cmd = match_avatar_command(text)
+            ui_resolution = "explicit_avatar"
+        else:
+            ui_cmd = (match_hud_command(text, contextual_target=current_target == "hud")
+                      or match_avatar_command(text))
+            ui_resolution = ("active_hud_surface" if current_target == "hud" and
+                             ui_cmd and ui_cmd.get("target") == "hud"
+                             else "default_avatar")
     if fast is not None and agent.registry.has(fast[0]):
         noi = _run_fast(agent, fast)
         if noi is not None:                     # None = tool cần duyệt -> để agent đi hỏi
             return noi, "happy"
     if ui_cmd is not None:
         bus.emit_ui(**ui_cmd)
+        bus.emit_debug("ui", "Áp lệnh giao diện không qua LLM",
+                       dict(ui_cmd, resolved_by=ui_resolution),
+                       level="SUCCESS")
         print(f"⚡ (giao diện, không qua LLM) {ui_cmd}")
         return _ui_ack(ui_cmd), "happy"
     try:
@@ -330,7 +433,9 @@ def _run_routine(agent, routines, name, bus, synth, voice_io, fast_match=None):
 
 
 def _assistant_loop(agent, bus, synth, voice_io, routines=None, fast_match=None,
-                    intervention_gate=None, voice_turn=None, salm_care_response=None):
+                    intervention_gate=None, voice_turn=None, salm_care_response=None,
+                    salm_style_command=None, salm_late_night_command=None, camera=None,
+                    stop_event=None):
     """Vòng xử lý (thread nền): nghe/gõ -> agent -> phát trạng thái cho avatar + nói.
 
     Chu trình half-duplex nghiêm ngặt cho từng lượt: NGHE -> NGHĨ -> NÓI (chặn) ->
@@ -368,7 +473,7 @@ def _assistant_loop(agent, bus, synth, voice_io, routines=None, fast_match=None,
     # Mốc trợ lý nói xong lượt gần nhất — gốc tính cửa sổ nối lời. None = chưa nói câu nào.
     answered_at = None
     fails = 0
-    while True:
+    while stop_event is None or not stop_event.is_set():
         # 1) Lấy câu lệnh
         if pending is not None:
             text = pending
@@ -379,6 +484,8 @@ def _assistant_loop(agent, bus, synth, voice_io, routines=None, fast_match=None,
                     raw = voice_turn.next_input(lambda: _next_input(voice_io, bus))
                 else:
                     raw = _next_input(voice_io, bus)
+                if stop_event is not None and stop_event.is_set():
+                    break
                 fails = 0
             except Exception as e:   # lỗi thiết bị/mạng: thử lại, không quay vô hạn
                 fails += 1
@@ -393,12 +500,24 @@ def _assistant_loop(agent, bus, synth, voice_io, routines=None, fast_match=None,
             if raw is _NO_INPUT or not raw:     # không nghe/gõ được gì -> nghe tiếp
                 bus.emit(state="idle")
                 continue
+
+            # Tính assessment sớm để giữ nguyên metadata STT/VAD, nhưng CHƯA được phát
+            # lời hỏi lại. Recovery chỉ có quyền lên tiếng sau khi lượt nói đã vượt qua
+            # wake-word gate (hoặc thuộc một ngoại lệ chủ đích như work/follow-up/
+            # confirmation). Nếu không, tiếng nền dài chạm max duration sẽ vô tình tạo
+            # một đường vòng qua wake word.
+            awaiting_confirm = (agent.pending is not None
+                                and match_confirmation(raw) is not None)
+            assessment = assess_voice_utterance(
+                raw, allow_short_confirmation=awaiting_confirm)
             if raw.lower() in ("thoát", "exit", "quit"):
                 break
 
             # SALM-1.1 chỉ nhận phản hồi thuộc check-in đang mở (cùng escape hatch bật
-            # lại DND). unrelated/fail-closed trả None nên câu gốc vẫn đi Agent pipeline.
-            if salm_care_response is not None:
+            # lại DND). Chỉ đưa transcript đủ chắc vào matcher vì handler có thể commit
+            # state; câu không chắc sẽ fail-closed và tiếp tục qua cổng chủ đích bên dưới.
+            # unrelated/fail-closed trả None nên câu gốc vẫn đi Agent pipeline.
+            if salm_care_response is not None and not assessment.retry:
                 care_reply = salm_care_response(raw)
                 if care_reply:
                     answered_at = _reply_and_idle(
@@ -408,9 +527,6 @@ def _assistant_loop(agent, bus, synth, voice_io, routines=None, fast_match=None,
             # Đang CHỜ xác nhận một hành động khó hoàn tác + câu là 'có'/'không' -> nhận
             # trực tiếp, không cần gọi tên (đối thoại tự nhiên). Câu KHÁC vẫn cần wake word
             # nên không nới lỏng an toàn chung.
-            awaiting_confirm = (agent.pending is not None
-                                and match_confirmation(raw) is not None)
-
             # Mốc BẮT ĐẦU nói, không phải lúc nhận dạng xong: một câu dài (hoặc STT
             # chậm) không được ăn mất cửa sổ nối lời của chính nó.
             onset = voice_io[0].speech_started_at if voice_io else None
@@ -423,6 +539,8 @@ def _assistant_loop(agent, bus, synth, voice_io, routines=None, fast_match=None,
                 matched, remainder = match_wake_word(raw, wake_words)
                 if not matched:
                     print(f"(bỏ qua — không có từ khoá kích hoạt): {raw}")
+                    bus.emit_debug("voice", "Bỏ qua câu không có từ khoá kích hoạt",
+                                   {"text": raw}, level="DEBUG")
                     bus.emit(state="idle")
                     continue
                 if not remainder:               # chỉ gọi tên, chưa có yêu cầu cụ thể
@@ -433,6 +551,35 @@ def _assistant_loop(agent, bus, synth, voice_io, routines=None, fast_match=None,
                 if follow_up and not work_mode:      # follow_up chỉ bật khi có gác cổng
                     print("↩ (nối lời — trong cửa sổ sau câu trả lời, khỏi gọi tên)")
                 text = raw
+
+            # Đến đây lượt nói đã được xác lập là có chủ đích. Recovery được phép hỏi
+            # lại, nhưng không bao giờ có thể tự mở wake-word gate chỉ vì VAD/STT báo
+            # câu bị cắt hoặc confidence thấp.
+            if assessment.retry:
+                bus.emit_debug(
+                    "voice", "Yêu cầu nói lại vì STT không chắc",
+                    {"reason_codes": list(assessment.reason_codes)},
+                    level="WARNING")
+                answered_at = _reply_and_idle(
+                    synth, bus, voice_io, assessment.prompt, "neutral")
+                continue
+
+        # Camera privacy control stays local, including when FAST_COMMANDS is disabled.
+        # It runs only after the same wake-word and STT certainty gates as normal input.
+        camera_off, remaining_request = extract_camera_off_command(text, wake_words)
+        if camera_off:
+            try:
+                camera_reply = turn_off_webcam(camera)
+            except Exception as exc:
+                bus.emit_debug("camera", "Không thể tắt webcam bằng giọng nói", {
+                    "error": type(exc).__name__}, level="ERROR")
+                camera_reply = "Tôi chưa tắt được webcam. Bạn thử lại giúp tôi."
+            answered_at = _reply_and_idle(synth, bus, voice_io, camera_reply, "neutral")
+            if not remaining_request:
+                continue
+            bus.emit_debug("camera", "Đã xử lý vế tắt webcam trong câu ghép", {
+                "has_remaining_request": True})
+            text = remaining_request
 
         # 1b) CHUYỂN CHẾ ĐỘ nghe (chỉ khi wake word đang được dùng): "chế độ làm việc"
         # tắt wake word để ra lệnh trực tiếp; "chế độ bình thường" bật lại.
@@ -446,6 +593,24 @@ def _assistant_loop(agent, bus, synth, voice_io, routines=None, fast_match=None,
                        if work_mode else
                        "Đã trở lại chế độ bình thường. Hãy gọi tên tôi trước mỗi yêu cầu.")
                 answered_at = _reply_and_idle(synth, bus, voice_io, msg)
+                continue
+
+        # SALM-2 chỉ nhận lệnh chỉnh phong cách SAU wake-word gate. Ngoại lệ duy nhất
+        # là response window của check-in, đã được runtime xử lý ở try_care_response.
+        if salm_style_command is not None:
+            style_reply = salm_style_command(text)
+            if style_reply:
+                answered_at = _reply_and_idle(
+                    synth, bus, voice_io, style_reply, "happy")
+                continue
+
+        # Late-night Care là policy tường minh, cùng đi qua wake-word gate như các lệnh
+        # SALM khác. Matcher hẹp để câu kể "hôm nay làm việc khuya" vẫn đến Agent.
+        if salm_late_night_command is not None:
+            late_reply = salm_late_night_command(text)
+            if late_reply:
+                answered_at = _reply_and_idle(
+                    synth, bus, voice_io, late_reply, "happy")
                 continue
 
         # 1c) CHỈNH TÍNH CÁCH bằng lời (học tường minh): "vui tính hơn", "nghiêm túc hơn",
@@ -467,6 +632,9 @@ def _assistant_loop(agent, bus, synth, voice_io, routines=None, fast_match=None,
         if routines is not None:
             rname = match_routine_command(text)
             if rname is not None:
+                if not controls.get("feature.task", True):
+                    answered_at = _reply_and_idle(synth, bus, voice_io, "Routine đang tắt trong bảng điều khiển.")
+                    continue
                 _run_routine(agent, routines, rname, bus, synth, voice_io, fast_match)
                 answered_at = time.monotonic()
                 bus.emit(state="idle")
@@ -517,7 +685,15 @@ def _make_browser_bridge():
 
 
 def _ui_ack(ui):
-    """Câu xác nhận ngắn cho lệnh chỉnh giao diện avatar."""
+    """Câu xác nhận ngắn cho lệnh chỉnh giao diện, không qua LLM."""
+    if ui.get("target") == "hud":
+        if "scale" in ui and ui.get("scale") == 1.0:
+            return "Đã đưa bảng thông tin về kích thước mặc định."
+        if ui.get("scale_delta", 0) < 0:
+            return "Đã thu nhỏ bảng thông tin."
+        if ui.get("scale_delta", 0) > 0:
+            return "Đã phóng to bảng thông tin."
+        return "Đã điều chỉnh kích thước bảng thông tin."
     if ui.get("scale_delta", 0) < 0:
         return "Đã thu nhỏ avatar."
     if ui.get("scale_delta", 0) > 0:
@@ -543,10 +719,16 @@ def _run_fast(agent, fast):
     except NeedsConfirmation:
         logger.info("Fast-path %s cần xác nhận -> nhường cho đường LLM.", tool_name)
         return None
+    except ActionRefused as exc:
+        return exc.ly_do
     except Exception as e:
         logger.error("Lỗi chạy nhanh %s: %s", tool_name, e)
         return "Xin lỗi, có lỗi khi thực hiện."
     print(f"⚡ (chạy nhanh, không qua LLM) {tool_name} → {out}")
+    if tool_name == "control_room_ac":
+        return describe_ac_result(out, tool_args)
+    if tool_name == "configure_climate_automation":
+        return describe_automation_result(out)
     return out
 
 
@@ -602,21 +784,40 @@ def _compose_brief(profile, tasks):
     return " ".join(parts)
 
 
+def _global_proactive_blocked(dispatcher):
+    gate = getattr(dispatcher, "gate", None)
+    return bool(gate is not None and gate.reasons("global"))
+
+
 def _submit_proactive_speech(dispatcher, synth, bus, text, emotion, kind):
     """Đưa một lời chủ động qua gate duy nhất; gate đóng thì bỏ, không xếp backlog."""
+    cancelled = threading.Event()
+
     def present():
-        _say(synth, bus, text, emotion, proactive=True)
+        if cancelled.is_set() or _global_proactive_blocked(dispatcher):
+            return
+        resolved = text() if callable(text) else text
+        # LLM có thể trả sau khi work-mode/meeting/direct reply đã đóng gate.
+        if cancelled.is_set() or _global_proactive_blocked(dispatcher):
+            return
+        _say(synth, bus, resolved, emotion, proactive=True)
         bus.emit(state="idle", proactive=True)
+
+    def cancel():
+        cancelled.set()
+        if synth is not None:
+            synth.stop()
 
     return dispatcher.submit(Intervention(
         kind=kind,
         scope="global",
         present=present,
-        cancel=(lambda: synth.stop()) if synth is not None else None,
+        cancel=cancel,
     ))
 
 
-def _start_with_greeting(dispatcher, synth, bus, on_complete):
+def _start_with_greeting(dispatcher, synth, bus, on_complete,
+                         welcome_dialogue=None):
     """Đợi giọng chính sẵn sàng, chào xong mới mở input để tránh mic tự thu lời chào.
 
     Gate chặn hoặc item bị drop giữa queue vẫn phải gọi ``on_complete`` đúng một lần;
@@ -647,7 +848,11 @@ def _start_with_greeting(dispatcher, synth, bus, on_complete):
                 return
             if cancelled.is_set():
                 return
-            _say(synth, bus, STARTUP_GREETING_TEXT, "happy", proactive=True)
+            text = (welcome_dialogue.generate("startup")
+                    if welcome_dialogue is not None else STARTUP_GREETING_TEXT)
+            if cancelled.is_set() or _global_proactive_blocked(dispatcher):
+                return
+            _say(synth, bus, text, "happy", proactive=True)
             bus.emit(state="idle", proactive=True)
         finally:
             complete_once()
@@ -684,15 +889,88 @@ def main():
     print("=== Trợ lý AI: agent + avatar + giọng nói (khởi chạy hợp nhất) ===")
 
     bus = AssistantBus()
+    # Debug is session-only: a prior control setting must not reopen its
+    # diagnostic window or image preview on the next ordinary launch.
+    debug_enabled = config.DEBUG_PANEL_ENABLED or "--debug-panel" in sys.argv[1:]
+    config.DEBUG_PANEL_ENABLED = bool(debug_enabled)
+    bus.set_debug_enabled(debug_enabled)
+    debug_state = threading.Event()
+    if debug_enabled:
+        debug_state.set()
+
+    def emit_debug_if_enabled(category, message, data=None, level="INFO"):
+        if debug_state.is_set():
+            bus.emit_debug(category, message, data, level=level)
+
+    debug_log_handler = None
+    if debug_enabled:
+        from utils.debug import install_bus_log_handler
+        debug_log_handler = install_bus_log_handler(bus)
+        bus.emit_debug("system", "Khởi động trợ lý với panel debug", {
+            "python": sys.version.split()[0],
+            "input_mode": config.INPUT_MODE,
+            "llm_provider": config.LLM_PROVIDER,
+        })
 
     try:
         llm = build_default_llm_client()
     except RuntimeError as e:
         print(f"Không khởi tạo được LLM: {e}")
+        if debug_log_handler is not None:
+            from utils.debug import uninstall_bus_log_handler
+            uninstall_bus_log_handler(debug_log_handler)
         return
 
+    database = None
+    if config.DATA_DATABASE_ENABLED and config.DATA_DATABASE_PATH:
+        try:
+            database = LocalDatabase(config.DATA_DATABASE_PATH)
+            logger.info("SQLite local data store sẵn sàng: %s", config.DATA_DATABASE_PATH)
+        except Exception as e:
+            logger.warning("Không mở được SQLite; tạm dùng kho file cũ: %s", e)
+
+    profile = UserProfile(config.USER_PROFILE_PATH or None, database=database)
+    # Persona là nguồn giọng CHUNG cho Agent lẫn mọi lane phát lời SALM. Khởi tạo trước
+    # SALM để greeting/check-in không dựng một nhân cách thứ hai bằng prompt riêng.
+    persona = mood = None
+    if config.PERSONA_ENABLED:
+        persona = PersonaState(config.PERSONA_PATH or None, provider=config.LLM_PROVIDER)
+        mood = MoodState(baseline_valence=persona.baseline_valence(),
+                         baseline_arousal=persona.baseline_arousal())
     synth = _make_speaker()
     voice_turn = _VoiceTurnCoordinator()
+    app_closing = threading.Event()
+    camera = None
+    welcome_dialogue = WelcomeDialogue(
+        llm if config.SALM_LIFECYCLE_GREETING_LLM_ENABLED else None,
+        timeout_seconds=config.SALM_WELCOME_LLM_TIMEOUT_SECONDS,
+        address_form_provider=profile.get_address_form,
+        persona_context_provider=(persona.render if persona is not None else None),
+        proactive_text_provider=(persona.proactive_text if persona is not None else None))
+
+    camera_return_mode = (config.CAMERA_WORKSTATION_RETURN_MODE.strip().lower()
+                          if config.SALM_ENABLED and config.SALM_WELCOME_BACK_ENABLED and config.CAMERA_RETURN_ENABLED
+                          else "shadow")
+    camera_welcome_dialogue = None
+    if camera_return_mode == "llm":
+        try:
+            camera_welcome_client = build_camera_welcome_client(config)
+        except Exception as exc:
+            camera_welcome_client = None
+            if debug_state.is_set():
+                bus.emit_debug("camera", "Camera welcome LLM unavailable", {
+                    "error": type(exc).__name__}, level="WARNING")
+        camera_welcome_dialogue = CameraReturnWelcome(
+            camera_welcome_client,
+            budget_path=config.CAMERA_WELCOME_LLM_BUDGET_PATH,
+            timeout_seconds=config.CAMERA_WELCOME_LLM_TIMEOUT_SECONDS,
+            min_interval_seconds=config.CAMERA_WELCOME_LLM_MIN_INTERVAL_SECONDS,
+            max_per_hour=config.CAMERA_WELCOME_LLM_MAX_PER_HOUR,
+            max_per_day=config.CAMERA_WELCOME_LLM_MAX_PER_DAY,
+            address_form_provider=profile.get_address_form,
+            persona_context_provider=(persona.render if persona is not None else None),
+            proactive_text_provider=(persona.proactive_text if persona is not None else None),
+            debug=emit_debug_if_enabled)
 
     # Mọi output KHÔNG do người dùng vừa yêu cầu đều đi qua đúng một cổng. Trạng thái
     # thinking/speaking của luồng trực tiếp đóng cổng; event do dispatcher tự phát được
@@ -709,13 +987,81 @@ def main():
 
     # SALM là feature nền (không phải LLM tool): ownership nằm trọn trong
     # `features/salm`, app.py chỉ làm composition root và quản lý start/stop.
+    def _desktop_return_welcome(_event):
+        _submit_proactive_speech(
+            proactive_dispatcher, synth, bus,
+            lambda: welcome_dialogue.generate("return"),
+            "happy", "welcome_back")
+
+    def _camera_return_welcome(request):
+        # Submit only a callback here: presence inference never waits for I/O or TTS.
+        cancelled = threading.Event()
+        token = ("camera_return", request.absence_episode_id)
+
+        def report(message, reason=None):
+            if debug_state.is_set():
+                data = {"episode_id": request.absence_episode_id}
+                if reason is not None:
+                    data["reason"] = reason
+                bus.emit_debug("camera", message, data)
+
+        def eligible():
+            return (not cancelled.is_set() and not app_closing.is_set() and
+                    not _global_proactive_blocked(proactive_dispatcher) and
+                    camera is not None and camera.camera_role == "workstation_facing" and
+                    camera.visual_input_active() and
+                    return_coordinator.camera_request_current(request))
+
+        def deliver():
+            if not eligible():
+                report("Camera welcome dropped", "stale_or_cancelled")
+                return
+            text = (camera_welcome_dialogue.generate(request, is_allowed=eligible)
+                    if camera_welcome_dialogue is not None else
+                    welcome_fallback("return", profile.get_address_form()))
+            if not text or not eligible():
+                report("Camera welcome output dropped", "stale_cancelled_or_duplicate")
+                return
+            report("Camera welcome submitted to speech")
+            _say(synth, bus, text, "happy", proactive=True)
+            bus.emit(state="idle", proactive=True)
+
+        def present():
+            if not eligible():
+                report("Camera welcome dropped", "stale_or_cancelled")
+                return
+            if voice_io:
+                if not voice_turn.present(token, deliver):
+                    report("Camera welcome dropped", "user_input_priority")
+            else:
+                deliver()
+
+        def cancel():
+            cancelled.set()
+            if synth is not None:
+                synth.stop()
+
+        def drop():
+            cancelled.set()
+            report("Camera welcome dropped", "dispatcher_gate")
+
+        submitted = proactive_dispatcher.submit(Intervention(
+            kind="camera_welcome_back", scope="global", present=present,
+            cancel=cancel, on_drop=drop))
+        if not submitted:
+            report("Camera welcome not submitted", "dispatcher_gate")
+        return submitted
+
+    return_coordinator = WorkstationReturnCoordinator(
+        mode=camera_return_mode,
+        on_camera_welcome=_camera_return_welcome,
+        on_desktop_welcome=_desktop_return_welcome,
+        debug=emit_debug_if_enabled)
     salm = None
     if config.SALM_ENABLED:
         try:
             def on_return(_event):
-                _submit_proactive_speech(
-                    proactive_dispatcher, synth, bus,
-                    WELCOME_BACK_GREETING_TEXT, "happy", "welcome_back")
+                return_coordinator.on_desktop_return(_event)
 
             def on_checkin(action, decision, text):
                 token = decision.candidate_id
@@ -733,8 +1079,28 @@ def main():
 
                 return voice_turn.present(token, speak)
 
+            def on_late_night(action, signal, text):
+                token = signal.candidate_id
+                if action == "cancel":
+                    voice_turn.cancel(
+                        token, (lambda: synth.stop()) if synth is not None else None)
+                    bus.emit(state="idle", proactive=True)
+                    return True
+                if synth is None:
+                    return False
+
+                def speak():
+                    _say(synth, bus, text, "happy", proactive=True)
+                    bus.emit(state="idle", proactive=True)
+
+                return voice_turn.present(token, speak)
+
+            salm_storage = SalmStorage(
+                config.SALM_DATA_DIR, ttl_days=14, daily_ttl_days=90,
+                database=database)
             salm = SalmRuntime(
                 data_dir=config.SALM_DATA_DIR,
+                storage=salm_storage,
                 browser=browser,
                 poll_seconds=config.SALM_POLL_SECONDS,
                 wasapi_fallback=config.SALM_WASAPI_MEDIA_FALLBACK,
@@ -745,11 +1111,27 @@ def main():
                 silent_care=config.SALM_SILENT_CARE_ENABLED,
                 on_care=bus.emit_care,
                 on_return=(on_return if config.SALM_WELCOME_BACK_ENABLED else None),
+                on_activity=return_coordinator.observe_activity,
                 gentle_checkin=config.SALM_GENTLE_CHECKIN_ENABLED,
                 on_checkin=on_checkin,
                 care_llm=llm,
                 care_llm_intent=config.SALM_CARE_LLM_INTENT_ENABLED,
+                care_llm_language=config.SALM_CARE_LLM_LANGUAGE_ENABLED,
+                care_language_timeout=config.SALM_CARE_LLM_TIMEOUT_SECONDS,
+                address_form_provider=profile.get_address_form,
+                persona_context_provider=(persona.render if persona is not None else None),
+                proactive_text_provider=(persona.proactive_text
+                                         if persona is not None else None),
                 user_dnd=config.SALM_USER_DND_ENABLED,
+                care_style_enabled=config.SALM_CARE_STYLE_LEARNING_ENABLED,
+                on_care_style=bus.emit_care_style,
+                on_debug=emit_debug_if_enabled,
+                late_night_enabled=config.SALM_LATE_NIGHT_ENABLED,
+                late_night_language_enabled=(
+                    config.SALM_LATE_NIGHT_LLM_LANGUAGE_ENABLED),
+                late_night_min_active_seconds=(
+                    config.SALM_LATE_NIGHT_MIN_ACTIVE_MINUTES * 60.0),
+                on_late_night=on_late_night,
             )
             salm.start()
         except Exception as e:
@@ -764,11 +1146,11 @@ def main():
             logger.warning("MCP không kết nối được — bỏ qua (kiểm tra MCP_COMMAND/server/OAuth).")
             mcp = None
 
-    profile = UserProfile(config.USER_PROFILE_PATH or None)
-    habits = HabitLog() if config.HABITS_ENABLED else None
+    habits = HabitLog(database=database) if config.HABITS_ENABLED else None
     # Nhật ký kết quả: chỉ QUAN SÁT, không đổi hành vi lượt nào. Phải chạy thật một thời
     # gian mới có mốc nền để về sau biết trợ lý có khá lên không.
-    outcomes = OutcomeLog(config.OUTCOMES_FILE, config.OUTCOMES_MAX_BYTES)
+    outcomes = OutcomeLog(config.OUTCOMES_FILE, config.OUTCOMES_MAX_BYTES,
+                          database=database)
     tasks = TaskStore(config.TASKS_PATH or None)
     routines = RoutineStore(config.ROUTINES_PATH or None)
     contacts = ContactStore(config.CONTACTS_PATH or None)
@@ -783,19 +1165,50 @@ def main():
                                     "open": config.PLACES_W_OPEN,
                                     "evidence": config.PLACES_W_EVIDENCE})
 
-    persona = mood = None
-    if config.PERSONA_ENABLED:
-        persona = PersonaState(config.PERSONA_PATH or None, provider=config.LLM_PROVIDER)
-        mood = MoodState(baseline_valence=persona.baseline_valence(),
-                         baseline_arousal=persona.baseline_arousal())
+    # Analytics đọc daily aggregate trong SQLite; preference chỉ đổi từ yêu cầu rõ ràng.
+    # Khi database tắt/lỗi, feature tự vắng mặt thay vì giả dữ liệu từ raw fallback.
+    activity_insights = (ActivityInsightsService(
+        database,
+        clear_history=(salm.clear_activity_history
+                       if salm is not None else database.clear_salm_activity))
+                         if database is not None else None)
+
+    iot_client = IoTClient()
+    camera = CameraService(iot_client, room_id=config.IOT_CAMERA_ROOM_ID,
+                            camera_index=config.IOT_CAMERA_INDEX,
+                            camera_id=config.CAMERA_SOURCE_ID,
+                            camera_label=config.CAMERA_SOURCE_LABEL,
+                            camera_role=config.CAMERA_SOURCE_ROLE,
+                            proximity_calibration_path=(
+                                config.CAMERA_PROXIMITY_CALIBRATION_PATH),
+                            proximity_handler=return_coordinator.observe_camera,
+                            debug_sink=emit_debug_if_enabled,
+                            preview_enabled=False)
+    iot_voice_alerts = (VoiceAlertPoller(
+        iot_client,
+        lambda message: (_submit_proactive_speech(
+            proactive_dispatcher, synth, bus, message, "sad", "iot_temperature_alert")
+                         if config.IOT_ENABLED and config.IOT_VOICE_ALERTS_ENABLED else None))
+                        if iot_client is not None else None)
 
     # Toàn bộ tool đến từ danh mục feature — xem `features/catalog.py`.
     actions = AssistantActions()
-    feature_ctx = FeatureContext(actions=actions, bus=bus, browser=browser,
-                                 contacts=contacts, location=location, mcp=mcp,
+    feature_ctx = FeatureContext(actions=actions, activity_insights=activity_insights,
+                                 bus=bus, browser=browser, camera=camera, iot=iot_client,
+                                 contacts=contacts, habits=habits, location=location, mcp=mcp,
                                  places=places, profile=profile, routines=routines,
                                  scheduler=scheduler, screen=screen, tasks=tasks)
     registry, report = build_registry(feature_ctx)
+    registry.set_feature_gate(lambda group: (
+        controls.get("feature." + group, True) and
+        (group != "iot" or config.IOT_ENABLED) and
+        (group != "camera" or config.CAMERA_ENABLED)) if group else True)
+    registry.set_debug_sink(emit_debug_if_enabled)
+    if debug_state.is_set():
+        bus.emit_debug("system", "Đã nạp danh mục công cụ", {
+            "tool_count": len(registry.names()),
+            "tools": registry.names(),
+        }, level="SUCCESS")
 
     # Fast-path (tầng 0, không tốn lượt LLM nào) gom từ chính các feature ĐÃ nạp —
     # feature bị bỏ qua thì luật của nó cũng vắng mặt. Xem `features/fast.py`.
@@ -889,7 +1302,11 @@ def main():
     worker = threading.Thread(target=_assistant_loop,
                               args=(agent, bus, synth, voice_io, routines, fast_match,
                                     intervention_gate, voice_turn,
-                                    (salm.try_care_response if salm is not None else None)),
+                                    (salm.try_care_response if salm is not None else None),
+                                    (salm.try_style_command if salm is not None else None),
+                                    (salm.try_late_night_command
+                                     if salm is not None else None)),
+                              kwargs={"camera": camera, "stop_event": app_closing},
                               daemon=True)
 
     # Persona bật -> tâm trạng dẫn khuôn mặt: tắt tự reset về neutral (emotion_hold_ms=0).
@@ -931,12 +1348,196 @@ def main():
             _say(synth, bus, result, "happy" if decision == "yes" else "neutral")
             bus.emit(state="idle")
 
+    _gesture_speech_lock = threading.Lock()
+
+    def _present_visual_result(result, modality, label, decision):
+        pose = "happy" if decision == "yes" else "neutral"
+
+        def present_result():
+            try:
+                def speak():
+                    _say(synth, bus, result, pose)
+                    bus.emit(state="idle")
+
+                if voice_io:
+                    token = ("visual_confirmation", time.monotonic())
+                    if not voice_turn.present(token, speak):
+                        bus.emit(text=result, emotion=pose)
+                else:
+                    speak()
+            finally:
+                _gesture_speech_lock.release()
+
+        if _gesture_speech_lock.acquire(blocking=False):
+            threading.Thread(target=present_result,
+                             name="alice-visual-response", daemon=True).start()
+        else:
+            bus.emit(text=result, emotion=pose)
+
+    def _visual_input_allowed():
+        if (app_closing.is_set() or camera is None or
+                camera.camera_role != "workstation_facing" or
+                not camera.visual_input_active()):
+            return False
+        state = intervention_gate.snapshot()
+        return (not state.session_locked and
+                getattr(state.presence, "value", state.presence) != "suspended" and
+                getattr(state.display, "value", state.display) != "off")
+
+    visual_arbiter = VisualConfirmationArbiter(
+        agent, _AGENT_LOCK, on_result=_present_visual_result,
+        debug=emit_debug_if_enabled,
+        conflict_window=(0.8 if config.CAMERA_HEAD_CONFIRMATION_ENABLED else 0.4),
+        is_active=_visual_input_allowed)
+
+    def _on_camera_gesture(label, pose_started_at):
+        if label not in ("ok", "thumbs_up") or not _visual_input_allowed():
+            return
+        if label == "thumbs_up" and _AGENT_LOCK.acquire(timeout=1):
+            try:
+                if agent.mood is not None:
+                    agent.mood.update(user_valence=1.0, outcome=0.0, fluster=0.45)
+                    bus.emit(emotion=agent.mood.to_pose())
+                else:
+                    bus.emit(emotion="happy")
+            finally:
+                _AGENT_LOCK.release()
+        queued = visual_arbiter.submit("hand", "yes", pose_started_at, label)
+        bus.emit_debug("camera", "Hand gesture observed", {
+            "gesture": label, "confirmation_candidate": queued,
+            "compliment": label == "thumbs_up"})
+
+    def _on_head_motion(label, pose_started_at):
+        visual_arbiter.submit("head", label, pose_started_at, label)
+
+    if camera is not None:
+        camera.set_gesture_handler(_on_camera_gesture)
+        camera.set_visual_cancel_handler(visual_arbiter.cancel)
+        if (config.CAMERA_HEAD_CONFIRMATION_ENABLED and
+                camera.camera_role == "workstation_facing"):
+            camera.set_head_handler(_on_head_motion)
+
+    def _apply_control(key, enabled):
+        nonlocal debug_log_handler
+        if key == "DEBUG_PANEL_ENABLED":
+            if enabled:
+                bus.set_debug_enabled(True)
+                debug_state.set()
+                try:
+                    if debug_log_handler is None:
+                        from utils.debug import install_bus_log_handler
+                        debug_log_handler = install_bus_log_handler(bus)
+                    win.set_debug_enabled(True)
+                except Exception:
+                    debug_state.clear()
+                    bus.set_debug_enabled(False)
+                    if debug_log_handler is not None:
+                        from utils.debug import uninstall_bus_log_handler
+                        uninstall_bus_log_handler(debug_log_handler)
+                        debug_log_handler = None
+                    raise
+                emit_debug_if_enabled("system", "Bật bảng chẩn đoán")
+            else:
+                win.set_debug_enabled(False)
+                debug_state.clear()
+                bus.set_debug_enabled(False)
+                if debug_log_handler is not None:
+                    from utils.debug import uninstall_bus_log_handler
+                    uninstall_bus_log_handler(debug_log_handler)
+                    debug_log_handler = None
+        elif key == "CAMERA_ENABLED":
+            if enabled:
+                camera.start()
+                camera.resume()
+            else:
+                camera.pause()
+        elif key == "CAMERA_FACE_ENABLED":
+            camera.set_face_enabled(enabled)
+        elif key == "CAMERA_GESTURE_ENABLED":
+            camera.set_gesture_enabled(enabled)
+        elif key == "CAMERA_HEAD_CONFIRMATION_ENABLED":
+            if enabled and camera.camera_role != "workstation_facing":
+                raise RuntimeError("Xác nhận bằng đầu cần webcam hướng về người dùng")
+            camera.set_head_handler(_on_head_motion if enabled else None)
+        elif key == "CAMERA_EMOTION_ENABLED":
+            camera.set_emotion_control_visible(True)
+            camera.set_emotion_enabled(enabled)
+        elif key == "feature.schedule":
+            (scheduler.start if enabled else scheduler.stop)()
+
+    system_controls = SystemControls(report, camera, apply_live=_apply_control, iot=iot_client)
+    restart_requested = threading.Event()
+
+    def _restart_from_control():
+        if agent.pending is not None or _AGENT_LOCK.locked():
+            raise RuntimeError("Hãy hoàn tất hoặc hủy yêu cầu hiện tại trước khi khởi động lại")
+        restart_requested.set()
+        app_closing.set()
+        if synth is not None:
+            synth.stop()
+        win.root.quit()
+
+    def _care_style_from_panel(action):
+        if action == "reset" and salm is not None:
+            salm.reset_care_style()
+
+    def _activity_from_panel(request):
+        if activity_insights is None:
+            return None
+        period = request.get("period", "7_days")
+        view = request.get("view", "overview")
+        try:
+            result = activity_insights.apply_setting(
+                request.get("action"), app_id=request.get("app_id"),
+                category=request.get("category"))
+            snapshot = activity_insights.snapshot(period, view)
+            preference = result.get("preference") or {}
+            app_name = display_app_name(preference.get("app_id"))
+            notices = {
+                "classify": f"Đã cập nhật nhóm cho {app_name}.",
+                "exclude": f"Đã loại {app_name} khỏi thống kê.",
+                "include": f"Đã đưa {app_name} lại vào thống kê.",
+                "reset": f"Đã đặt lại phân loại của {app_name}.",
+            }
+            snapshot["preference_notice"] = notices.get(result.get("action"),
+                                                         "Đã cập nhật.")
+            bus.emit_debug("activity", "Cập nhật phân loại ứng dụng", result,
+                           level="SUCCESS")
+            return snapshot
+        except Exception as exc:
+            logger.error("Không cập nhật được Activity Insights: %s", exc)
+            try:
+                snapshot = activity_insights.snapshot(period, view)
+            except Exception:
+                snapshot = {
+                    "period": period, "view": view, "range": {}, "totals": {},
+                    "top_apps": [], "trend": [], "classification_apps": [],
+                    "data_quality": {"valid_days": 0},
+                }
+            snapshot["preference_error"] = f"Không lưu được thay đổi: {exc}"
+            bus.emit_debug("activity", "Không cập nhật được phân loại ứng dụng",
+                           {"error": f"{type(exc).__name__}: {exc}"}, level="ERROR")
+            return snapshot
+
     win = AvatarWindow(bus=bus, title="Trợ lý AI",
                        emotion_hold_ms=0 if config.PERSONA_ENABLED else None,
                        on_open_place=_open_place_from_panel,
                        on_draft_decision=_decide_draft,
-                       on_open_mail=_open_mail_from_panel)
-    app_closing = threading.Event()
+                       on_open_mail=_open_mail_from_panel,
+                       on_care_style_action=_care_style_from_panel,
+                       on_activity_action=_activity_from_panel,
+                       debug_panel=debug_enabled, camera_service=camera,
+                       system_controls=system_controls, on_restart=_restart_from_control)
+    camera.set_face_enabled(config.CAMERA_FACE_ENABLED)
+    camera.set_gesture_enabled(config.CAMERA_GESTURE_ENABLED)
+    if config.CAMERA_EMOTION_ENABLED:
+        camera.set_emotion_control_visible(True)
+        camera.set_emotion_enabled(True)
+    if camera is not None and config.CAMERA_ENABLED:
+        camera.start()
+    else:
+        camera.pause()
+    system_controls.start()
 
     def start_background_and_input():
         # Chỉ mở các producer khác và micro SAU câu chào khởi động. Nếu không, brief
@@ -944,9 +1545,12 @@ def main():
         if app_closing.is_set():
             return
         try:
-            scheduler.start()
+            if controls.get("feature.schedule", True):
+                scheduler.start()
         except Exception:
             logger.warning("Không khởi động được scheduler", exc_info=True)
+        if iot_voice_alerts is not None:
+            iot_voice_alerts.start()
         if monitor is not None:
             try:
                 monitor.start()
@@ -956,7 +1560,8 @@ def main():
 
     if config.STARTUP_GREETING_ENABLED:
         win.root.after(250, lambda: _start_with_greeting(
-            proactive_dispatcher, synth, bus, start_background_and_input))
+            proactive_dispatcher, synth, bus, start_background_and_input,
+            welcome_dialogue=welcome_dialogue))
     else:
         win.root.after(250, start_background_and_input)
     try:
@@ -970,6 +1575,11 @@ def main():
         except Exception as e:
             logger.warning("Không củng cố được trí nhớ lúc đóng phiên: %s", e)
         scheduler.stop()
+        system_controls.stop()
+        if iot_voice_alerts is not None:
+            iot_voice_alerts.stop()
+        if camera is not None:
+            camera.stop()
         if monitor is not None:
             monitor.stop()
         if mcp is not None:
@@ -979,6 +1589,15 @@ def main():
         proactive_dispatcher.stop()
         if browser is not None:
             browser.stop()
+        if debug_log_handler is not None:
+            from utils.debug import uninstall_bus_log_handler
+            uninstall_bus_log_handler(debug_log_handler)
+
+    if restart_requested.is_set():
+        import os
+        import subprocess
+        subprocess.Popen([sys.executable, *sys.argv], cwd=os.getcwd(),
+                         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
 
 
 if __name__ == "__main__":

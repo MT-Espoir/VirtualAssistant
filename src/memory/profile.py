@@ -10,6 +10,7 @@ khi thiếu/hỏng file. (Thay hẳn thiết kế cũ command-history/daily-stat
 intent/entities không còn tồn tại trong kiến trúc tool-calling hiện tại.)
 """
 
+import hashlib
 import json
 import os
 import re
@@ -113,14 +114,84 @@ def apply_update(data, name=None, address_form=None, location=None, note=None, w
 def _relevant_facts(facts, query, k):
     """Chọn tối đa k fact liên quan 'query' nhất (đếm token trùng, bỏ dấu). Bỏ fact không
     trùng token nào (0 điểm) -> khi câu hỏi không liên quan gì thì không bơm nhiễu."""
-    qt = set(norm(query).split())
+    entries = [{"source": "fact", "text": fact} for fact in facts]
+    return [item["text"] for item in rank_memory_entries(entries, query, k)]
+
+
+def _memory_ref(source, text):
+    """Mã ổn định để trace/eval tham chiếu một fact mà không chép nội dung nhạy cảm."""
+    raw = f"{source}\0{text}".encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()[:16]
+
+
+def rank_memory_entries(entries, query, k=_RETRIEVAL_K):
+    """Xếp hạng các entry ``{source, text, id?}`` bằng đúng logic production hiện tại.
+
+    Hàm công khai có chủ ý: benchmark Phase 4 gọi chính implementation này, tránh một
+    bản sao evaluator âm thầm lệch khỏi code thực tế. Entry trả về là bản sao có thêm
+    ``id`` và ``score``; thứ tự mới hơn vẫn thắng khi điểm bằng nhau.
+    """
+    qt = set(norm(query or "").split())
     scored = []
-    for i, f in enumerate(facts):
-        overlap = len(qt & set(norm(f).split()))
+    for i, original in enumerate(entries or []):
+        entry = dict(original)
+        text = str(entry.get("text") or "")
+        source = str(entry.get("source") or "fact")
+        overlap = len(qt & set(norm(text).split()))
         if overlap > 0:
-            scored.append((overlap, i, f))         # (điểm, thứ tự=độ mới, fact)
+            entry["text"] = text
+            entry["source"] = source
+            entry["id"] = str(entry.get("id") or _memory_ref(source, text))
+            entry["score"] = overlap
+            scored.append((overlap, i, entry))     # (điểm, thứ tự=độ mới, fact)
     scored.sort(key=lambda x: (x[0], x[1]), reverse=True)
-    return [f for _, _, f in scored[:k]]
+    return [entry for _, _, entry in scored[:max(0, int(k))]]
+
+
+def retrieve_profile_facts(data, query=None, k=_RETRIEVAL_K,
+                           threshold=_RETRIEVAL_THRESHOLD):
+    """Chọn fact cho prompt và trả trace đã ẩn danh.
+
+    Trace tuyệt đối không chứa query hay text của fact. Nó chỉ đủ để đo fact nào được
+    chọn, từ nguồn nào và vì sao; nội dung thật vẫn chỉ sống trong kho memory hiện hữu.
+    """
+    data = data or {}
+    entries = []
+    for source in ("notes", "auto_facts"):
+        for text in data.get(source) or []:
+            text = str(text)
+            entries.append({"source": source, "text": text,
+                            "id": _memory_ref(source, text)})
+
+    if not entries:
+        selected = []
+        mode = "none"
+    elif query and len(entries) > threshold:
+        selected = rank_memory_entries(entries, query, k)
+        mode = "top_k"
+    else:
+        query_tokens = set(norm(query or "").split())
+        selected = []
+        for entry in entries:
+            item = dict(entry)
+            item["score"] = len(query_tokens & set(norm(item["text"]).split()))
+            selected.append(item)
+        mode = "all"
+
+    trace = {
+        "version": 1,
+        "mode": mode,
+        "total_facts": len(entries),
+        "selected_count": len(selected),
+        "query_token_count": len(set(norm(query or "").split())),
+        "events_injected": len(data.get("events") or []),
+        "selected": [
+            {"id": item["id"], "source": item["source"],
+             "score": int(item.get("score") or 0), "rank": rank}
+            for rank, item in enumerate(selected, start=1)
+        ],
+    }
+    return selected, trace
 
 
 def describe_events(events, now=None):
@@ -179,14 +250,16 @@ def thay_tham_chieu(text, data):
     return re.sub(r"\s{2,}", " ", text.replace(THAM_CHIEU_TEN, "")).strip()
 
 
-def summarize(data, query=None, now=None):
+def summarize_with_trace(data, query=None, now=None):
     """Câu ngắn mô tả người dùng để bơm vào system prompt. '' nếu chưa biết gì.
 
     Nếu có `query` và số ghi chú vượt ngưỡng -> chỉ đưa top-K fact LIÊN QUAN; ngược lại
     đưa hết (giữ hành vi cũ khi ít fact / không có query).
     """
     if not data:
-        return ""
+        return "", {"version": 1, "mode": "none", "total_facts": 0,
+                    "selected_count": 0, "query_token_count": 0,
+                    "events_injected": 0, "selected": []}
     parts = []
     # TÊN đi vào prompt dưới dạng THAM CHIẾU, không phải giá trị: model viết `@ten`, tầng
     # runtime thay bằng tên thật ngay trước khi nói (`thay_tham_chieu`). Model không thấy
@@ -205,13 +278,14 @@ def summarize(data, query=None, now=None):
     # nó — `get_weather` để trống `location` thì tầng tool tự lấy từ hồ sơ. Mô tả tool đã
     # dặn sẵn "không nói địa điểm thì để trống".
 
-    notes = data.get("notes") or []
-    auto = data.get("auto_facts") or []
-    if query and (len(notes) + len(auto)) > _RETRIEVAL_THRESHOLD:
-        picked = _relevant_facts(notes + auto, query, _RETRIEVAL_K)
-        if picked:
-            parts.append("Liên quan lúc này: " + "; ".join(picked) + ".")
+    selected, trace = retrieve_profile_facts(data, query=query)
+    if trace["mode"] == "top_k":
+        if selected:
+            parts.append("Liên quan lúc này: " +
+                         "; ".join(item["text"] for item in selected) + ".")
     else:
+        notes = [item["text"] for item in selected if item["source"] == "notes"]
+        auto = [item["text"] for item in selected if item["source"] == "auto_facts"]
         if notes:
             parts.append("Cần nhớ: " + "; ".join(notes) + ".")
         if auto:
@@ -227,18 +301,40 @@ def summarize(data, query=None, now=None):
                      "diễn ra): " + "; ".join(past) + ".")
 
     if not parts:
-        return ""
-    return "Thông tin người dùng (dùng để cá nhân hoá và xưng hô đúng): " + " ".join(parts)
+        return "", trace
+    text = "Thông tin người dùng (dùng để cá nhân hoá và xưng hô đúng): " + " ".join(parts)
+    return text, trace
+
+
+def summarize(data, query=None, now=None):
+    """Câu ngắn mô tả người dùng; API tương thích cho các nơi gọi cũ."""
+    return summarize_with_trace(data, query=query, now=now)[0]
 
 
 class UserProfile:
-    """Hồ sơ người dùng lưu JSON. `path=None` -> file mặc định trong user_data/."""
+    """Hồ sơ người dùng trên SQLite, với JSON làm chế độ tương thích/dự phòng.
 
-    def __init__(self, path=None):
+    `database=None` giữ nguyên hành vi file cũ cho test và các cấu hình tối giản. Khi có
+    database, file hiện hữu chỉ được import một lần rồi SQLite trở thành nguồn chính.
+    """
+
+    def __init__(self, path=None, database=None, import_legacy=True):
         self.path = path or _DEFAULT_PATH
-        self.data = self._load()
+        self.database = database
+        self._last_retrieval_trace = None
+        if self.database is not None:
+            try:
+                if import_legacy:
+                    self.database.import_profile_file(self.path)
+                self.database.prune_expired_memory()
+                self.data = self.database.load_user_profile()
+                return
+            except Exception as e:
+                logger.warning("Không mở được hồ sơ SQLite; tạm dùng file cũ: %s", e)
+                self.database = None
+        self.data = self._load_file()
 
-    def _load(self):
+    def _load_file(self):
         if not os.path.exists(self.path):
             return _empty()
         try:
@@ -250,10 +346,17 @@ class UserProfile:
             return _empty()
 
     def _save(self):
+        if self.database is not None:
+            return
         try:
             write_json(self.path, self.data)
         except OSError as e:
             logger.error("Không lưu được hồ sơ người dùng: %s", e)
+
+    def _database_failed(self, action, error):
+        logger.error("SQLite lỗi khi %s; chuyển sang file hồ sơ: %s", action, error)
+        self.database = None
+        self._save()
 
     def remember(self, name=None, address_form=None, location=None, note=None, when=None):
         """Ghi nhớ thông tin cá nhân lâu dài + lưu file. Trả câu xác nhận tiếng Việt."""
@@ -262,10 +365,28 @@ class UserProfile:
         if not changes:
             return ("Bạn muốn tôi nhớ điều gì? Hãy cho biết tên, cách xưng hô, "
                     "địa điểm hoặc điều cần ghi nhớ.")
-        self._save()
+        if self.database is not None:
+            try:
+                if name and name.strip():
+                    self.database.set_profile_name(name.strip())
+                if address_form and address_form.strip():
+                    self.database.set_user_preference(
+                        "address_form", address_form.strip(), source="explicit_user")
+                if location and location.strip():
+                    self.database.set_user_preference(
+                        "default_location", location.strip(), source="explicit_user")
+                if note and note.strip():
+                    if when:
+                        self.database.add_profile_event(self.data["events"][-1], inferred=False)
+                    else:
+                        self.database.add_profile_note(note.strip(), inferred=False)
+            except Exception as e:
+                self._database_failed("ghi nhớ thông tin người dùng", e)
+        else:
+            self._save()
         return "Đã nhớ: " + ", ".join(changes) + "."
 
-    def add_auto_fact(self, fact):
+    def add_auto_fact(self, fact, evidence=None, confidence=0.6, source_id=None):
         """Thêm một sự thật TỰ TRÍCH (từ củng cố STM->LTM). Bỏ trùng, giới hạn số lượng."""
         if not fact or not fact.strip():
             return
@@ -275,7 +396,17 @@ class UserProfile:
             return                                   # đã biết (tường minh hoặc tự trích)
         self.data["auto_facts"].append(fact)
         self.data["auto_facts"] = self.data["auto_facts"][-_MAX_AUTO_FACTS:]
-        self._save()
+        if self.database is not None:
+            try:
+                self.database.add_profile_note(
+                    fact, inferred=True, evidence=evidence,
+                    confidence=confidence, source_id=source_id)
+                # Projection DB tự loại candidate thiếu evidence/confidence/expiry.
+                self.data = self.database.load_user_profile()
+            except Exception as e:
+                self._database_failed("lưu sự thật suy luận", e)
+        else:
+            self._save()
 
     def forget(self, keyword):
         """Xoá một mẩu trí nhớ khớp `keyword`. Trả câu trả lời tiếng Việt.
@@ -290,17 +421,34 @@ class UserProfile:
             return (f"Có {len(hits)} điều khớp: {listing}. "
                     f"Bạn muốn tôi quên điều nào?")
         source, index, text = hits[0]
-        self.data[source].pop(index)
-        self._save()
+        removed = self.data[source].pop(index)
+        if self.database is not None:
+            try:
+                self.database.delete_profile_item(source, removed)
+            except Exception as e:
+                self._database_failed("xóa trí nhớ", e)
+        else:
+            self._save()
         return f'Đã quên: "{text}".'
 
-    def add_event(self, text, when=None):
+    def add_event(self, text, when=None, evidence=None, confidence=0.8, source_id=None):
         """Ghi một SỰ KIỆN có thời điểm (tự trích từ hội thoại). Dọn luôn sự kiện quá cũ."""
         if not text or not text.strip():
             return
         self.data.setdefault("events", []).append(make_event(text, when))
         self.data["events"] = prune_events(self.data["events"])
-        self._save()
+        event = self.data["events"][-1]
+        if self.database is not None:
+            try:
+                self.database.add_profile_event(
+                    event, inferred=True, evidence=evidence,
+                    confidence=confidence, source_id=source_id)
+                self.database.prune_expired_memory()
+                self.data = self.database.load_user_profile()
+            except Exception as e:
+                self._database_failed("lưu sự kiện suy luận", e)
+        else:
+            self._save()
 
     def resolve(self, text):
         """Thay tham chiếu tượng trưng bằng giá trị thật, ngay trước khi nói ra."""
@@ -313,8 +461,54 @@ class UserProfile:
             pruned = prune_events(events)
             if len(pruned) != len(events):
                 self.data["events"] = pruned
-                self._save()
-        return summarize(self.data, query=query)
+                if self.database is not None:
+                    try:
+                        self.database.prune_expired_memory()
+                    except Exception as e:
+                        self._database_failed("dọn sự kiện hết hạn", e)
+                else:
+                    self._save()
+        text, trace = summarize_with_trace(self.data, query=query)
+        self._last_retrieval_trace = trace
+        return text
+
+    def last_retrieval_trace(self):
+        """Trace của lần ``summary`` gần nhất, trả bản sao để caller không sửa state."""
+        if self._last_retrieval_trace is None:
+            return None
+        return json.loads(json.dumps(self._last_retrieval_trace))
 
     def get_default_location(self):
         return (self.data.get("preferences") or {}).get("default_location")
+
+    def get_address_form(self):
+        """Cùng nguồn xưng hô mà Agent đưa vào system context."""
+        return self.data.get("address_form")
+
+    def export_data(self, destination=None):
+        """Xuất hồ sơ có thể đọc được để người dùng kiểm tra/di chuyển dữ liệu."""
+        if destination is None:
+            if self.database is not None:
+                base = self.database.path.parent
+            else:
+                base = os.path.dirname(os.path.abspath(self.path))
+            filename = "user-memory-" + datetime.now().strftime("%Y%m%d-%H%M%S") + ".json"
+            destination = os.path.join(base, "exports", filename)
+        if self.database is not None:
+            return self.database.export_user_memory(destination)
+        write_json(str(destination), self.data)
+        return destination
+
+    def clear(self):
+        """Xóa toàn bộ trí nhớ cá nhân và cả file nguồn cũ để không tự import lại."""
+        result = {"facts": 0, "preferences": 0, "habits": 0}
+        if self.database is not None:
+            result = self.database.delete_user_memory()
+        if os.path.exists(self.path):
+            try:
+                os.remove(self.path)
+            except OSError as e:
+                logger.error("Không xóa được file hồ sơ cũ: %s", e)
+                raise
+        self.data = _empty()
+        return result

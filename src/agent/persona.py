@@ -73,6 +73,33 @@ def _default_persona():
             {"user": "hôm nay tôi mệt quá", "assistant": "Nghe mệt thật đó. Nghỉ chút đi, cần gì cứ gọi mình nhé."},
             {"user": "mở giúp tôi youtube", "assistant": "Có ngay đây! Đang mở YouTube cho bạn."},
         ],
+        # Fallback không gọi được LLM vẫn phải nói cùng một nhân cách. Các key này chỉ
+        # chứa câu chữ; validator SALM tiếp tục giữ quyền quyết định câu nào an toàn.
+        "proactive_templates": {
+            "startup": "Chào {address_form}, em đã sẵn sàng rồi. Mình bắt đầu nhé!",
+            "return": "Mừng {address_form} trở lại! Em ở đây nè.",
+            "care_initial_work_engagement": (
+                "{address_form}, mình thả lỏng vai và tay một chút nhé?"),
+            "care_initial_screen_soft": (
+                "{address_form}, mình nhìn xa rồi chớp mắt chậm vài nhịp nhé?"),
+            "care_initial_screen_hard": (
+                "{address_form}, mình rời màn hình và đi lại một chút nhé?"),
+            "care_reply_snooze": (
+                "Dạ, em để {address_form} thêm {minutes} phút nhé."),
+            "care_reply_timed_dnd": (
+                "Dạ, em sẽ không nhắc nghỉ trong {minutes} phút nhé."),
+            "care_reply_cycle_dnd": (
+                "Dạ, em sẽ không chen vào phiên làm việc này nữa."),
+            "care_reply_session_dnd": (
+                "Dạ, em sẽ tạm ngừng nhắc nghỉ trong phiên này."),
+            "care_reply_resume_care": "Dạ, em đã bật lại nhắc nghỉ rồi nhé.",
+            "care_reply_decline_once": (
+                "Dạ, em sẽ không nhắc lại lượt này nữa nhé."),
+            "care_reply_accept": "Dạ, em mời {address_form} nghỉ một chút nhé.",
+            "care_late_night": (
+                "{address_form}, đã khá khuya rồi. "
+                "Mình cân nhắc khép lại phiên dùng máy và nghỉ ngơi nhé?"),
+        },
         "rapport": {"familiarity": 0.3, "interaction_count": 0},
     }
 
@@ -126,11 +153,12 @@ class PersonaState:
         return new
 
     def reset_traits(self):
-        """Đưa tính cách (núm + danh tính + văn phong) về baseline; GIỮ quan hệ (rapport)."""
+        """Đưa nhân cách và fallback lời chủ động về baseline; GIỮ quan hệ (rapport)."""
         d = _default_persona()
         self.data["traits"] = d["traits"]
         self.data["identity"] = d["identity"]
         self.data["style"] = d["style"]
+        self.data["proactive_templates"] = d["proactive_templates"]
         self._save()
 
     # --- QUAN HỆ: thân thiết tăng chậm theo số lần tương tác ---
@@ -179,6 +207,25 @@ class PersonaState:
                 if len(lines) > 1:
                     card += "\n" + "\n".join(lines)
         return card
+
+    def proactive_text(self, key, **values):
+        """Render fallback SALM do chính persona sở hữu; sai schema thì trả ``None``.
+
+        SALM vẫn phải chạy validator sau hàm này. Persona chỉ sở hữu GIỌNG, không được
+        dùng template để nới giới hạn an toàn hoặc thay đổi action đã commit.
+        """
+        templates = self.data.get("proactive_templates") or {}
+        template = templates.get(key) if isinstance(templates, dict) else None
+        if not isinstance(template, str) or not template.strip():
+            return None
+        clean_values = {}
+        for name, value in values.items():
+            if isinstance(value, (str, int)) and not isinstance(value, bool):
+                clean_values[name] = value
+        try:
+            return template.format(**clean_values).strip()
+        except (KeyError, ValueError, IndexError):
+            return None
 
 
 # Từ mức ngượng này trở lên thì khuôn mặt chuyển sang `shy`.

@@ -16,6 +16,7 @@ except ImportError:
     pytest = None
 
 from services.scheduler import ReminderScheduler
+from agent.tools import ActionRefused
 
 from conftest import registry_with
 from features.schedule.tools import _parse_fire_time
@@ -150,6 +151,18 @@ def test_schedule_action_tool_adds_do_task():
     assert "tự làm" in out.lower()
     t = sched.list()[0]
     assert t["message"] == "mở youtube" and t["kind"] == "do"
+
+
+def test_schedule_action_refuses_late_night_care_collision_even_if_confirmed():
+    sched = ReminderScheduler(store_path=_temp_store())
+    reg = registry_with(actions=MagicMock(), scheduler=sched)
+
+    with pytest.raises(ActionRefused):
+        reg.run("schedule_action", {
+            "command": "cảnh báo thức khuya sau 23h30", "at": "23:30"},
+            confirmed=True)
+
+    assert sched.list() == []
 
 
 def test_cancel_reminder_tool():

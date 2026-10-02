@@ -30,6 +30,9 @@ class RecordingRegistry:
     def has(self, name):
         return self._inner.has(name)
 
+    def is_enabled(self, name):
+        return self._inner.is_enabled(name)
+
     def register(self, tool):
         """Chuyển tiếp: `IndexedTools` đăng ký lười meta-tool `mo_nhom` lúc `select()`.
 
@@ -42,16 +45,18 @@ class RecordingRegistry:
     def get(self, name):
         return self._inner.get(name)          # để Agent đọc metadata tool (vd cờ destructive)
 
-    def gate(self, name, arguments, nhiem=False):
+    def gate(self, name, arguments, nhiem=False, user_text=None):
         """Chuyển tiếp NGUYÊN VẸN, kể cả cờ vết nhiễm: eval phải thấy đúng cổng duyệt của
         bản thật, nếu không ca "xoá hết việc" sẽ chạy trong eval mà ngoài đời thì dừng lại hỏi."""
-        return self._inner.gate(name, arguments, nhiem=nhiem)
+        return self._inner.gate(name, arguments, nhiem=nhiem,
+                                user_text=user_text)
 
     def tu_choi(self, name, arguments, nhiem=False, tu_dong=False):
         """Cùng lý do với `gate`: eval phải thấy đúng luật từ chối của bản thật."""
         return self._inner.tu_choi(name, arguments, nhiem=nhiem, tu_dong=tu_dong)
 
-    def run(self, name, arguments, confirmed=False, nhiem=False, tu_dong=False):
+    def run(self, name, arguments, confirmed=False, nhiem=False, tu_dong=False,
+            user_text=None):
         self.calls.append((name, dict(arguments or {})))
         # Trả câu NHƯ THỂ thành công để model coi bước đã xong (giảm gọi lặp vô ích —
         # production tool trả xác nhận thật; stub "trống nghĩa" khiến model tưởng chưa xong).

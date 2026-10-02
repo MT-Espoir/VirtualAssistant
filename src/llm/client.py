@@ -67,11 +67,16 @@ class ClaudeClient:
     """Hiện thực LLMClient bằng Anthropic Python SDK (Claude tool-calling)."""
 
     def __init__(self, model: str = "claude-opus-4-8", max_tokens: int = 1024,
-                 api_key: str = None):
+                 api_key: str = None, timeout=None, max_retries=None):
         # Import trong hàm để môi trường không cài 'anthropic' vẫn nạp được module.
         import anthropic
         self._anthropic = anthropic
-        self.client = anthropic.Anthropic(api_key=api_key) if api_key else anthropic.Anthropic()
+        options = {"api_key": api_key} if api_key else {}
+        if timeout is not None:
+            options["timeout"] = timeout
+        if max_retries is not None:
+            options["max_retries"] = max_retries
+        self.client = anthropic.Anthropic(**options)
         self.model = model
         self.max_tokens = max_tokens
 

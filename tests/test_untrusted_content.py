@@ -123,14 +123,16 @@ NOI_BO = {
     # Đổi lại: xếp nó vào NGOAI thì mỗi lần hỏi "cái gì làm máy chậm" là cả cửa sổ trí nhớ
     # ngắn hạn bị đánh dấu nhiễm, và luồng "xem cái gì ngốn RAM -> tắt nó" chết vĩnh viễn
     # chứ không phải "mất thêm một lượt" (`_nhiem` phai dần qua NHIỀU lượt, không phải một).
-    "list_processes", "play_youtube", "take_screenshot", "scroll_screen",
+    "list_processes", "activity_insights",
+    "play_youtube", "take_screenshot", "scroll_screen",
     "open_place_result", "set_my_location",
     "schedule_reminder", "schedule_action", "list_reminders", "cancel_reminder",
     "browser_open_or_reuse", "browser_media_control",
-    "remember_about_user", "forget_about_user",
+    "remember_about_user", "forget_about_user", "manage_user_memory",
     "add_task", "list_tasks", "complete_task", "remove_task",
     "create_routine", "list_routines", "delete_routine",
     "save_contact", "find_contact", "list_contacts", "remove_contact",
+    "get_room_environment", "control_room_ac", "configure_climate_automation", "turn_off_webcam",
 }
 
 

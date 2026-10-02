@@ -38,6 +38,9 @@ class _Storage:
     def purge_expired(self): pass
     def append(self, record): self.records.append(record)
     def write_daily(self, _daily): pass
+    def clear_history(self):
+        self.records.clear()
+        return {"events": 2, "daily": 1, "files": 0}
 
 
 def test_runtime_survives_a_collector_failure():
@@ -51,6 +54,20 @@ def test_runtime_survives_a_collector_failure():
         assert windows.calls >= 2
     finally:
         runtime.stop()
+
+
+def test_clear_activity_history_resets_in_memory_projection_too():
+    storage = _Storage()
+    runtime = SalmRuntime("unused", storage=storage, power=_Power(),
+                          windows_probe=_WindowsFailsOnce(), gsmtc=_Gsmtc())
+    runtime.engine.daily["2030-01-01"] = object()
+    old_engine = runtime.engine
+
+    result = runtime.clear_activity_history()
+
+    assert result["daily"] == 1
+    assert runtime.engine is not old_engine
+    assert runtime.engine.daily == {}
 
 
 class _Dispatcher:

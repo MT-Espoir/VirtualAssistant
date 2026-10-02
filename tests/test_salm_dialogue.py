@@ -96,7 +96,24 @@ def test_dialogue_fails_closed_on_wrong_multiple_or_invalid_tool_calls():
                                   ToolCall("2", "submit_care_intent", _args())]),
         AssistantTurn(tool_calls=[ToolCall("1", "submit_care_intent", invalid)]),
     ):
-        assert CareDialogue(_LLM(turn)).classify("hoãn") is None
+        assert CareDialogue(_LLM(turn)).classify("Tôi sẽ cố làm thêm tí nữa") is None
+
+
+def test_dialogue_deterministic_guards_handle_narrow_snooze_and_dangerous_scope():
+    llm = _LLM(AssistantTurn(text="không được gọi"))
+    short = CareDialogue(llm).classify("Để tôi chốt nốt đoạn này")
+    permanent = CareDialogue(llm).classify("Đừng bao giờ nhắc nữa")
+    broad = CareDialogue(llm).classify(
+        "Hoãn mười phút và tắt luôn mọi thông báo")
+    broad_with_match = CareDialogue(llm).classify(
+        "Để tôi chốt nốt rồi tắt mọi thông báo")
+
+    assert (short.intent, short.release_condition, short.source) == (
+        "snooze", None, "guard")
+    assert permanent.intent == "unclear" and permanent.source == "guard"
+    assert broad.intent == "unclear" and broad.reason_code == "conflicting_request"
+    assert broad_with_match.intent == "unclear"
+    assert llm.calls == []
 
 
 def test_strict_parser_rejects_bad_types_enums_and_confidence():

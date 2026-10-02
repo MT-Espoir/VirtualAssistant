@@ -1,0 +1,10 @@
+{
+  "benchmark_version": 1,
+  "k": 5,
+  "case_count": 38,
+  "recall_at_k": 0.8684,
+  "precision_at_k": 0.5789,
+  "case_pass_rate": 0.7632,
+  "forbidden_leakage_rate": 1.0,
+  "ineligible_leakage_rate": 0.0
+}

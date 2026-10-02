@@ -77,6 +77,9 @@ CASES = [
     # liệt kê tiêu đề rồi dừng lại chờ người dùng chọn.
     {"id": "web-question", "text": "hôm nay có sự kiện gì mà Việt Nam lại đi bão",
      "expect": ["web_search_list", "read_search_result"], "case": "web"},
+    # Câu hỏi suy ngẫm/ý kiến không cần dữ liệu hiện thời: gọi web vừa chậm vừa phá nhịp nói.
+    {"id": "general-love-vs-care", "text": "em nghĩ giữa yêu và thương khác nhau như nào",
+     "expect": [], "case": "general"},
 
     # --- schedule ---
     {"id": "sch-add", "text": "nhắc tôi họp lúc 3 giờ chiều", "expect": ["schedule_reminder"], "case": "schedule"},
@@ -120,6 +123,9 @@ CASES = [
 # được model kiểm không?". Chạy riêng bằng `python -m evals.run_eval cov`, hoặc chạy cả hai
 # bằng tiền tố `all`. Tool hiếm nhờ vậy không phải chờ người dùng tình cờ gọi ngoài đời.
 COVERAGE_CASES = [
+    # activity insights — chỉ đọc daily aggregate cục bộ
+    {"id": "cov-activity", "text": "cho tôi xem thống kê dùng ứng dụng 7 ngày qua",
+     "expect": ["activity_insights"], "case": "activity"},
     # system
     {"id": "cov-network", "text": "máy tôi đang nối Wi-Fi nào và có IP nội bộ bao nhiêu",
      "expect": ["system_info"], "case": "system"},
@@ -153,6 +159,10 @@ COVERAGE_CASES = [
      "expect": ["remember_about_user"], "case": "profile"},
     {"id": "cov-forget", "text": "hãy quên thông tin tôi dị ứng với đậu phộng",
      "expect": ["forget_about_user"], "case": "profile"},
+    {"id": "cov-memory-export", "text": "xuất toàn bộ dữ liệu bộ nhớ của tôi ra file",
+     "expect": ["manage_user_memory"], "case": "profile"},
+    {"id": "cov-memory-delete", "text": "xóa sạch toàn bộ những gì bạn nhớ về tôi",
+     "expect": ["manage_user_memory"], "case": "profile"},
     {"id": "cov-remove-task", "text": "xoá việc mua sữa khỏi danh sách",
      "expect": ["remove_task"], "case": "task"},
     {"id": "cov-list-routines", "text": "liệt kê các routine của tôi",
@@ -169,6 +179,17 @@ COVERAGE_CASES = [
      "expect": ["list_contacts"], "case": "pim"},
     {"id": "cov-remove-contact", "text": "xoá An khỏi danh bạ",
      "expect": ["remove_contact"], "case": "pim"},
+]
+
+COVERAGE_CASES += [
+    {"id": "cov-iot-environment", "text": "nhiệt độ trong phòng hiện tại bao nhiêu",
+     "expect": ["get_room_environment"], "case": "iot"},
+    {"id": "cov-iot-ac", "text": "bật máy lạnh trong một giờ",
+     "expect": ["control_room_ac"], "case": "iot"},
+    {"id": "cov-iot-rule", "text": "khi nhiệt độ trên 32,5 độ C thì bật máy lạnh",
+     "expect": ["configure_climate_automation"], "case": "iot"},
+    {"id": "cov-camera-off", "text": "tắt webcam",
+     "expect": ["turn_off_webcam"], "case": "camera"},
 ]
 
 ALL_CASES = CASES + COVERAGE_CASES

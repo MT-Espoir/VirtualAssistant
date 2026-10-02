@@ -24,6 +24,9 @@ def test_interactive_time_goes_to_work_screen_and_foreground_app():
     assert day.work_engagement == 60
     assert day.screen_exposure == 60
     assert day.apps["code"].interactive == 60
+    assert day.circadian_coverage == 60
+    assert sum(day.circadian_interactive) == 60
+    assert len(day.circadian_interactive) == 48
     assert not result.opportunities
 
 

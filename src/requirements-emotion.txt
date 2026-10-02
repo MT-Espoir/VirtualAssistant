@@ -1,0 +1,2 @@
+# Optional debug-only Emotion worker. Install separately from core dependencies.
+onnxruntime==1.27.0

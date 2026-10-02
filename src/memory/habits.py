@@ -119,14 +119,45 @@ def describe(data, k=_TOP_K, min_count=_MIN_COUNT, now=None):
             f"chưa tự nói ra — gợi ý thì được, đừng khẳng định chắc nịch): {ve}.")
 
 
+def _observation_data(rows, now=None):
+    """Chiếu observation rows về shape JSON cũ để giữ nguyên pure logic/public API."""
+    items = {}
+    for row in rows or []:
+        key = norm(row.get("habit_key") or "")
+        label = str(row.get("label") or "").strip()
+        stamp = str(row.get("observed_at") or "")
+        if not key or not label or older_than_days(stamp, _FADE_DAYS, now=now):
+            continue
+        current = items.get(key) or {}
+        items[key] = {
+            "label": _nhan_tot_hon(current.get("label"), label),
+            "count": int(current.get("count") or 0) + 1,
+            "last": max(current.get("last") or "", stamp),
+        }
+    return prune({"items": items}, now=now)
+
+
 class HabitLog:
-    """Bộ đếm thói quen lưu JSON. `path=None` -> file mặc định trong memory/data/."""
+    """Bộ đếm observation trên SQLite; JSON là compatibility/fail-soft fallback."""
 
-    def __init__(self, path=None):
-        self.path = path or _DEFAULT_PATH
-        self.data = self._load()
+    def __init__(self, path=None, database=None, import_legacy=True):
+        self.path = str(path or _DEFAULT_PATH)
+        self.database = database
+        if self.database is not None:
+            try:
+                if import_legacy:
+                    self.database.import_habits_file(self.path)
+                self.database.prune_habit_observations(
+                    fade_days=_FADE_DAYS, max_entries=_MAX_ENTRIES,
+                    now=datetime.now())
+                self.data = self._load_database()
+                return
+            except Exception as e:
+                logger.warning("Không mở được thói quen SQLite; tạm dùng file cũ: %s", e)
+                self.database = None
+        self.data = self._load_file()
 
-    def _load(self):
+    def _load_file(self):
         if not os.path.exists(self.path):
             return _empty()
         try:
@@ -139,10 +170,21 @@ class HabitLog:
             return _empty()
 
     def _save(self):
+        if self.database is not None:
+            return
         try:
             write_json(self.path, self.data)
         except OSError as e:
             logger.error("Không lưu được kho thói quen: %s", e)
+
+    def _load_database(self, now=None):
+        rows = self.database.habit_observations(fade_days=_FADE_DAYS,
+                                                now=now or datetime.now())
+        return _observation_data(rows, now=now)
+
+    def _database_failed(self, action, error):
+        logger.error("SQLite lỗi khi %s; chuyển sang file thói quen: %s", action, error)
+        self.database = None
 
     def record(self, value, label_template):
         """Ghi nhận một lần làm việc gì đó. `label_template` vd "nghe '{}'".
@@ -155,8 +197,40 @@ class HabitLog:
         value = (str(value) if value is not None else "").strip()[:_MAX_NHAN]
         if not value:
             return
-        self.data = bump(self.data, value, label_template.format(value))
+        label = label_template.format(value)
+        if self.database is not None:
+            try:
+                self.database.record_habit_observation(
+                    norm(value), label,
+                    observed_at=datetime.now().isoformat(timespec="seconds"),
+                    source_domain="tool")
+                self.database.prune_habit_observations(
+                    fade_days=_FADE_DAYS, max_entries=_MAX_ENTRIES,
+                    now=datetime.now())
+                self.data = self._load_database()
+                return
+            except Exception as e:
+                self._database_failed("ghi nhận thói quen", e)
+        self.data = bump(self.data, value, label)
         self._save()
 
     def summary(self):
+        if self.database is not None:
+            try:
+                now = datetime.now()
+                self.database.prune_habit_observations(
+                    fade_days=_FADE_DAYS, max_entries=_MAX_ENTRIES, now=now)
+                self.data = self._load_database(now=now)
+            except Exception as e:
+                self._database_failed("đọc thói quen", e)
         return describe(self.data)
+
+    def clear(self):
+        """Xóa observations và file legacy; dùng cho quyền xóa toàn bộ memory."""
+        deleted = 0
+        if self.database is not None:
+            deleted = self.database.clear_habit_observations()
+        if os.path.exists(self.path):
+            os.remove(self.path)
+        self.data = _empty()
+        return deleted

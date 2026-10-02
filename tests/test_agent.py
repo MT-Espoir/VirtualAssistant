@@ -504,12 +504,17 @@ def test_no_mood_keeps_tag_emotion():
 class _CapturingProfile:
     def __init__(self):
         self.facts = []
+        self.metadata = []
+        self.events = []
     def summary(self, query=None):
         return ""
     def resolve(self, text):
         return text
-    def add_auto_fact(self, fact):
+    def add_auto_fact(self, fact, **metadata):
         self.facts.append(fact)
+        self.metadata.append(metadata)
+    def add_event(self, text, when=None, **metadata):
+        self.events.append((text, when, metadata))
 
 
 def _agent_cung_co(profile, trich="Thích uống trà", **kw):
@@ -540,6 +545,33 @@ def test_bat_LTM_AUTO_FACTS_thi_ghi_nhu_cu(monkeypatch):
     agent.run("tôi hay uống trà buổi sáng")
     agent.run("câu khác")
     assert "Thích uống trà" in profile.facts
+    assert profile.metadata[0]["evidence"]["quote"] == "tôi hay uống trà buổi sáng"
+    assert profile.metadata[0]["confidence"] > 0
+    assert profile.metadata[0]["source_id"].startswith("stm:")
+
+
+def test_consolidation_rejects_candidate_without_user_evidence(monkeypatch):
+    from utils.config import config
+    monkeypatch.setattr(config, "LTM_AUTO_FACTS", True)
+    profile = _CapturingProfile()
+    agent = _agent_cung_co(profile, trich="Sở hữu một du thuyền")
+    agent.run("tôi hay uống trà buổi sáng")
+    agent.run("câu khác")
+    assert profile.facts == []
+
+
+def test_consolidated_event_carries_evidence_confidence_and_expiry_inputs():
+    profile = _CapturingProfile()
+    agent = _agent_cung_co(
+        profile, trich="[SUKIEN 2099-01-02T14:00] phỏng vấn công ty A")
+    agent.run("tôi có lịch phỏng vấn công ty A lúc 2 giờ")
+    agent.run("câu khác")
+
+    text, when, metadata = profile.events[0]
+    assert text == "phỏng vấn công ty A"
+    assert when == "2099-01-02T14:00"
+    assert metadata["evidence"]["quote"].startswith("tôi có lịch phỏng vấn")
+    assert metadata["confidence"] > 0
 
 
 def test_auto_tune_nudges_persona_traits():
@@ -663,7 +695,7 @@ def _agent_de_cung_co(profile, **kwargs):
     return Agent(FakeLLMClient([AssistantTurn(text=f"r{i}") for i in range(10)]),
                  registry_with(actions=make_actions()),
                  profile=profile, auto_extract=True, consolidate_every=99,
-                 extractor=lambda transcript: "Thích uống trà", **kwargs)
+                 extractor=lambda transcript: "Hay nghe nhạc Trịnh", **kwargs)
 
 
 def test_flush_memory_consolidates_leftover_turns(monkeypatch):
@@ -679,7 +711,7 @@ def test_flush_memory_consolidates_leftover_turns(monkeypatch):
     agent.run("tôi hay nghe nhạc Trịnh")
     assert profile.facts == []                   # chưa tới ngưỡng củng cố giữa phiên
     agent.flush_memory()
-    assert "Thích uống trà" in profile.facts
+    assert "Hay nghe nhạc Trịnh" in profile.facts
 
 
 def test_flush_memory_only_runs_once(monkeypatch):
@@ -687,10 +719,10 @@ def test_flush_memory_only_runs_once(monkeypatch):
     monkeypatch.setattr(config, "LTM_AUTO_FACTS", True)
     profile = _CapturingProfile()
     agent = _agent_de_cung_co(profile)
-    agent.run("a")
+    agent.run("tôi hay nghe nhạc Trịnh")
     agent.flush_memory()
     agent.flush_memory()
-    assert profile.facts == ["Thích uống trà"]
+    assert profile.facts == ["Hay nghe nhạc Trịnh"]
 
 
 def test_flush_memory_bo_qua_luot_con_luu_file(tmp_path):

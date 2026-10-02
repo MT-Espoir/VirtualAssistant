@@ -20,6 +20,16 @@ def now_or(now=None):
     return now or datetime.now()
 
 
+def _comparable_now(dt, now=None):
+    """Return a current time with timezone awareness compatible with ``dt``."""
+    current = now_or(now)
+    if dt.tzinfo is not None and current.tzinfo is None:
+        current = current.astimezone(dt.tzinfo)
+    elif dt.tzinfo is None and current.tzinfo is not None:
+        current = current.replace(tzinfo=None)
+    return current
+
+
 def parse_iso(value):
     """Chuỗi ISO -> datetime. None nếu rỗng/không đọc được (không ném lỗi)."""
     if isinstance(value, datetime):
@@ -51,7 +61,7 @@ def is_past(event_time, now=None, grace_hours=DEFAULT_GRACE_HOURS):
     dt = parse_iso(event_time)
     if dt is None:
         return False
-    return now_or(now) > dt + timedelta(hours=grace_hours)
+    return _comparable_now(dt, now) > dt + timedelta(hours=grace_hours)
 
 
 def describe_age(when, now=None):
@@ -74,4 +84,4 @@ def older_than_days(when, days, now=None):
     dt = parse_iso(when)
     if dt is None:
         return False
-    return (now_or(now) - dt) > timedelta(days=days)
+    return (_comparable_now(dt, now) - dt) > timedelta(days=days)

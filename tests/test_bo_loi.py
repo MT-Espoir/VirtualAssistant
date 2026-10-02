@@ -80,10 +80,12 @@ def test_bo_loi_phu_moi_nhom_hay_dung():
     nhom_cua = {t: f.name for f in rep.loaded for t in f.tools}
     co_mat = {nhom_cua[t] for t in CORE if t in nhom_cua}
     vang = {f.name for f in rep.loaded if f.tools} - co_mat
-    # `profile` (nhớ/quên về người dùng) và `pim` (danh bạ, mail) đều là việc người dùng
-    # nói hẳn ra ("nhớ giúp tôi...", "tìm số của..."), tức câu dài và rõ nhóm — mở nhóm
-    # thêm một vòng ở đó đỡ tốn hơn là cõng spec của chúng ở mọi lượt.
-    assert vang == {"profile", "pim"}, f"nhóm vắng mặt trong lõi: {sorted(vang)}"
+    # `profile`, `pim` và `activity` đều là việc người dùng nói hẳn ra ("nhớ giúp tôi",
+    # "tìm số", "xem thống kê 7 ngày"), tức câu dài và rõ nhóm. Activity Insights còn
+    # là panel truy vấn không thường xuyên; mở nhóm thêm một vòng rẻ hơn cõng spec mỗi lượt.
+    # IoT and camera controls have direct voice paths; their specs need not grow CORE.
+    assert vang == {"profile", "pim", "activity", "iot", "camera"}, \
+        f"nhóm vắng mặt trong lõi: {sorted(vang)}"
 
 
 def test_so_lieu_nen_khop_voi_spec():

@@ -126,7 +126,14 @@ def _main(argv):
     ro_ri = {n for n in reg.names() if reg.get(n).exfil}
     ben_vung = {n for n in reg.names() if reg.get(n).persistent}
 
-    ban_ghi = OutcomeLog(config.OUTCOMES_FILE).doc()
+    database = None
+    if config.DATA_DATABASE_ENABLED and config.DATA_DATABASE_PATH:
+        try:
+            from persistence import LocalDatabase
+            database = LocalDatabase(config.DATA_DATABASE_PATH)
+        except Exception:
+            database = None
+    ban_ghi = OutcomeLog(config.OUTCOMES_FILE, database=database).doc()
     if argv:
         try:                       # lọc theo số NGÀY gần đây
             from datetime import datetime, timedelta
@@ -134,7 +141,8 @@ def _main(argv):
             ban_ghi = [r for r in ban_ghi if (r.get("khi") or "") >= moc]
         except ValueError:
             pass
-    print(f"Đã đọc {len(ban_ghi)} lượt từ {config.OUTCOMES_FILE}")
+    source = config.DATA_DATABASE_PATH if database is not None else config.OUTCOMES_FILE
+    print(f"Đã đọc {len(ban_ghi)} lượt từ {source}")
     ngoai = {n for n in reg.names() if reg.get(n).untrusted_output}
     print(ke_canh_bao(soi(ban_ghi, ro_ri, ben_vung, ngoai)))
 

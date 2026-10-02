@@ -19,6 +19,16 @@ def register(reg, ctx):
 
 
 def _register_schedule_tools(reg: ToolRegistry, scheduler):
+    def reject_care_policy_collision(command=None, **_):
+        value = strip_accents(str(command or "").lower())
+        late_terms = ("nhac khuya", "nhat khuya", "thuc khuya", "late night")
+        notice_terms = ("nhac", "canh bao", "thong bao", "bao toi")
+        if (any(term in value for term in late_terms)
+                and any(term in value for term in notice_terms)):
+            return ("nội dung này giống một yêu cầu nhắc/cấu hình Late-night Care, "
+                    "không phải lệnh hệ thống để tự thực thi; hãy nói lại yêu cầu")
+        return None
+
     def schedule_reminder(message, delay_minutes=None, at=None):
         fire = _parse_fire_time(delay_minutes=delay_minutes, at=at)
         if fire is None:
@@ -86,11 +96,12 @@ def _register_schedule_tools(reg: ToolRegistry, scheduler):
         # (prompt injection) tồn tại quá lượt hiện tại mà không cần đụng tới trí nhớ.
         destructive=True,
         confirm_message=lambda command=None, **_: f"hẹn tự làm: {command}",
+        cam=reject_care_policy_collision,
     ))
 
     reg.register(Tool(
         name="list_reminders",
-        description="Liệt kê các lịch nhắc đang có.",
+        description="Liệt kê lịch nhắc chung; không chứa hẹn giờ tắt thiết bị.",
         input_schema={"type": "object", "properties": {}},
         handler=list_reminders,
         speakable=True,

@@ -81,6 +81,19 @@ def test_specs_khop_anh_chup_truoc_refactor():
     byte với bản gốc thay vì "chạy thử thấy ổn". Đổi tức là đã lỡ tay đụng vào hành vi —
     hoặc thứ tự nạp feature vừa xê dịch.
 
+    CHỤP LẠI LẦN NĂM (2026-09-19): Phase 2 của SQLite memory thêm hai thao tác kiểm
+    soát dữ liệu ở cuối feature `profile`: manage_user_memory với hai action export và
+    delete_all. Tool mới chèn ngay sau các tool profile hiện hữu; thứ tự toàn registry
+    vẫn tất định và ảnh chụp mới khóa chủ đích thay đổi này.
+
+    CHỤP LẠI LẦN SÁU (2026-09-20): Phase A+B của Activity Insights thêm đúng một tool
+    read-only ở CUỐI catalog. Toàn bộ 53 tool cũ giữ nguyên vị trí và nội dung; chỉ nối
+    `activity_insights` vào cuối nên tiền tố cache cũ được giữ dài nhất có thể.
+
+    CHỤP LẠI LẦN BẢY (2026-09-21): Phase C mở rộng chính `activity_insights` bằng action
+    phân loại/exclude/reset/xóa lịch sử, không thêm tool thứ 55. 53 tool đứng trước giữ
+    nguyên từng byte; tool cuối đổi có chủ đích và vẫn nằm trong ngân sách catalog.
+
     CHỤP LẠI LẦN BỐN (2026-09-12): thêm nốt Tầng 1 — `kill_process`, `keep_awake`,
     `audio_device` (`docs/system_admin_spec.md` §4). Cùng kiểu dịch chỗ như lần ba: chúng
     vào vị trí 10-12 nên đẩy 40 tool phía sau, tiền tố chung còn 9 tool. Nội dung tool cũ

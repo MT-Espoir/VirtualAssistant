@@ -9,7 +9,9 @@ CASE_SYSTEM = (
     'Yêu cầu thuộc nhóm HỆ THỐNG: mở/đóng app, quản lý cửa sổ, âm lượng, độ sáng, thông tin '
     'máy. Phân biệt: MỞ MỚI một ứng dụng = open_app; còn CHUYỂN sang / đưa ra trước một cửa '
     "sổ ĐANG CHẠY SẴN (vd 'chuyển sang Chrome', 'qua Claude', 'mở lại cửa sổ Word đang mở') "
-    "= switch_window; hỏi 'đang mở những gì/cửa sổ nào' = list_windows."
+    "= switch_window; hỏi 'đang mở những gì/cửa sổ nào' = list_windows. "
+    "Camera/webcam là thiết bị: tắt webcam của Alice dùng turn_off_webcam, "
+    "không ánh xạ sang kill_process hay close_app."
 )
 
 # Dòng mô tả case gửi cho BỘ PHÂN LOẠI (prompt ROUTER), khác `CASE_*` ở trên là

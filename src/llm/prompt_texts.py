@@ -67,7 +67,7 @@ BASE = (
 ROUTER_HEADER = 'Nhiệm vụ: phân loại yêu cầu của người dùng vào ĐÚNG MỘT nhóm dưới đây. CHỈ trả về đúng một từ khoá tiếng Anh ({cases}), KHÔNG giải thích, KHÔNG thêm gì khác.'
 
 # Case "general" không thuộc feature nào (nó là "mọi thứ còn lại") nên hint ở đây.
-GENERAL_HINT = '- general: chào hỏi, hỏi đáp thông thường, hoặc không thuộc nhóm nào'
+GENERAL_HINT = '- general: chào hỏi, hỏi đáp thông thường, yêu cầu cần công cụ của nhiều nhóm, hoặc không thuộc nhóm nào'
 
 ROUTER_TAIL = "LƯU Ý phân biệt: 'mở/phát bài X trên YouTube' (mở nội dung mới) = web; còn 'tạm dừng/phát tiếp/phát lại/tua video (đang xem)' = browser. Cửa sổ/ỨNG DỤNG đang chạy (Chrome, Word, Claude...) = system; còn TAB bên trong Chrome = browser. Việc cần làm KHÔNG có giờ cụ thể (mua sữa, nộp báo cáo) = task; còn có GIỜ để nhắc ('nhắc tôi 3h chiều') = schedule. Tìm ĐỊA ĐIỂM ngoài đời (quán xá, cửa hàng, chỗ nào đó ở đâu) = place; còn tìm THÔNG TIN trên mạng ('tìm hiểu về X', 'X là gì') = web."
 

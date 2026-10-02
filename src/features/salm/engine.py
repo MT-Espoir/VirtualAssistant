@@ -134,6 +134,9 @@ class SalmEngine:
     def _accumulate(self, snapshot, state, dt):
         day = self._day(snapshot.wall_time)
         media_apps = set(snapshot.gsmtc_apps) | set(snapshot.audible_apps)
+        day.add_circadian(
+            snapshot.wall_time, dt,
+            interactive=state.activity == ActivityKind.ACTIVE_INTERACTIVE)
 
         for app_id in snapshot.running_apps:
             day.app(app_id).add("running", dt)

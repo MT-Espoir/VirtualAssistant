@@ -40,8 +40,11 @@ def test_write_daily_is_valid_json(salm_dir):
     metrics = DailyMetrics(work_engagement=12.5)
     storage.write_daily({"2030-01-01": metrics})
     payload = json.loads((salm_dir / "daily-2030-01-01.json").read_text(encoding="utf-8"))
+    assert payload["schema_version"] == 3
     assert payload["metrics"]["work_engagement"] == 12.5
     assert payload["metrics"]["idle_gap"] == 0
+    assert len(payload["metrics"]["circadian"][
+        "interactive_seconds_by_half_hour"]) == 48
 
 
 def test_ttl_only_removes_expired_salm_files(salm_dir):
@@ -55,3 +58,20 @@ def test_ttl_only_removes_expired_salm_files(salm_dir):
     assert removed == [old]
     assert not old.exists()
     assert keep.exists() and unrelated.exists()
+
+
+def test_clear_history_removes_only_salm_history_files(salm_dir):
+    event = salm_dir / "events-2030-01-01.jsonl"
+    daily = salm_dir / "daily-2030-01-01.json"
+    care_style = salm_dir / "care-style.json"
+    for path in (event, daily, care_style):
+        path.write_text("{}", encoding="utf-8")
+    storage = SalmStorage(salm_dir, import_legacy=False)
+    storage._daily_base["2030-01-01"] = {"work_engagement": 1}
+
+    result = storage.clear_history()
+
+    assert result == {"events": 0, "daily": 0, "files": 2}
+    assert not event.exists() and not daily.exists()
+    assert care_style.exists()
+    assert storage._daily_base == {}

@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Dict, FrozenSet, Optional, Tuple
+from typing import Dict, FrozenSet, List, Optional, Tuple
 
 
 class _TextEnum(str, Enum):
@@ -170,11 +170,33 @@ class DailyMetrics:
     idle_gap: float = 0.0
     confirmed_break: float = 0.0
     apps: Dict[str, AppDurations] = field(default_factory=dict)
+    circadian_coverage: float = 0.0
+    circadian_interactive: List[float] = field(
+        default_factory=lambda: [0.0] * 48)
+    timezone_offset_minutes: Optional[int] = None
+    timezone_changed: bool = False
 
     def app(self, app_id: str) -> AppDurations:
         if app_id not in self.apps:
             self.apps[app_id] = AppDurations()
         return self.apps[app_id]
+
+    def add_circadian(self, when: datetime, seconds: float, *, interactive=False):
+        """Accumulate privacy-reduced half-hour buckets in the snapshot's local time."""
+        seconds = max(0.0, float(seconds or 0))
+        if not seconds:
+            return
+        local = when if when.tzinfo else when.astimezone()
+        offset = local.utcoffset()
+        offset_minutes = int(offset.total_seconds() // 60) if offset is not None else None
+        if self.timezone_offset_minutes is None:
+            self.timezone_offset_minutes = offset_minutes
+        elif offset_minutes != self.timezone_offset_minutes:
+            self.timezone_changed = True
+        self.circadian_coverage += seconds
+        if interactive:
+            bucket = max(0, min(47, local.hour * 2 + local.minute // 30))
+            self.circadian_interactive[bucket] += seconds
 
     def to_dict(self) -> dict:
         return {
@@ -184,4 +206,14 @@ class DailyMetrics:
             "idle_gap": round(self.idle_gap, 3),
             "confirmed_break": round(self.confirmed_break, 3),
             "apps": {name: value.to_dict() for name, value in sorted(self.apps.items())},
+            "circadian": {
+                "schema_version": 1,
+                "coverage_seconds": round(self.circadian_coverage, 3),
+                "interactive_seconds_by_half_hour": [
+                    round(max(0.0, value), 3)
+                    for value in self.circadian_interactive[:48]
+                ],
+                "timezone_offset_minutes": self.timezone_offset_minutes,
+                "timezone_changed": bool(self.timezone_changed),
+            },
         }

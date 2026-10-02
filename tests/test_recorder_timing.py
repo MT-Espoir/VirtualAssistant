@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 pytest.importorskip("pyaudio", reason="Thiếu pyaudio")
 pytest.importorskip("numpy", reason="Thiếu numpy")
 
-from voice.recorder import Recorder, chunks_for_seconds       # noqa: E402
+from voice.recorder import Recorder, chunks_for_seconds, pcm_rms       # noqa: E402
 
 
 # --------------------------- quy đổi giây -> chunk --------------------------- #
@@ -88,3 +88,75 @@ def test_listen_once_accepts_max_seconds_override():
     rec = _recorder()
     rec.start_recording = lambda: setattr(rec, "stream", None)
     assert rec.listen_once(max_seconds=1.6) is None
+
+
+class _Stream:
+    def __init__(self, frames, available=None):
+        self.frames = list(frames)
+        self.available = list(available or [])
+        self.read_sizes = []
+
+    def read(self, size, exception_on_overflow=False):
+        self.read_sizes.append(size)
+        if self.frames:
+            return self.frames.pop(0)
+        return (b"\x00\x00" * size)
+
+    def get_read_available(self):
+        return self.available.pop(0) if self.available else 0
+
+
+def _pcm(amplitude, samples=10):
+    import numpy as np
+    return (np.ones(samples, dtype=np.int16) * amplitude).tobytes()
+
+
+def test_pcm_rms_casts_before_square_so_loud_audio_never_becomes_nan():
+    import math
+    assert math.isfinite(pcm_rms(_pcm(30000)))
+    assert pcm_rms(_pcm(30000)) == pytest.approx(30000, rel=0.001)
+
+
+def test_waiting_for_speech_does_not_consume_utterance_budget():
+    rec = _recorder(silence_duration=0.2, max_utterance_s=0.3,
+                    speech_start_timeout_s=1.0, pre_roll_s=0.2)
+    rec.chunk = 10
+    rec.rate = 100
+    quiet = _pcm(0)
+    speech = _pcm(1000)
+    rec.stream = _Stream([quiet] * 5 + [speech] * 3)
+    rec.silence_threshold = 500
+
+    audio = rec.listen_once()
+
+    assert audio is not None
+    assert rec.last_capture.wait_seconds == pytest.approx(0.5)
+    assert rec.last_capture.speech_seconds == pytest.approx(0.3)
+    assert rec.last_capture.hit_max_utterance is True
+    # Hai chunk trước onset được giữ làm pre-roll, không phải toàn bộ 5 chunk chờ.
+    assert len(audio) == 5 * len(speech)
+
+
+def test_trailing_silence_ends_capture_without_marking_it_truncated():
+    rec = _recorder(silence_duration=0.2, max_utterance_s=2.0,
+                    speech_start_timeout_s=1.0, pre_roll_s=0.1)
+    rec.chunk = 10
+    rec.rate = 100
+    rec.stream = _Stream([_pcm(1000), _pcm(1000), _pcm(0), _pcm(0)])
+    rec.silence_threshold = 500
+
+    assert rec.listen_once() is not None
+    assert rec.last_capture.ended_by_silence is True
+    assert rec.last_capture.hit_max_utterance is False
+    assert rec.last_capture.trailing_silence_seconds == pytest.approx(0.2)
+
+
+def test_post_tts_cleanup_discards_only_already_buffered_audio_without_waiting():
+    rec = _recorder()
+    stream = _Stream([], available=[2048, 1024, 0])
+    rec.stream = stream
+
+    discarded = rec.discard_buffered(max_seconds=0.5)
+
+    assert discarded == 2048
+    assert stream.read_sizes == [1024, 1024]

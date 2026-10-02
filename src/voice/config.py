@@ -32,6 +32,8 @@ class NgheConfig:
     silence_duration: float = 1.5      # im lặng bao lâu thì coi là nói xong
     speech_threshold_ratio: float = 1.0
     max_utterance_s: float = 15.0
+    speech_start_timeout_s: float = 15.0
+    pre_roll_s: float = 0.35
 
 
 @dataclass(frozen=True)
@@ -104,6 +106,8 @@ def from_config(config) -> VoiceConfig:
             silence_duration=g("SILENCE_DURATION", 1.5),
             speech_threshold_ratio=g("SPEECH_THRESHOLD_RATIO", 1.0),
             max_utterance_s=g("MAX_UTTERANCE_SECONDS", 15.0),
+            speech_start_timeout_s=g("SPEECH_START_TIMEOUT_SECONDS", 15.0),
+            pre_roll_s=g("SPEECH_PRE_ROLL_SECONDS", 0.35),
         ),
         noi=NoiConfig(
             engine=g("TTS_ENGINE", "gtts"),

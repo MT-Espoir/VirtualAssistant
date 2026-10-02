@@ -18,6 +18,7 @@ Gỡ feature  = xoá dòng đó, hoặc để `enabled` trả False.
 """
 
 from features.browser.feature import FEATURE as BROWSER
+from features.activity_insights.feature import FEATURE as ACTIVITY
 from features.pim.feature import FEATURE as PIM
 from features.places.feature import FEATURE as PLACE
 from features.profile.feature import FEATURE as PROFILE
@@ -27,6 +28,8 @@ from features.system.feature import FEATURE as SYSTEM
 from features.task.feature import FEATURE as TASK
 from features.weather.feature import FEATURE as WEATHER
 from features.web.feature import FEATURE as WEB
+from features.iot.feature import FEATURE as IOT
+from features.camera.feature import FEATURE as CAMERA
 
 # THỨ TỰ CÓ Ý NGHĨA — xem lý do 1 ở trên. Đây giờ là NGUỒN DUY NHẤT quyết định thứ tự
 # tool trong prompt; đổi thứ tự các dòng dưới đây là làm nguội KV cache của mọi người dùng.
@@ -48,4 +51,8 @@ FEATURES = [
     TASK,
     PIM,
     PLACE,
+    # Feature mới luôn nối CUỐI để giữ nguyên tiền tố tool specs hiện có.
+    ACTIVITY,
+    IOT,
+    CAMERA,
 ]

@@ -2,6 +2,8 @@
 Nhận dạng giọng nói (STT) — hỗ trợ Google (online) và Whisper (offline).
 """
 
+from dataclasses import dataclass
+
 import speech_recognition as sr
 
 from voice.corrections import correct as correct_transcript
@@ -10,6 +12,36 @@ from utils.config import config
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+@dataclass(frozen=True)
+class RecognitionResult:
+    text: str
+    alternatives: tuple = ()
+    confidence: float = None
+    engine: str = ""
+
+
+def _google_candidates(payload):
+    """Chuẩn hóa response ``show_all`` của SpeechRecognition thành candidates."""
+    if isinstance(payload, str):
+        return [(payload, None)] if payload.strip() else []
+    if not isinstance(payload, dict):
+        return []
+    output = []
+    for row in payload.get("alternative") or []:
+        if not isinstance(row, dict):
+            continue
+        text = str(row.get("transcript") or "").strip()
+        if not text:
+            continue
+        confidence = row.get("confidence")
+        try:
+            confidence = float(confidence) if confidence is not None else None
+        except (TypeError, ValueError):
+            confidence = None
+        output.append((text, confidence))
+    return output
 
 
 class SpeechRecognizer:
@@ -26,6 +58,7 @@ class SpeechRecognizer:
         self.whisper_lang = whisper_lang_code(language)
         self.whisper_model_name = whisper_model or config.WHISPER_MODEL
         self._fw_model = None          # model faster-whisper (nạp một lần)
+        self.last_result = None
 
         if self.engine == "whisper":
             self._load_whisper()
@@ -51,23 +84,42 @@ class SpeechRecognizer:
         try:
             if self.engine == "whisper":
                 text = self._whisper_from_data(audio_data)
+                candidates = [(text, None)] if text else []
             else:
                 audio = sr.AudioData(audio_data, sample_rate=self.sample_rate, sample_width=2)
-                text = self.recognizer.recognize_google(audio, language=self.language)
+                payload = self.recognizer.recognize_google(
+                    audio, language=self.language, show_all=True)
+                candidates = _google_candidates(payload)
 
-            text = (text or "").strip()
+            cleaned = []
+            seen = set()
+            for candidate, confidence in candidates:
+                candidate = correct_transcript((candidate or "").strip())
+                key = candidate.casefold()
+                if candidate and key not in seen:
+                    seen.add(key)
+                    cleaned.append((candidate, confidence))
+            text = cleaned[0][0] if cleaned else ""
             if not text:
                 logger.debug("Không nghe rõ nội dung")
+                self.last_result = None
                 return None
-            return correct_transcript(text)
+            self.last_result = RecognitionResult(
+                text=text,
+                alternatives=tuple(item[0] for item in cleaned),
+                confidence=cleaned[0][1], engine=self.engine)
+            return text
         except sr.UnknownValueError:
             logger.debug("Không nghe rõ nội dung")
+            self.last_result = None
             return None
         except sr.RequestError as e:
             logger.warning("Lỗi gọi dịch vụ nhận dạng (kiểm tra mạng): %s", e)
+            self.last_result = None
             return None
         except Exception as e:  # phòng lỗi lạ từ backend whisper
             logger.error("Lỗi nhận dạng không mong đợi: %s", e)
+            self.last_result = None
             return None
 
     def _whisper_from_data(self, audio_data):

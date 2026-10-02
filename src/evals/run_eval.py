@@ -41,7 +41,7 @@ def _build_parts():
         actions=AssistantActions(), scheduler=_StubDep(), browser=_StubDep(),
         screen=_StubDep(), tasks=_StubDep(), routines=_StubDep(),
         places=_StubDep(), location=_StubDep(), profile=_StubDep(),
-        contacts=_StubDep(), bus=_StubDep()))
+        contacts=_StubDep(), bus=_StubDep(), camera=_StubDep(), iot=_StubDep()))
     # Dùng CHUNG quyết định với app.py -> eval đo đúng cấu hình production sẽ chạy.
     che_do = config.surface_mode()
     if che_do == "router":

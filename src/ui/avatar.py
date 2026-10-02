@@ -9,11 +9,14 @@ cỡ và khớp nhau từ lúc bake, nên đổi cảm xúc chỉ là đổi ả
 import logging
 import random
 import tkinter as tk
+from tkinter import messagebox
 from pathlib import Path
 
 from features.salm.presenter import (CARE_PULSE_TICK_MS, care_opacity,
                                      care_progress_steps)
 from ui.avatar_face import BLINK_FRAME, blink_frame, frame_spec
+from ui.scale import ContinuousScale
+from ui.control_panel import ControlPanelHost
 
 try:
     from PIL import Image, ImageTk
@@ -74,17 +77,34 @@ def _load_frames():
     return frames
 
 
-class AvatarWindow:
+class AvatarWindow(ControlPanelHost):
     def __init__(self, bus=None, title="Trợ lý AI", scale=None, opacity=None,
                  emotion_hold_ms=None, on_open_place=None, on_draft_decision=None,
-                 on_open_mail=None):
+                 on_open_mail=None, on_care_style_action=None,
+                 on_activity_action=None, debug_panel=False, camera_service=None,
+                 system_controls=None, on_restart=None):
         self.bus = bus
         # Panel dùng chung khung HUD (`ui/hud.py`), tạo LƯỜI ở lần dùng đầu: phiên nào
         # không dùng tới tính năng đó thì không phải trả chi phí dựng cửa sổ nào.
         self._panels = {}
+        self._visible_panels = set()
+        # Scale HUD sống ở host thay vì từng panel: lệnh vẫn có hiệu lực khi chưa panel
+        # nào mở, và mọi panel mở sau đó nhận đúng cùng một tỷ lệ liên tục.
+        self._hud_scale = ContinuousScale()
+        self.debug_panel = None
+        self._debug_enabled = False
+        self.camera_service = camera_service
+        self.system_controls = system_controls
+        self.on_restart = on_restart
+        self._control_signature = None
+        self._control_section = "Thiết bị trong phòng"
+        self._control_checked_at = 0.0
         self.on_open_place = on_open_place
         self.on_draft_decision = on_draft_decision
         self.on_open_mail = on_open_mail
+        self.on_care_style_action = on_care_style_action
+        self.on_activity_action = on_activity_action
+        self._activity_payload = {}
         self.state, self.emotion, self.message = "idle", "neutral", ""
         # Giữ cảm xúc bao lâu rồi tự về neutral. <=0 = KHÔNG tự reset (để Persona/tâm trạng
         # dẫn dắt khuôn mặt). None = dùng mặc định EMOTION_HOLD_MS.
@@ -117,9 +137,35 @@ class AvatarWindow:
         self.canvas.pack(fill="both", expand=True)
         self._bind_controls()
         self._render()
+        if debug_panel:
+            try:
+                self.set_debug_enabled(True)
+            except Exception:
+                pass
         if bus is not None:
             self.root.after(100, self._poll)
+
+        self.root.bind("<F10>", lambda _e: self._show_control())
         self._schedule_blink()
+
+    def set_debug_enabled(self, enabled):
+        """Create the diagnostic window lazily; stop preview when switched off."""
+        if enabled:
+            try:
+                if self.debug_panel is None:
+                    from ui.debug_panel import DebugPanel
+                    self.debug_panel = DebugPanel(self.root, camera=self.camera_service)
+                self.debug_panel.show()
+                self.root.bind("<F12>", lambda _e: self.debug_panel.toggle())
+                self._debug_enabled = True
+            except Exception:
+                logger.warning("Không mở được panel debug", exc_info=True)
+                raise
+        else:
+            self._debug_enabled = False
+            self.root.unbind("<F12>")
+            if self.debug_panel is not None:
+                self.debug_panel.hide()
 
     def _base_size(self):
         """Cỡ cửa sổ ở scale 1.0, suy từ chính khung hình đã bake."""
@@ -160,7 +206,16 @@ class AvatarWindow:
             pass
 
     def _apply_ui(self, ui):
-        """Áp lệnh giao diện từ AssistantBus (đổi kích thước / độ mờ)."""
+        """Áp lệnh từ bus; ``target=hud`` tách hẳn khỏi scale của avatar."""
+        if ui.get("target") == "hud":
+            if "scale" in ui:
+                self._hud_scale.set(ui["scale"])
+            if "scale_delta" in ui:
+                self._hud_scale.adjust(ui["scale_delta"])
+            for panel in self._panels.values():
+                if panel is not None:
+                    panel.set_scale(self._hud_scale.value)
+            return
         if "scale" in ui:
             self.set_scale(ui["scale"])
         if "scale_delta" in ui:
@@ -225,9 +280,25 @@ class AvatarWindow:
         """Lấy (hoặc dựng lười) một HudPanel theo khoá. Mọi panel dùng CHUNG khung HUD."""
         if self._panels.get(key) is None:
             from ui.hud import HudPanel
+            size = ((min(520, self.root.winfo_screenwidth() - 60),
+                     min(700, self.root.winfo_screenheight() - 60))
+                    if key == "control" else (430, 560))
             self._panels[key] = HudPanel(self.root, title=title, on_pick=on_pick,
-                                         close_value=close_value)
+                                         close_value=close_value,
+                                         size=size,
+                                         scale=self._hud_scale.value,
+                                         on_visibility=lambda visible, panel_key=key:
+                                         self._panel_visibility(panel_key, visible))
         return self._panels[key]
+
+    def _panel_visibility(self, key, visible):
+        """Đồng bộ panel thật đang mở với ngữ cảnh dùng để hiểu lệnh rút gọn."""
+        if visible:
+            self._visible_panels.add(key)
+        else:
+            self._visible_panels.discard(key)
+        if self.bus is not None and hasattr(self.bus, "set_ui_target"):
+            self.bus.set_ui_target("hud" if self._visible_panels else "avatar")
 
     # cập nhật trực tiếp (dùng ở demo/test tay)
     def _show_places(self, payload):
@@ -315,6 +386,56 @@ class AvatarWindow:
             logging.getLogger(__name__).warning("Không mở được panel quản trị máy",
                                                 exc_info=True)
 
+    def _show_care_style(self, payload):
+        try:
+            from ui.panels import care_style_blocks
+            panel = self._panel("care_style", "PHONG CÁCH NHẮC NGHỈ",
+                                self.on_care_style_action)
+            panel.show(care_style_blocks(payload))
+        except Exception:
+            import logging
+            logging.getLogger(__name__).warning("Không mở được panel care style",
+                                                exc_info=True)
+
+    def _show_activity(self, payload):
+        """Mở Activity Insights; analytics chỉ đọc, preference đổi qua callback service."""
+        try:
+            from ui.panels import activity_insights_blocks
+            self._activity_payload = dict(payload or {})
+            panel = self._panel("activity", "ACTIVITY INSIGHTS",
+                                self._activity_panel_pick)
+            panel.title = "ACTIVITY INSIGHTS"
+            panel.show(activity_insights_blocks(self._activity_payload))
+        except Exception:
+            import logging
+            logging.getLogger(__name__).warning("Không mở được panel Activity Insights",
+                                                exc_info=True)
+
+    def _activity_panel_pick(self, action):
+        if not isinstance(action, dict):
+            return
+        kind = action.get("action")
+        panel = self._panels.get("activity")
+        if panel is None:
+            return
+        if kind == "choose_app":
+            from ui.panels import activity_classification_blocks
+            panel.show(activity_classification_blocks(
+                self._activity_payload, action.get("app_id")))
+            return
+        if kind == "back":
+            from ui.panels import activity_insights_blocks
+            panel.show(activity_insights_blocks(self._activity_payload))
+            return
+        if self.on_activity_action is None:
+            return
+        request = dict(action)
+        request["period"] = self._activity_payload.get("period", "7_days")
+        request["view"] = self._activity_payload.get("view", "overview")
+        updated = self.on_activity_action(request)
+        if updated:
+            self._show_activity(updated)
+
     def set(self, state=None, emotion=None, text=None):
         if state:
             self.state = state
@@ -327,7 +448,14 @@ class AvatarWindow:
 
     def _poll(self):
         emotion_changed = False
+        debug_events = self.bus.drain_debug()
+        if self._debug_enabled and self.debug_panel is not None:
+            for event in debug_events:
+                self.debug_panel.append(event)
         for ev in self.bus.drain():
+            if getattr(ev, "control", None) is not None:
+                self._show_control(ev.control["action"])
+                continue
             if getattr(ev, "care", None) is not None:
                 action = ev.care.get("action")
                 token = ev.care.get("token")
@@ -354,8 +482,16 @@ class AvatarWindow:
             if getattr(ev, "system", None) is not None:
                 self._show_system(ev.system)
                 continue
+            if getattr(ev, "care_style", None) is not None:
+                self._show_care_style(ev.care_style)
+                continue
+            if getattr(ev, "activity", None) is not None:
+                self._show_activity(ev.activity)
+                continue
             if ev.state:
                 self.state = ev.state
+                if self.debug_panel is not None:
+                    self.debug_panel.update_state(ev.state)
             if ev.emotion:
                 self.emotion = ev.emotion
                 emotion_changed = True
@@ -364,6 +500,7 @@ class AvatarWindow:
         if emotion_changed:
             self._schedule_emotion_reset()
         self._render()
+        self._control_refresh()
         self.root.after(100, self._poll)
 
     # ------------------------- chớp mắt ------------------------- #
@@ -444,8 +581,8 @@ class AvatarWindow:
         if photo is None:
             c.create_text(self.W // 2, self.H // 2, text=MISSING_FRAMES_HINT,
                           fill=HINT_COLOR, justify="center", width=self.W - 20)
-            return
-        c.create_image(self.W // 2, self.H // 2, image=photo)
+        else:
+            c.create_image(self.W // 2, self.H // 2, image=photo)
 
     def _photo(self, name):
         """Khung hình `name` đã thu về đúng cỡ cửa sổ hiện tại; không có -> None.

@@ -19,6 +19,9 @@ Thumbs.db
 
 # Local data / logs
 *.log
+/data/
+*.db-wal
+*.db-shm
 src/services/reminders.json
 src/services/tasks.json
 src/services/routines.json
@@ -57,3 +60,23 @@ mcp_servers/token*.json
 # Extension Chrome + tài liệu — giữ cục bộ, không commit
 chrome_extension/
 docs/
+
+# Portable Mosquitto runtime, downloaded installer, generated credentials/data
+packaging/iot/.cache/
+packaging/iot/mosquitto/
+packaging/iot/runtime/
+packaging/iot/python-deps/
+
+# Personal system controls and locally rendered panel previews
+data/control-settings.json
+data/control-settings.lock
+data/control-settings.json.tmp
+artifacts/control-panel/
+
+# Camera AI design documents requested for this project; other docs remain local-only.
+!docs/
+docs/*
+!docs/camera_ai_spec.md
+!docs/camera_ai_architecture.md
+!docs/camera_ai_security_privacy.md
+!docs/camera_llm_integration.md

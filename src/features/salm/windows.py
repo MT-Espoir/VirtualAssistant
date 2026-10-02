@@ -15,10 +15,18 @@ from pathlib import Path
 
 import psutil
 
+from features.salm.app_identity import is_user_facing_app_id
 from features.salm.models import ActivitySnapshot, DisplayState
 
 
 _MEETING_APPS = frozenset(("zoom", "teams", "ms-teams"))
+_SHELL_WINDOW_CLASSES = frozenset(("progman", "workerw", "shell_traywnd"))
+
+_GWL_EXSTYLE = -20
+_GW_OWNER = 4
+_WS_EX_TOOLWINDOW = 0x00000080
+_WS_EX_APPWINDOW = 0x00040000
+_DWMWA_CLOAKED = 14
 
 
 def normalize_app_id(value):
@@ -73,10 +81,24 @@ if os.name == "nt":
     ctypes.windll.user32.GetWindowThreadProcessId.restype = wintypes.DWORD
     ctypes.windll.user32.IsWindowVisible.argtypes = (wintypes.HWND,)
     ctypes.windll.user32.IsWindowVisible.restype = wintypes.BOOL
+    ctypes.windll.user32.IsIconic.argtypes = (wintypes.HWND,)
+    ctypes.windll.user32.IsIconic.restype = wintypes.BOOL
+    ctypes.windll.user32.GetWindow.argtypes = (wintypes.HWND, wintypes.UINT)
+    ctypes.windll.user32.GetWindow.restype = wintypes.HWND
+    ctypes.windll.user32.GetShellWindow.restype = wintypes.HWND
+    ctypes.windll.user32.GetClassNameW.argtypes = (
+        wintypes.HWND, wintypes.LPWSTR, ctypes.c_int)
+    ctypes.windll.user32.GetClassNameW.restype = ctypes.c_int
+    ctypes.windll.user32.GetWindowLongW.argtypes = (wintypes.HWND, ctypes.c_int)
+    ctypes.windll.user32.GetWindowLongW.restype = ctypes.c_long
     ctypes.windll.user32.GetWindowRect.argtypes = (wintypes.HWND, ctypes.POINTER(wintypes.RECT))
     ctypes.windll.user32.GetWindowRect.restype = wintypes.BOOL
     ctypes.windll.kernel32.GetModuleHandleW.restype = wintypes.HINSTANCE
     ctypes.windll.kernel32.GetTickCount64.restype = ctypes.c_ulonglong
+    ctypes.windll.kernel32.GetCurrentProcessId.restype = wintypes.DWORD
+    ctypes.windll.kernel32.ProcessIdToSessionId.argtypes = (
+        wintypes.DWORD, ctypes.POINTER(wintypes.DWORD))
+    ctypes.windll.kernel32.ProcessIdToSessionId.restype = wintypes.BOOL
     ctypes.windll.user32.MonitorFromWindow.restype = wintypes.HANDLE
     ctypes.windll.user32.MonitorFromWindow.argtypes = (wintypes.HWND, wintypes.DWORD)
     ctypes.windll.user32.CreateWindowExW.restype = wintypes.HWND
@@ -97,6 +119,12 @@ if os.name == "nt":
     ctypes.windll.user32.PostMessageW.argtypes = (
         wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM)
     ctypes.windll.user32.PostMessageW.restype = wintypes.BOOL
+    try:
+        ctypes.windll.dwmapi.DwmGetWindowAttribute.argtypes = (
+            wintypes.HWND, wintypes.DWORD, wintypes.LPVOID, wintypes.DWORD)
+        ctypes.windll.dwmapi.DwmGetWindowAttribute.restype = ctypes.c_long
+    except (AttributeError, OSError):
+        pass
 
 
 def _guid(text):
@@ -107,6 +135,41 @@ def _guid(text):
 
 def _uptime_seconds():
     return ctypes.windll.kernel32.GetTickCount64() / 1000.0 if os.name == "nt" else time.monotonic()
+
+
+def is_process_in_current_session(pid):
+    """Whether PID belongs to SALM's interactive Windows session."""
+    if os.name != "nt":
+        return True
+    current = wintypes.DWORD()
+    candidate = wintypes.DWORD()
+    kernel32 = ctypes.windll.kernel32
+    if not kernel32.ProcessIdToSessionId(kernel32.GetCurrentProcessId(),
+                                        ctypes.byref(current)):
+        return False
+    if not kernel32.ProcessIdToSessionId(int(pid), ctypes.byref(candidate)):
+        return False
+    return current.value == candidate.value
+
+
+def _window_is_user_facing(*, visible, iconic, cloaked, is_shell,
+                           class_name, ex_style, has_owner,
+                           width, height):
+    """Pure window-role filter; names/titles/content are deliberately not read."""
+    if not (visible or iconic) or cloaked or is_shell:
+        return False
+    if str(class_name or "").lower() in _SHELL_WINDOW_CLASSES:
+        return False
+    if width <= 0 or height <= 0:
+        return False
+    is_tool = bool(ex_style & _WS_EX_TOOLWINDOW)
+    is_app = bool(ex_style & _WS_EX_APPWINDOW)
+    if is_tool and not is_app:
+        return False
+    # Owned popups/dialogs count only when Windows explicitly exposes them as app windows.
+    if has_owner and not is_app:
+        return False
+    return True
 
 
 class PowerEventWatcher:
@@ -280,6 +343,8 @@ class WindowsActivityProbe:
             return None, None, False
         pid = wintypes.DWORD()
         user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        if int(pid.value or 0) == os.getpid():
+            return None, int(pid.value), False
         try:
             app_id = normalize_app_id(psutil.Process(pid.value).name())
         except (psutil.Error, OSError):
@@ -287,15 +352,77 @@ class WindowsActivityProbe:
         return app_id, int(pid.value) or None, _is_fullscreen(hwnd)
 
     @staticmethod
-    def _running_apps():
-        apps = set()
-        for process in psutil.process_iter(("name",)):
+    def _window_app_ids():
+        """Return apps owning real top-level windows on the interactive desktop.
+
+        EnumWindows is the source of candidates. Process enumeration is intentionally not
+        used: a service/helper merely existing is not evidence of a user-facing app.
+        """
+        if os.name != "nt":
+            return frozenset()
+        user32 = ctypes.windll.user32
+        try:
+            dwmapi = ctypes.windll.dwmapi
+        except (AttributeError, OSError):
+            dwmapi = None
+        shell_hwnd = user32.GetShellWindow()
+        pids = set()
+        callback_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+
+        def visit(hwnd, _):
             try:
-                app_id = normalize_app_id(process.info.get("name"))
-                if app_id:
+                visible = bool(user32.IsWindowVisible(hwnd))
+                iconic = bool(user32.IsIconic(hwnd))
+                rect = wintypes.RECT()
+                if not user32.GetWindowRect(hwnd, ctypes.byref(rect)):
+                    return True
+                class_buffer = ctypes.create_unicode_buffer(256)
+                user32.GetClassNameW(hwnd, class_buffer, len(class_buffer))
+                ex_style = int(user32.GetWindowLongW(hwnd, _GWL_EXSTYLE))
+                owner = user32.GetWindow(hwnd, _GW_OWNER)
+                cloaked = False
+                if dwmapi is not None:
+                    value = wintypes.DWORD()
+                    try:
+                        result = dwmapi.DwmGetWindowAttribute(
+                            hwnd, _DWMWA_CLOAKED, ctypes.byref(value), ctypes.sizeof(value))
+                        cloaked = result == 0 and bool(value.value)
+                    except (AttributeError, OSError):
+                        pass
+                if not _window_is_user_facing(
+                        visible=visible, iconic=iconic, cloaked=cloaked,
+                        is_shell=bool(shell_hwnd and hwnd == shell_hwnd),
+                        class_name=class_buffer.value, ex_style=ex_style,
+                        has_owner=bool(owner), width=int(rect.right - rect.left),
+                        height=int(rect.bottom - rect.top)):
+                    return True
+                pid = wintypes.DWORD()
+                user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+                if pid.value and int(pid.value) != os.getpid():
+                    pids.add(int(pid.value))
+            except (OSError, ValueError):
+                pass
+            return True
+
+        callback = callback_type(visit)
+        user32.EnumWindows(callback, 0)
+        apps = set()
+        for pid in pids:
+            try:
+                app_id = normalize_app_id(psutil.Process(pid).name())
+                if is_user_facing_app_id(app_id):
                     apps.add(app_id)
             except (psutil.Error, OSError):
                 continue
+        return frozenset(apps)
+
+    @classmethod
+    def _running_apps(cls, foreground_app=None, media_apps=frozenset()):
+        """Apps with current user-facing evidence, not the machine's process list."""
+        apps = set(cls._window_app_ids())
+        if is_user_facing_app_id(foreground_app):
+            apps.add(foreground_app)
+        apps.update(app for app in media_apps if is_user_facing_app_id(app))
         return frozenset(apps)
 
     @staticmethod
@@ -326,6 +453,10 @@ class WindowsActivityProbe:
     def collect(self, gsmtc_apps=frozenset(), audible_apps=frozenset()):
         mono = time.monotonic()
         wall = datetime.now().astimezone()
+        gsmtc_apps = frozenset(
+            app for app in gsmtc_apps if is_user_facing_app_id(app))
+        audible_apps = frozenset(
+            app for app in audible_apps if is_user_facing_app_id(app))
         try:
             foreground, pid, fullscreen = self._foreground()
         except Exception:
@@ -341,7 +472,8 @@ class WindowsActivityProbe:
         except Exception:
             meeting_open = None
         try:
-            running = self._running_apps()
+            media_apps = frozenset(gsmtc_apps) | frozenset(audible_apps)
+            running = self._running_apps(foreground, media_apps)
         except Exception:
             running = frozenset()
         try:

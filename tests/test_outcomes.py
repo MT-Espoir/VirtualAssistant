@@ -60,6 +60,24 @@ def _agent(script, so, **kw):
     return Agent(_LLM(script), registry_with(actions=_actions()), outcomes=so, **kw)
 
 
+def test_outcome_co_trace_retrieval_an_danh():
+    class Profile:
+        def summary(self, query=None):
+            return "Một memory liên quan."
+        def last_retrieval_trace(self):
+            return {"version": 1, "mode": "top_k", "selected_count": 1,
+                    "selected": [{"id": "0123456789abcdef", "source": "notes",
+                                  "score": 2, "rank": 1}]}
+        def resolve(self, text):
+            return text
+
+    so = _So()
+    _agent([AssistantTurn(text="Đã hiểu.")], so, profile=Profile()).run("một câu riêng tư")
+    trace = so.ban_ghi[0]["memory_retrieval"]
+    assert trace["selected_count"] == 1
+    assert "một câu riêng tư" not in json.dumps(trace, ensure_ascii=False)
+
+
 # =========================== OutcomeLog =========================== #
 
 def test_ghi_noi_moi_luot_mot_dong(tmp_path):

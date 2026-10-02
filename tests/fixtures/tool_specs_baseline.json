@@ -438,7 +438,7 @@
   },
   {
     "name": "list_reminders",
-    "description": "Liệt kê các lịch nhắc đang có.",
+    "description": "Liệt kê lịch nhắc chung; không chứa hẹn giờ tắt thiết bị.",
     "input_schema": {
       "type": "object",
       "properties": {}
@@ -584,7 +584,7 @@
   },
   {
     "name": "remember_about_user",
-    "description": "Ghi nhớ thông tin cá nhân LÂU DÀI về người dùng khi họ cho biết, để cá nhân hoá về sau. Dùng khi người dùng nói 'tôi tên là...', 'gọi tôi là...', 'tôi ở/sống ở...', 'nhớ giúp tôi rằng...'. CHỈ truyền trường người dùng thực sự nói (bỏ trống các trường khác). QUAN TRỌNG: nếu điều cần nhớ là một SỰ KIỆN có thời điểm (phỏng vấn, cuộc hẹn, deadline) thì truyền thêm 'when' — nhờ đó sau khi qua giờ trợ lý biết việc đã xong, không nhắc lại như sắp diễn ra.",
+    "description": "Ghi nhớ LÂU DÀI thông tin người dùng vừa trực tiếp cho biết. Chỉ truyền trường họ thực sự nói. Nếu note là sự kiện có thời điểm (cuộc hẹn, deadline), phải truyền thêm when để sự kiện tự hết hạn.",
     "input_schema": {
       "type": "object",
       "properties": {
@@ -613,7 +613,7 @@
   },
   {
     "name": "forget_about_user",
-    "description": "QUÊN một điều đã ghi nhớ về người dùng (ghi chú, quan sát, hoặc sự kiện), khớp theo từ khoá. Dùng khi người dùng nói 'quên chuyện... đi', 'đừng nhớ... nữa', 'bỏ ghi chú...'. Trợ lý sẽ tự hỏi xác nhận trước khi quên.",
+    "description": "QUÊN ghi chú, quan sát hoặc sự kiện theo từ khoá khi họ yêu cầu đừng nhớ điều cụ thể đó; hệ thống hỏi xác nhận trước khi xóa.",
     "input_schema": {
       "type": "object",
       "properties": {
@@ -624,6 +624,25 @@
       },
       "required": [
         "keyword"
+      ]
+    }
+  },
+  {
+    "name": "manage_user_memory",
+    "description": "Quản lý TOÀN BỘ trí nhớ người dùng: export tạo bản JSON cục bộ; delete_all xóa sạch hồ sơ/sở thích/trí nhớ. Xóa một mục riêng lẻ thì dùng forget_about_user.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "export",
+            "delete_all"
+          ]
+        }
+      },
+      "required": [
+        "action"
       ]
     }
   },
@@ -924,6 +943,151 @@
       "required": [
         "place"
       ]
+    }
+  },
+  {
+    "name": "activity_insights",
+    "description": "Xem activity local; hoặc theo yêu cầu rõ ràng, phân loại/loại trừ app và xóa lịch sử. Không suy luận stress, deadline hay năng suất.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "query",
+            "classify",
+            "exclude",
+            "include",
+            "reset",
+            "clear_history"
+          ]
+        },
+        "period": {
+          "type": "string",
+          "enum": [
+            "today",
+            "7_days",
+            "30_days"
+          ]
+        },
+        "view": {
+          "type": "string",
+          "enum": [
+            "overview",
+            "apps",
+            "focus",
+            "trend"
+          ]
+        },
+        "app_id": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string",
+          "enum": [
+            "work",
+            "communication",
+            "media",
+            "personal",
+            "unknown"
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "get_room_environment",
+    "description": "Số đo mới nhất theo metric; hours chỉ dùng cho lịch sử 1-336 giờ. stale: đọc giá trị gần nhất và nói đã cũ. Hẹn tắt: room.automation.run_until_local (không metric).",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "room_id": {
+          "type": "string",
+          "description": "Mặc định bedroom; all liệt kê phòng"
+        },
+        "metric": {
+          "type": "string",
+          "enum": [
+            "temperature_c",
+            "humidity_percent",
+            "illuminance_lux"
+          ]
+        },
+        "hours": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 336
+        }
+      }
+    }
+  },
+  {
+    "name": "control_room_ac",
+    "description": "Bật/tắt, hẹn tắt máy lạnh. Bật một tiếng: on, timer_minutes=60. Mặc định 28 °C cool. ac/result chưa xác minh trạng thái vật lý.",
+    "input_schema": {
+      "type": "object",
+      "required": [
+        "action"
+      ],
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "on",
+            "off",
+            "schedule_off"
+          ]
+        },
+        "room_id": {
+          "type": "string",
+          "description": "ID phòng; bắt buộc nếu có nhiều phòng"
+        },
+        "timer_minutes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1440
+        },
+        "temperature_c": {
+          "type": "integer",
+          "minimum": 16,
+          "maximum": 30
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "cool",
+            "economic"
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "configure_climate_automation",
+    "description": "Lưu quy tắc tự bật: trên threshold_c trong 20 phút, có người; giữ thời gian chờ. Áp dụng mọi phòng.",
+    "input_schema": {
+      "type": "object",
+      "required": [
+        "enabled"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "threshold_c": {
+          "type": "number",
+          "minimum": 16,
+          "maximum": 50
+        }
+      }
+    }
+  },
+  {
+    "name": "turn_off_webcam",
+    "description": "Tắt webcam/camera của Alice; dừng capture.",
+    "input_schema": {
+      "type": "object",
+      "properties": {}
     }
   }
 ]

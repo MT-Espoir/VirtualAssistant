@@ -10,15 +10,19 @@ from dataclasses import dataclass, replace
 from utils.text_norm import norm
 
 
-WORK_CHECKIN_TEXT = (
+_WORK_CHECKIN_TEMPLATE = (
     "Mạch việc đang chạy rất mượt. Mình thả lỏng vai và tay một chút rồi xử lý tiếp nhé?"
 )
-SCREEN_SOFT_CHECKIN_TEXT = (
-    "Mắt mình theo màn hình một lúc rồi. Anh nhìn xa và chớp mắt chậm vài nhịp nhé?"
+_SCREEN_SOFT_CHECKIN_TEMPLATE = (
+    "Mắt mình theo màn hình một lúc rồi. {address_form} nhìn xa và chớp mắt chậm vài nhịp nhé?"
 )
-SCREEN_HARD_CHECKIN_TEXT = (
-    "Mình rời màn hình và đi lại một chút nhé anh. Phần còn lại đợi mình quay lại cũng được."
+_SCREEN_HARD_CHECKIN_TEMPLATE = (
+    "Mình rời màn hình và đi lại một chút nhé {address_form}. "
+    "Phần còn lại đợi mình quay lại cũng được."
 )
+WORK_CHECKIN_TEXT = _WORK_CHECKIN_TEMPLATE
+SCREEN_SOFT_CHECKIN_TEXT = _SCREEN_SOFT_CHECKIN_TEMPLATE.format(address_form="Anh")
+SCREEN_HARD_CHECKIN_TEXT = _SCREEN_HARD_CHECKIN_TEMPLATE.format(address_form="anh")
 SNOOZE_REPLY_TEXT = (
     "Được rồi, thêm 10 phút để chốt nốt đoạn này nhé. Đừng mải mê quá đấy!"
 )
@@ -48,12 +52,19 @@ _RESUME_EXACT = {
 }
 
 
-def checkin_text(clock, level):
+def checkin_text(clock, level, address_form="anh"):
     """Chọn câu đã duyệt; không đưa timeline/app name vào lời nói."""
+    # Validation đầy đủ nằm ở composition/language lane; ở đây chỉ chống format injection.
+    if not isinstance(address_form, str) or not address_form.strip():
+        address_form = "anh"
+    address_form = " ".join(address_form.split())
     if clock == "screen_exposure":
-        return (SCREEN_HARD_CHECKIN_TEXT if level == "hard"
-                else SCREEN_SOFT_CHECKIN_TEXT)
-    return WORK_CHECKIN_TEXT
+        template = (_SCREEN_HARD_CHECKIN_TEMPLATE if level == "hard"
+                    else _SCREEN_SOFT_CHECKIN_TEMPLATE)
+        spoken_address = (address_form if level == "hard" else
+                          address_form[0].upper() + address_form[1:])
+        return template.format(address_form=spoken_address)
+    return _WORK_CHECKIN_TEMPLATE
 
 
 def match_snooze(text):

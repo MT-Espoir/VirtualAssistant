@@ -175,6 +175,15 @@ class BreakPolicy:
         self._snooze_attempts = {}
         self._dnd_recheck = False
 
+    def cue_cooldown_active(self, now):
+        """Shared care cooldown queried by other care producers."""
+        return (self._last_cue_at is not None
+                and float(now) - self._last_cue_at < GLOBAL_CUE_COOLDOWN)
+
+    def register_external_cue(self, now):
+        """Let another care signal win this tick without producing two reminders."""
+        self._last_cue_at = float(now)
+
     def snooze(self, candidate_id, now, seconds=SNOOZE_DEFAULT):
         """Hẹn đúng một lần re-evaluate cho check-in vừa được phát."""
         armed = self._recent_dispatch.get(candidate_id)

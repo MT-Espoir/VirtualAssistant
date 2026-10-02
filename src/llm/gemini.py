@@ -140,13 +140,15 @@ def to_gemini_contents(messages):
 class GeminiModelClient:
     """Gọi generateContent cho MỘT model Gemini. Ném GeminiRateLimit khi 429."""
 
-    def __init__(self, model, api_key, http_post=None, timeout=60, max_tokens=1024):
+    def __init__(self, model, api_key, http_post=None, timeout=60, max_tokens=1024,
+                 log_usage=True):
         self.model = model
         self.api_key = api_key
         self.url = f"{_BASE_URL}/{model}:generateContent"
         self.timeout = timeout
         self.max_tokens = max_tokens
         self._http_post = http_post
+        self.log_usage = log_usage
 
     def _post(self, payload):
         if self._http_post is not None:
@@ -181,7 +183,8 @@ class GeminiModelClient:
         if status >= 400:
             raise RuntimeError(f"Gemini lỗi {status}: {json.dumps(data)[:200]}")
 
-        _log_cache_usage(self.model, data.get("usageMetadata") or {})
+        if self.log_usage:
+            _log_cache_usage(self.model, data.get("usageMetadata") or {})
 
         candidates = data.get("candidates") or []
         if not candidates:

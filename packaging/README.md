@@ -19,6 +19,8 @@ có cửa sổ terminal. Muốn thoát: Esc hoặc chuột phải lên nhân v�
 | `packaging/pilot_salm_chrome.py` | Pilot Chrome profile tạm + audio local; không đụng phiên Chrome hiện có |
 | `packaging/pilot_salm_checkin.py` | Pilot SALM-1 policy→dispatcher→VieNeu, snooze 10 phút và DND; dữ liệu/clock giả trong bộ nhớ |
 | `packaging/pilot_salm_dialogue.py` | Eval 20 paraphrase SALM-1.1a qua LLM thật; chỉ classify, không mutate SALM/DND |
+| `packaging/pilot_salm_language.py` | Pilot câu đáp 1.1b + initial check-in 1.2 bằng context tổng hợp; không đọc profile/mutate state/phát TTS |
+| `packaging/pilot_salm_welcome.py` | Pilot lời chào LLM startup/return; không khởi động SALM và không phát TTS |
 | Shortcut trên Desktop | Trỏ tới `launch_assistant.vbs`, dùng `assistant.ico` |
 
 ## Xem log / chẩn đoán
@@ -70,6 +72,18 @@ Eval intent SALM-1.1a bằng provider LLM hiện tại (20 câu, không đổi s
 
 ```bash
 python packaging/pilot_salm_dialogue.py
+```
+
+Pilot ngôn ngữ SALM-1.1b/1.2 bằng dữ liệu tổng hợp (không đọc UserProfile):
+
+```bash
+python packaging/pilot_salm_language.py
+```
+
+Pilot lời chào lifecycle bằng LLM hiện tại (không đọc activity, không phát TTS):
+
+```bash
+python packaging/pilot_salm_welcome.py
 ```
 
 Đọc bằng PowerShell phải ép UTF-8, không thì ra mojibake:

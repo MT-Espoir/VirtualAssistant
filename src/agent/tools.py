@@ -13,13 +13,14 @@ chúng lại theo danh mục `features/catalog.py`.
 """
 
 import re
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Callable, Dict, List
 
 from utils.config import config
 from utils.logger import get_logger
-from utils.outbound import mo_ta_ra_ngoai
+from utils.outbound import duoc_nguoi_dung_cung_cap, mo_ta_ra_ngoai
 from utils.text_norm import strip_accents
 
 logger = get_logger(__name__)
@@ -78,7 +79,9 @@ class Tool:
     # BỀN VỮNG: tool ghi thứ sẽ QUAY LẠI prompt ở các lượt sau (trí nhớ dài hạn, danh bạ,
     # routine). Nguy hiểm vì nó biến một lần tiêm thành chỗ đứng lâu dài — mọi lỗ khác chỉ
     # sống một lượt, lỗ này cắm rễ qua nhiều phiên.
-    persistent: bool = False
+    # Có thể là callable theo args, giống ``destructive``. Hữu ích cho tool gom cả
+    # action chỉ đọc và action ghi bền vững trong cùng một schema.
+    persistent: "bool | Callable[..., bool]" = False
 
     # QUẢN TRỊ: tool đụng tới chính cái máy chứ không tới dữ liệu (kết thúc tiến trình,
     # tắt/khởi động lại máy). Khác `destructive` ở BẬC thiệt hại, nên khác cả cách xử:
@@ -169,6 +172,30 @@ class NeedsConfirmation(Exception):
 class ToolRegistry:
     def __init__(self):
         self._tools: Dict[str, Tool] = {}
+        self._debug_sink = None
+        self._feature_gate = None
+
+    def set_feature_gate(self, gate):
+        self._feature_gate = gate
+
+    def is_enabled(self, name):
+        tool = self._tools.get(name)
+        return tool is not None and (self._feature_gate is None or self._feature_gate(tool.group))
+
+    def set_debug_sink(self, sink):
+        """Nối observer debug; ``sink(category, message, data, level=...)``.
+
+        Registry vẫn độc lập UI và observer hỏng không bao giờ được làm hỏng tool.
+        """
+        self._debug_sink = sink
+
+    def debug_event(self, message, data=None, level="INFO", category="tool"):
+        if self._debug_sink is None:
+            return
+        try:
+            self._debug_sink(category, message, data or {}, level=level)
+        except Exception:
+            pass
 
     def register(self, tool: Tool):
         if tool.name in self._tools:
@@ -190,7 +217,7 @@ class ToolRegistry:
         return list(self._tools)
 
     def specs(self) -> List[dict]:
-        return [t.spec() for t in self._tools.values()]
+        return [t.spec() for t in self._tools.values() if self.is_enabled(t.name)]
 
     def tu_choi(self, name: str, arguments: dict, nhiem: bool = False,
                 tu_dong: bool = False) -> str:
@@ -218,6 +245,8 @@ class ToolRegistry:
         tool = self._tools.get(name)
         if tool is None:
             return None
+        if not self.is_enabled(name):
+            return "Tính năng này đang tắt trong bảng điều khiển."
         if nhiem and tool.admin:
             return ("lượt này đã đọc nội dung từ bên ngoài nên tôi không tự ý đụng vào máy; "
                     "bạn nói lại giúp tôi ở lượt sau nhé")
@@ -231,7 +260,8 @@ class ToolRegistry:
                 return f"tôi không kiểm được việc '{name}' lúc này có an toàn không"
         return None
 
-    def gate(self, name: str, arguments: dict, nhiem: bool = False) -> dict:
+    def gate(self, name: str, arguments: dict, nhiem: bool = False,
+             user_text: str = None) -> dict:
         """{name, arguments, phrase, preview} nếu lời gọi này CẦN duyệt; None nếu không.
 
         `nhiem=True` = ngữ cảnh lượt này ĐÃ chạm nội dung ngoài (web/email/OCR). Khi đó
@@ -267,7 +297,14 @@ class ToolRegistry:
             logger.warning("Không dựng được bản xem trước cho %s: %s", name, e)
             preview = None
         can_duyet = _co(tool.destructive, args) or bool(preview)
-        if nhiem and (tool.exfil or tool.persistent):
+        # Một truy vấn/URL chỉ viết lại điều user VỪA nói không phải là exfil do nội dung
+        # ngoài mớm. Cho qua trường hợp này để hội thoại thường không biến thành chuỗi
+        # xác nhận. Persistent vẫn luôn bị gác trong ngữ cảnh nhiễm.
+        is_persistent = _co(tool.persistent, args)
+        outbound_is_user_grounded = (
+            tool.exfil and not is_persistent
+            and duoc_nguoi_dung_cung_cap(args, user_text))
+        if nhiem and (is_persistent or (tool.exfil and not outbound_is_user_grounded)):
             can_duyet = True
             # CỔNG tự dựng bản xem trước, thay vì gắn `preview` vào từng tool `exfil`: gắn
             # vào tool thì luật "có preview => duyệt" ở trên sẽ bắt hỏi cả ở LƯỢT SẠCH,
@@ -284,7 +321,8 @@ class ToolRegistry:
         return {"name": name, "arguments": args, "phrase": phrase, "preview": preview}
 
     def run(self, name: str, arguments: dict, confirmed: bool = False,
-            nhiem: bool = False, tu_dong: bool = False) -> str:
+            nhiem: bool = False, tu_dong: bool = False,
+            user_text: str = None) -> str:
         """Thực thi tool. Ném KeyError nếu không có tool tên đó.
 
         Chưa `confirmed` mà `gate()` bảo cần duyệt -> ném `NeedsConfirmation`, handler
@@ -298,17 +336,44 @@ class ToolRegistry:
         `confirmed` — tool tự động nào lỡ thành `destructive` thì nó dừng lại ở đây chứ
         không âm thầm chạy, vì đường này không có ai để hỏi.
         """
-        tool = self._tools[name]
-        # Từ chối xét TRƯỚC `confirmed`: đây là thứ một câu "có" không mở được, nên nó
-        # phải đứng trên cả đường đã-được-duyệt.
-        ly_do = self.tu_choi(name, arguments, nhiem=nhiem, tu_dong=tu_dong)
-        if ly_do is not None:
-            raise ActionRefused(name, arguments, ly_do)
-        if not confirmed:
-            can_duyet = self.gate(name, arguments, nhiem=nhiem)
-            if can_duyet is not None:
-                raise NeedsConfirmation(**can_duyet)
-        logger.debug("Chạy tool %s(%s)", name, arguments)
-        return tool.handler(**(arguments or {}))
+        started = time.perf_counter()
+        meta = {"name": name, "arguments": arguments or {}, "confirmed": confirmed,
+                "automatic": tu_dong, "tainted_context": nhiem}
+        self.debug_event(f"Bắt đầu {name}", meta)
+        try:
+            tool = self._tools[name]
+            # Từ chối xét TRƯỚC `confirmed`: đây là thứ một câu "có" không mở được, nên nó
+            # phải đứng trên cả đường đã-được-duyệt.
+            ly_do = self.tu_choi(name, arguments, nhiem=nhiem, tu_dong=tu_dong)
+            if ly_do is not None:
+                raise ActionRefused(name, arguments, ly_do)
+            if not confirmed:
+                can_duyet = self.gate(name, arguments, nhiem=nhiem,
+                                      user_text=user_text)
+                if can_duyet is not None:
+                    raise NeedsConfirmation(**can_duyet)
+            logger.debug("Chạy tool %s(%s)", name, arguments)
+            output = tool.handler(**(arguments or {}))
+        except NeedsConfirmation as exc:
+            self.debug_event(f"Chờ xác nhận: {name}",
+                             dict(meta, phrase=exc.phrase), level="WARNING")
+            raise
+        except ActionRefused as exc:
+            self.debug_event(f"Bị từ chối: {name}",
+                             dict(meta, reason=exc.ly_do), level="WARNING")
+            raise
+        except Exception as exc:
+            self.debug_event(
+                f"Tool lỗi: {name}",
+                dict(meta, duration_ms=round((time.perf_counter() - started) * 1000, 1),
+                     error=f"{type(exc).__name__}: {exc}"),
+                level="ERROR")
+            raise
+        self.debug_event(
+            f"Hoàn tất {name}",
+            dict(meta, duration_ms=round((time.perf_counter() - started) * 1000, 1),
+                 result=str(output)),
+            level="SUCCESS")
+        return output
 
 # Bộ tool mặc định (điều khiển máy tính) dựng từ AssistantActions

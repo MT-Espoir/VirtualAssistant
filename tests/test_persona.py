@@ -48,9 +48,20 @@ def test_reset_traits_restores_default_but_keeps_rapport():
     p.record_interaction(); p.record_interaction()
     fam = p.familiarity()
     p.adjust("formality", 0.15)
+    p.data["proactive_templates"]["startup"] = "đã đổi"
     p.reset_traits()
     assert p._trait("formality") == 0.25          # về baseline
     assert p.familiarity() == fam                 # GIỮ quan hệ
+    assert p.data["proactive_templates"]["startup"] != "đã đổi"
+
+
+def test_proactive_text_formats_persona_owned_fallback_safely():
+    p = PersonaState(provider="ollama", persist=False)
+    text = p.proactive_text("startup", address_form="cậu chủ")
+    assert "cậu chủ" in text and "{address_form}" not in text
+    assert p.proactive_text("không tồn tại", address_form="x") is None
+    p.data["proactive_templates"]["broken"] = "thiếu {unknown}"
+    assert p.proactive_text("broken", address_form="x") is None
 
 
 def test_record_interaction_grows_familiarity():

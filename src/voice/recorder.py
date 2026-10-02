@@ -1,6 +1,9 @@
 import pyaudio
 import numpy as np
 import time
+import math
+from collections import deque
+from dataclasses import asdict, dataclass
 
 from utils.logger import get_logger
 
@@ -17,11 +20,42 @@ def chunks_for_seconds(seconds, rate, chunk):
     return max(1, int(float(seconds) * rate / chunk))
 
 
+def pcm_rms(data):
+    """RMS an toàn cho PCM int16; cast trước khi bình phương để không overflow."""
+    samples = np.frombuffer(data, dtype=np.int16)
+    if samples.size == 0:
+        return 0.0
+    float_samples = samples.astype(np.float32)
+    return float(np.sqrt(np.mean(np.square(float_samples))))
+
+
+@dataclass(frozen=True)
+class CaptureInfo:
+    speech_detected: bool = False
+    wait_seconds: float = 0.0
+    speech_seconds: float = 0.0
+    pre_roll_seconds: float = 0.0
+    trailing_silence_seconds: float = 0.0
+    hit_start_timeout: bool = False
+    hit_max_utterance: bool = False
+    ended_by_silence: bool = False
+    threshold: int = 0
+    end_threshold: int = 0
+    peak_rms: int = 0
+    tail_quiet_fraction: float = 0.0
+    tail_rms_p20: int = 0
+    tail_rms_p80: int = 0
+
+    def to_dict(self):
+        return asdict(self)
+
+
 class Recorder:
     def __init__(self, channels=1, rate=44100, chunk=1024, format=pyaudio.paInt16,
                  speech_threshold_ratio=1.2, calibration_duration=1.0,
                  recalibration_interval=60,  # Thêm tham số recalibration_interval - giây
-                 silence_duration=1.5, max_utterance_s=15.0):
+                 silence_duration=1.5, max_utterance_s=15.0,
+                 speech_start_timeout_s=15.0, pre_roll_s=0.35):
         """
         Initialize recorder with audio settings
         
@@ -58,6 +92,12 @@ class Recorder:
         self.silence_threshold = 1000  # Default threshold
         self.silence_duration = silence_duration      # giây im lặng = hết câu
         self.max_utterance_s = max_utterance_s        # giây tối đa một lượt nói
+        # Chờ người dùng bắt đầu và giới hạn ĐỘ DÀI câu là hai đồng hồ độc lập. Trước
+        # đây cùng dùng max_utterance_s nên chờ 14s chỉ còn 1s để nói.
+        self.speech_start_timeout_s = max(0.1, float(speech_start_timeout_s))
+        # Giữ một đoạn ngắn ngay trước chunk vượt ngưỡng để không mất phụ âm đầu nhẹ.
+        self.pre_roll_s = max(0.0, float(pre_roll_s))
+        self.last_capture = CaptureInfo(threshold=self.silence_threshold)
         
         # Recalibration tracking
         self.last_calibration_time = 0
@@ -107,8 +147,7 @@ class Recorder:
                 levels = []
                 for frame in noise_frames:
                     try:
-                        audio_data = np.frombuffer(frame, dtype=np.int16)
-                        level = np.sqrt(np.mean(np.square(audio_data)))
+                        level = pcm_rms(frame)
                         levels.append(level)
                     except (ValueError, TypeError):
                         pass
@@ -172,7 +211,8 @@ class Recorder:
             self.stream = None
             self.is_recording = False
 
-    def listen_once(self, max_chunks=None, silence_limit=None, max_seconds=None):
+    def listen_once(self, max_chunks=None, silence_limit=None, max_seconds=None,
+                    start_timeout_s=None):
         """Ghi một lượt nói: chờ có tiếng, dừng khi im lặng đủ lâu.
 
         Mặc định lấy theo `silence_duration`/`max_utterance_s` (giây) đã cấu hình. Nơi gọi
@@ -184,17 +224,43 @@ class Recorder:
         if max_chunks is None:
             secs = max_seconds if max_seconds is not None else self.max_utterance_s
             max_chunks = chunks_for_seconds(secs, self.rate, self.chunk)
+        max_chunks = max(1, int(max_chunks))
+        wait_seconds = (self.speech_start_timeout_s if start_timeout_s is None
+                        else max(0.1, float(start_timeout_s)))
+        wait_limit = chunks_for_seconds(wait_seconds, self.rate, self.chunk)
         if silence_limit is None:
             silence_limit = chunks_for_seconds(self.silence_duration, self.rate, self.chunk)
+        silence_limit = max(1, int(silence_limit))
+        pre_roll_limit = (chunks_for_seconds(self.pre_roll_s, self.rate, self.chunk)
+                          if self.pre_roll_s > 0 else 0)
 
         self.speech_started_at = None      # mốc của lượt TRƯỚC không được sống sót
         self.start_recording()
         if not self.stream:
+            self.last_capture = CaptureInfo(threshold=self.silence_threshold)
             return None
 
         speech_detected = False
         silence_counter = 0
-        for _ in range(max_chunks):
+        wait_chunks = 0
+        speech_chunks = 0
+        peak_rms = 0.0
+        end_threshold = float(self.silence_threshold)
+        tail_rms = deque(maxlen=silence_limit)
+        quiet_needed = math.ceil(silence_limit * 0.85)
+        trailing_quiet_needed = min(silence_limit, chunks_for_seconds(0.2, self.rate, self.chunk))
+        tail_p20 = tail_p80 = 0.0
+        # +1 là chunk onset hiện tại; ``pre_roll_limit`` chỉ đếm phần đứng TRƯỚC nó.
+        pre_roll = deque(maxlen=pre_roll_limit + 1)
+        ended_by_silence = False
+        hit_max_utterance = False
+        stream_failed = False
+        while True:
+            if not speech_detected and wait_chunks >= wait_limit:
+                break
+            if speech_detected and speech_chunks >= max_chunks:
+                hit_max_utterance = True
+                break
             try:
                 data = self.stream.read(self.chunk, exception_on_overflow=False)
             except (IOError, OSError) as e:
@@ -205,43 +271,94 @@ class Recorder:
                 except (OSError, AttributeError):
                     pass
                 self.stream = None
+                stream_failed = True
                 break
 
-            self.frames.append(data)
+            try:
+                rms = pcm_rms(data)
+            except (ValueError, TypeError):
+                rms = 0.0
+            silent = self.is_silent(data, rms=rms)
+            if not speech_detected:
+                wait_chunks += 1
+                pre_roll.append(data)
+            else:
+                self.frames.append(data)
+                speech_chunks += 1
 
-            if not self.is_silent(data):
-                if not speech_detected:
+            if not speech_detected:
+                if not silent:
                     logger.debug("Speech detected")
                     self.speech_started_at = time.monotonic()
-                speech_detected = True
+                    self.frames = list(pre_roll)
+                    speech_chunks = 1
+                    speech_detected = True
+                    peak_rms = rms
+            else:
+                peak_rms = max(peak_rms, rms)
+                # Speech and the quieter fan/room sound often both exceed the
+                # onset threshold. Use bounded end-of-speech hysteresis only
+                # after a clearly louder voice has been heard; never lower the
+                # onset threshold or infer words from a cut transcript.
+                end_threshold = float(self.silence_threshold)
+                if peak_rms >= max(1000, 2 * self.silence_threshold):
+                    end_threshold = max(end_threshold, min(
+                        1.8 * self.silence_threshold, 0.45 * peak_rms))
+                tail_rms.append(rms)
+                if len(tail_rms) == silence_limit:
+                    ordered = sorted(tail_rms)
+                    tail_p20 = ordered[int(0.2 * (silence_limit - 1))]
+                    tail_p80 = ordered[int(0.8 * (silence_limit - 1))]
+                    # A fan creates a fairly steady noise plateau. Estimate its
+                    # upper energy band from the latest 1.5 s only when that
+                    # band is both much quieter than the spoken peak and stable.
+                    if (peak_rms >= max(1000, 2 * self.silence_threshold) and
+                            tail_p80 <= 0.45 * peak_rms and
+                            tail_p80 <= 2.5 * max(tail_p20, 1)):
+                        end_threshold = max(end_threshold, min(
+                            5 * self.silence_threshold, 0.55 * peak_rms,
+                            1.30 * tail_p80))
+                quiet_count = sum(level < end_threshold for level in tail_rms)
                 silence_counter = 0
-            elif speech_detected:
-                silence_counter += 1
-                if silence_counter > silence_limit:
+                for level in reversed(tail_rms):
+                    if level >= end_threshold:
+                        break
+                    silence_counter += 1
+                if (len(tail_rms) == silence_limit and
+                        quiet_count >= quiet_needed and
+                        silence_counter >= trailing_quiet_needed):
                     logger.debug("End of speech")
+                    ended_by_silence = True
                     break
 
+        chunk_seconds = self.chunk / self.rate
+        self.last_capture = CaptureInfo(
+            speech_detected=speech_detected,
+            wait_seconds=round(
+                max(0, wait_chunks - (1 if speech_detected else 0)) * chunk_seconds, 3),
+            speech_seconds=round(speech_chunks * chunk_seconds, 3),
+            pre_roll_seconds=round(
+                max(0, len(self.frames) - speech_chunks) * chunk_seconds, 3),
+            trailing_silence_seconds=round(silence_counter * chunk_seconds, 3),
+            hit_start_timeout=not speech_detected and not stream_failed,
+            hit_max_utterance=hit_max_utterance,
+            ended_by_silence=ended_by_silence,
+            threshold=int(self.silence_threshold),
+            end_threshold=round(end_threshold),
+            peak_rms=round(peak_rms),
+            tail_quiet_fraction=(round(
+                sum(level < end_threshold for level in tail_rms) / len(tail_rms), 3)
+                                 if tail_rms else 0.0),
+            tail_rms_p20=round(tail_p20),
+            tail_rms_p80=round(tail_p80),
+        )
         return self.get_audio_data() if speech_detected else None
 
-    def is_silent(self, data):
+    def is_silent(self, data, rms=None):
         """Determine if an audio chunk is silence based on volume level"""
         try:
             # Chuyển đổi dữ liệu âm thanh thành mảng numpy
-            audio_data = np.frombuffer(data, dtype=np.int16)
-            
-            # Xử lý trường hợp mảng trống hoặc có giá trị không hợp lệ
-            if len(audio_data) == 0:
-                return True
-                
-            # Tính toán root mean square (RMS) của âm thanh với xử lý an toàn
-            squared = np.square(audio_data.astype(np.float32))  # Chuyển sang float32 trước khi tính bình phương
-            mean_squared = np.mean(squared) if squared.size > 0 else 0
-            
-            # Tránh lỗi sqrt với giá trị âm
-            if mean_squared < 0:
-                mean_squared = 0
-                
-            rms = np.sqrt(mean_squared)
+            rms = pcm_rms(data) if rms is None else rms
                   
             # Update noise level if this is quiet
             if rms < self.silence_threshold * 0.8:
@@ -301,6 +418,34 @@ class Recorder:
                 break
         self.frames = []
 
+    def discard_buffered(self, max_seconds=0.5):
+        """Bỏ phần audio ĐÃ nằm trong buffer mà không mở một khoảng mù mới.
+
+        Dùng sau TTS: bản cũ đọc chặn thêm 0.4s nên người dùng đáp nhanh bị mất chữ đầu.
+        Hàm này chỉ tiêu thụ số frame PortAudio báo đang có ngay lúc gọi rồi trả về.
+        """
+        self.start_recording()
+        stream = self.stream
+        available_fn = getattr(stream, "get_read_available", None) if stream else None
+        if not callable(available_fn):
+            self.frames = []
+            return 0
+        budget = max(0, int(float(max_seconds) * self.rate))
+        discarded = 0
+        try:
+            available = max(0, int(available_fn()))
+            while available > 0 and discarded < budget:
+                count = min(self.chunk, available, budget - discarded)
+                if count <= 0:
+                    break
+                stream.read(count, exception_on_overflow=False)
+                discarded += count
+                available = max(0, int(available_fn()))
+        except (IOError, OSError, ValueError):
+            logger.debug("Không dọn được audio buffer sau TTS", exc_info=True)
+        self.frames = []
+        return discarded
+
     def close(self):
         """Close resources"""
         if self.stream:
@@ -314,6 +459,12 @@ class Recorder:
             
     def __del__(self):
         if hasattr(self, 'stream') and self.stream:
-            self.stream.close()
+            try:
+                self.stream.close()
+            except (OSError, AttributeError):
+                pass
         if hasattr(self, 'audio'):
-            self.audio.terminate()
+            try:
+                self.audio.terminate()
+            except (OSError, AttributeError):
+                pass

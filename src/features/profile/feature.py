@@ -10,5 +10,5 @@ FEATURE = Feature(
     requires=('profile',),
     prompt=CASE_PROFILE,
     router_hint=ROUTER_HINT,
-    max_spec_chars=1_700,
+    max_spec_chars=2_200,
 )

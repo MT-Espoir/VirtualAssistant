@@ -160,6 +160,54 @@ def test_SACH_ghi_tri_nho_chay_thang(tmp_path):
     assert "cà phê sữa" in prof.summary()
 
 
+def test_NHIEM_nhung_query_moi_bat_nguon_tu_user_khong_hoi_thua():
+    searched = []
+    reg = ToolRegistry()
+    reg.register(Tool(
+        name="doc_web", description="đọc web", input_schema={"type": "object"},
+        handler=lambda **_: "nội dung ngoài", untrusted_output=True))
+    reg.register(Tool(
+        name="web_search_list", description="tìm web",
+        input_schema={"type": "object", "properties": {"query": {"type": "string"}}},
+        handler=lambda query: searched.append(query) or "kết quả",
+        exfil=True, untrusted_output=True))
+    llm = _LLMBiChiem([
+        AssistantTurn(tool_calls=[ToolCall("t0", "doc_web", {})]),
+        AssistantTurn(text="Đã đọc."),
+        AssistantTurn(tool_calls=[ToolCall(
+            "t1", "web_search_list", {"query": "sự khác nhau giữa yêu và thương"})]),
+        AssistantTurn(text="Theo em, yêu và thương có sắc thái khác nhau."),
+    ])
+    ag = Agent(llm, reg)
+    ag.run("đọc nội dung này")
+    reply = ag.run("Alice em nghĩ giữa yêu và thương khác nhau như nào")
+
+    assert searched == ["sự khác nhau giữa yêu và thương"]
+    assert ag.pending is None and "sắc thái" in reply.text
+
+
+def test_NHIEM_query_co_token_la_van_bi_chan():
+    ran = []
+    reg = ToolRegistry()
+    reg.register(Tool(
+        name="doc_web", description="đọc web", input_schema={"type": "object"},
+        handler=lambda **_: "nội dung ngoài", untrusted_output=True))
+    reg.register(Tool(
+        name="web_search_list", description="tìm web",
+        input_schema={"type": "object", "properties": {"query": {"type": "string"}}},
+        handler=lambda query: ran.append(query) or "kết quả", exfil=True))
+    ag = Agent(_LLMBiChiem([
+        AssistantTurn(tool_calls=[ToolCall("t0", "doc_web", {})]),
+        AssistantTurn(text="Đã đọc."),
+        AssistantTurn(tool_calls=[ToolCall(
+            "t1", "web_search_list", {"query": "yêu thương hồ sơ Minh"})]),
+    ]), reg)
+    ag.run("đọc nội dung này")
+    ag.run("yêu và thương khác nhau thế nào")
+
+    assert ran == [] and ag.pending["name"] == "web_search_list"
+
+
 # ======================= Không phụ thuộc ngữ cảnh: LUÔN chặn ======================= #
 
 def test_LUON_chan_gui_mail_trom():

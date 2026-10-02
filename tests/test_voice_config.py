@@ -26,6 +26,14 @@ def test_gom_du_ca_hai_chieu():
     assert vc.noi.speed == 1.5
 
 
+def test_gom_rieng_timeout_bat_dau_va_pre_roll():
+    vc = vcfg.from_config(_cfg(
+        SPEECH_START_TIMEOUT_SECONDS=20.0,
+        SPEECH_PRE_ROLL_SECONDS=0.45))
+    assert vc.nghe.speech_start_timeout_s == 20.0
+    assert vc.nghe.pre_roll_s == 0.45
+
+
 def test_thieu_truong_thi_dung_mac_dinh_chu_khong_no():
     """Tham số Piper chỉ có khi người dùng khai trong .env — trợ lý phải chạy khi chưa khai."""
     vc = vcfg.from_config(_cfg())

@@ -7,7 +7,8 @@ except ImportError:
 
 from conftest import full_report
 from features import fast as feature_fast
-from voice.fast_commands import (match_avatar_command,
+from voice.fast_commands import (explicit_ui_target, match_avatar_command,
+                                 match_hud_command,
                                  match_mode_command, match_confirmation,
                                  match_persona_command, match_routine_command)
 
@@ -165,6 +166,50 @@ def test_avatar_clearer():
 def test_avatar_none_for_other():
     for t in ("mở chrome", "cuộn xuống", ""):
         assert match_avatar_command(t) is None
+
+
+# --------------------------- scale HUD liên tục --------------------------- #
+
+def test_hud_scale_accepts_arbitrary_percentage_and_multiplier():
+    assert match_hud_command("đặt HUD 137%") == {"target": "hud", "scale": 1.37}
+    assert match_hud_command("cho panel 1,25 lần") == {"target": "hud", "scale": 1.25}
+
+
+def test_hud_scale_accepts_arbitrary_relative_delta():
+    assert match_hud_command("tăng panel thêm 12%") == {
+        "target": "hud", "scale_delta": 0.12}
+    assert match_hud_command("giảm HUD 7,5%") == {
+        "target": "hud", "scale_delta": -0.075}
+
+
+def test_hud_scale_natural_commands_and_reset():
+    assert match_hud_command("phóng to HUD") == {"target": "hud", "scale_delta": 0.10}
+    assert match_hud_command("thu nhỏ panel") == {"target": "hud", "scale_delta": -0.10}
+    assert match_hud_command("phóng to bảng lên") == {
+        "target": "hud", "scale_delta": 0.10}
+    assert match_hud_command("thu nhỏ cửa sổ thông tin") == {
+        "target": "hud", "scale_delta": -0.10}
+    assert match_hud_command("đưa HUD về mặc định") == {"target": "hud", "scale": 1.0}
+
+
+def test_hud_command_requires_explicit_target():
+    assert match_hud_command("phóng to") is None
+    assert match_avatar_command("phóng to") == {"scale_delta": 0.15}
+
+
+def test_hud_command_can_use_active_surface_context_including_asr_pronoun_error():
+    expected = {"target": "hud", "scale_delta": 0.10}
+    assert match_hud_command("phóng to nó lên", contextual_target=True) == expected
+    assert match_hud_command("phóng to nói lên", contextual_target=True) == expected
+    assert match_hud_command("phóng to nói lên") is None
+
+
+def test_explicit_vietnamese_ui_targets():
+    assert explicit_ui_target("phóng to bảng lên") == "hud"
+    assert explicit_ui_target("thu nhỏ khung này") == "hud"
+    assert explicit_ui_target("phóng to nhân vật") == "avatar"
+    # "bằng" không được nhận nhầm thành "bảng" sau bước bỏ dấu.
+    assert explicit_ui_target("phóng to bằng 120 phần trăm") is None
 
 
 # --------------------------- match_mode_command --------------------------- #

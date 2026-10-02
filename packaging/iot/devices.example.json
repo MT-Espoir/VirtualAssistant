@@ -1,0 +1,11 @@
+[
+  {
+    "device_id": "esp32s3-ir-gateway",
+    "home_id": "home-main",
+    "room_id": "bedroom",
+    "name": "Gateway phòng ngủ",
+    "kind": "mqtt_node",
+    "topic_prefix": "home/esp32s3-ir-gateway",
+    "capabilities": ["temperature.read", "humidity.read", "climate.power"]
+  }
+]

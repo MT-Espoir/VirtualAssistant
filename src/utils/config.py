@@ -5,7 +5,8 @@ Mọi tham số vận hành (audio, ngôn ngữ, engine STT/TTS, LLM) được g
 từ biến môi trường. Cách override: đặt biến trong file `src/.env` (xem `.env.example`)
 hoặc đặt trực tiếp ở shell — KHÔNG cần sửa code.
 
-Thứ tự ưu tiên: biến môi trường thật (shell) > `src/.env` > mặc định trong file này.
+Với công tắc chức năng: bảng điều khiển (`data/control-settings.json`) > biến shell
+> `src/.env` > mặc định. Những tham số kết nối/engine vẫn theo shell > .env > mặc định.
 
 Cách dùng:
     from utils.config import config
@@ -74,14 +75,51 @@ STRONG_PROVIDERS = ("gemini", "claude")
 
 
 def _get_bool(name: str, default: bool) -> bool:
+    from utils.control_settings import override
     val = os.getenv(name)
     if val is None:
-        return default
-    return val.strip().lower() in ("1", "true", "yes", "on")
+        return override(name, default)
+    return override(name, val.strip().lower() in ("1", "true", "yes", "on"))
 
 
 class Config:
     """Cấu hình toàn cục (đọc một lần khi khởi động)."""
+
+    # --- Kho dữ liệu cục bộ có cấu trúc ---
+    # SQLite là nguồn chính cho SALM/outcomes/profile/habits. File JSON/JSONL cũ được
+    # import idempotent và giữ lại trong giai đoạn rollback, không dual-write dữ liệu mới.
+    DATA_DATABASE_ENABLED = _get_bool("DATA_DATABASE_ENABLED", True)
+    DATA_DATABASE_PATH = _get_path("DATA_DATABASE_PATH", "data/alice.db")
+
+    # --- IoT gateway (broker/IP and storage are configured in features/iot/settings.py) ---
+    IOT_ENABLED = _get_bool("IOT_ENABLED", True)
+    CAMERA_ENABLED = _get_bool("CAMERA_ENABLED", True)
+    CAMERA_FACE_ENABLED = _get_bool("CAMERA_FACE_ENABLED", False)
+    CAMERA_GESTURE_ENABLED = _get_bool("CAMERA_GESTURE_ENABLED", True)
+    CAMERA_EMOTION_ENABLED = _get_bool("CAMERA_EMOTION_ENABLED", False)
+    CAMERA_RETURN_ENABLED = _get_bool("CAMERA_RETURN_ENABLED", True)
+    IOT_VOICE_ALERTS_ENABLED = _get_bool("IOT_VOICE_ALERTS_ENABLED", True)
+    IOT_CAMERA_ROOM_ID = _get("IOT_CAMERA_ROOM_ID", "bedroom")
+    IOT_CAMERA_INDEX = _get_int("IOT_CAMERA_INDEX", 0)
+    CAMERA_SOURCE_ID = _get("CAMERA_SOURCE_ID", "workstation-webcam")
+    CAMERA_SOURCE_LABEL = _get("CAMERA_SOURCE_LABEL", "Webcam máy tính")
+    CAMERA_SOURCE_ROLE = _get("CAMERA_SOURCE_ROLE", "workstation_facing")
+    CAMERA_PROXIMITY_CALIBRATION_PATH = _get_path(
+        "CAMERA_PROXIMITY_CALIBRATION_PATH", "data/camera-proximity.json")
+    # off | shadow | local | llm. The owner's .env activates the accepted rollout.
+    CAMERA_WORKSTATION_RETURN_MODE = _get("CAMERA_WORKSTATION_RETURN_MODE", "shadow")
+    CAMERA_HEAD_CONFIRMATION_ENABLED = _get_bool(
+        "CAMERA_HEAD_CONFIRMATION_ENABLED", False)
+    CAMERA_WELCOME_LLM_MODEL = _get("CAMERA_WELCOME_LLM_MODEL", "")
+    CAMERA_WELCOME_LLM_TIMEOUT_SECONDS = _get_float(
+        "CAMERA_WELCOME_LLM_TIMEOUT_SECONDS", 5.0)
+    CAMERA_WELCOME_LLM_MAX_TOKENS = _get_int("CAMERA_WELCOME_LLM_MAX_TOKENS", 256)
+    CAMERA_WELCOME_LLM_BUDGET_PATH = _get_path(
+        "CAMERA_WELCOME_LLM_BUDGET_PATH", "data/camera-llm-budget.sqlite3")
+    CAMERA_WELCOME_LLM_MIN_INTERVAL_SECONDS = _get_float(
+        "CAMERA_WELCOME_LLM_MIN_INTERVAL_SECONDS", 900)
+    CAMERA_WELCOME_LLM_MAX_PER_HOUR = _get_int("CAMERA_WELCOME_LLM_MAX_PER_HOUR", 3)
+    CAMERA_WELCOME_LLM_MAX_PER_DAY = _get_int("CAMERA_WELCOME_LLM_MAX_PER_DAY", 12)
 
     # --- Audio / ghi âm ---
     AUDIO_FORMAT = _get("AUDIO_FORMAT", "wav")
@@ -92,6 +130,8 @@ class Config:
     # lúc đang nghĩ giữa câu; giảm nếu muốn trợ lý đáp nhanh hơn.
     SILENCE_DURATION = _get_float("SILENCE_DURATION", 1.5)
     MAX_UTTERANCE_SECONDS = _get_float("MAX_UTTERANCE_SECONDS", 15.0)  # dài nhất một lượt nói
+    SPEECH_START_TIMEOUT_SECONDS = _get_float("SPEECH_START_TIMEOUT_SECONDS", 15.0)
+    SPEECH_PRE_ROLL_SECONDS = _get_float("SPEECH_PRE_ROLL_SECONDS", 0.35)
     SPEECH_THRESHOLD_RATIO = _get_float("SPEECH_THRESHOLD_RATIO", 1.2)
 
     # --- Nhận dạng giọng nói (STT) ---
@@ -135,13 +175,32 @@ class Config:
     # SALM-1 đã có code nhưng còn chờ pilot sai-lúc/Spotify/Teams trước khi bật rộng.
     # Khi true, L2 TTS thay thế L1 pulse cho opportunity được policy cho phép.
     SALM_GENTLE_CHECKIN_ENABLED = _get_bool("SALM_GENTLE_CHECKIN_ENABLED", False)
-    # SALM-1.1a: intent LLM chạy trong lane riêng chỉ có một schema đóng; User DND chỉ
-    # chặn scope break_care. Hai cờ độc lập để rollback interpretation/state riêng.
+    # SALM-1.1a/1.1b/1.2: intent và ngôn ngữ chạy ở hai lane rollback độc lập; User DND
+    # chỉ chặn scope break_care. Language vẫn tắt mặc định sau pilot 5/10 generated.
     SALM_CARE_LLM_INTENT_ENABLED = _get_bool("SALM_CARE_LLM_INTENT_ENABLED", False)
     SALM_CARE_LLM_LANGUAGE_ENABLED = _get_bool("SALM_CARE_LLM_LANGUAGE_ENABLED", False)
+    SALM_CARE_LLM_TIMEOUT_SECONDS = _get_float(
+        "SALM_CARE_LLM_TIMEOUT_SECONDS", 3.5)
+    # SALM-2 chỉ học preference cấu trúc từ câu lệnh có phạm vi nhắc nghỉ rõ ràng.
+    # Opt-in cho tới khi pilot giọng thật xác nhận matcher không bắt nhầm hội thoại.
+    SALM_CARE_STYLE_LEARNING_ENABLED = _get_bool(
+        "SALM_CARE_STYLE_LEARNING_ENABLED", False)
     SALM_USER_DND_ENABLED = _get_bool("SALM_USER_DND_ENABLED", False)
+    # Late-night Care chỉ hoạt động sau khi người dùng tự đặt cutoff. Collector lưu
+    # aggregate circadian từ đầu nhưng không tự suy diễn lịch sinh hoạt hay sức khỏe.
+    SALM_LATE_NIGHT_ENABLED = _get_bool("SALM_LATE_NIGHT_ENABLED", True)
+    SALM_LATE_NIGHT_LLM_LANGUAGE_ENABLED = _get_bool(
+        "SALM_LATE_NIGHT_LLM_LANGUAGE_ENABLED", True)
+    SALM_LATE_NIGHT_MIN_ACTIVE_MINUTES = _get_float(
+        "SALM_LATE_NIGHT_MIN_ACTIVE_MINUTES", 15.0)
     STARTUP_GREETING_ENABLED = _get_bool("STARTUP_GREETING_ENABLED", True)
     SALM_WELCOME_BACK_ENABLED = _get_bool("SALM_WELCOME_BACK_ENABLED", True)
+    # Lời chào lifecycle dùng LLM có deadline ngắn; template ở welcome.py là fallback.
+    # Tắt riêng language lane mà không tắt lời chào hoặc collector SALM.
+    SALM_LIFECYCLE_GREETING_LLM_ENABLED = _get_bool(
+        "SALM_LIFECYCLE_GREETING_LLM_ENABLED", True)
+    SALM_WELCOME_LLM_TIMEOUT_SECONDS = _get_float(
+        "SALM_WELCOME_LLM_TIMEOUT_SECONDS", 5.0)
 
     # --- Điều khiển/đọc màn hình (chụp, OCR tìm chữ, cuộn) — NHẠY CẢM, mặc định TẮT ---
     # Bảo mật: chỉ bật khi bạn chủ động cho phép. Nội dung màn hình (chữ OCR) sẽ đi
@@ -208,6 +267,9 @@ class Config:
     # --- Avatar (cửa sổ khuôn mặt) ---
     AVATAR_SCALE = _get_float("AVATAR_SCALE", 0.7)     # kích thước (0.4–1.5), nhỏ hơn = gọn
     AVATAR_OPACITY = _get_float("AVATAR_OPACITY", 1.0)  # độ mờ (0.25–1.0)
+    # Panel debug có cấu trúc. Launcher truyền --debug-panel nên không cần bật cờ này;
+    # dùng cờ khi muốn panel cũng hiện lúc chạy thẳng `python app.py`.
+    DEBUG_PANEL_ENABLED = _get_bool("DEBUG_PANEL_ENABLED", False)
 
     # --- Tổng hợp giọng nói (TTS) ---
     TTS_ENGINE = _get("TTS_ENGINE", "gtts")
@@ -383,9 +445,9 @@ class Config:
     LOG_BACKUP_COUNT = _get_int("LOG_BACKUP_COUNT", 3)
 
     # Nhật ký KẾT QUẢ mỗi lượt (`memory/outcomes.py`) — nguyên liệu để đo trợ lý có khá
-    # lên không. Khác hai file log trên: đây là DỮ LIỆU có cấu trúc (JSONL) để phân tích,
-    # không phải log để người đọc. Chứa nguyên văn câu người dùng nói -> chỉ nằm trên máy.
-    # Rỗng = tắt hẳn.
+    # lên không. Khi SQLite bật, đường dẫn này là nguồn import legacy + fallback khẩn cấp;
+    # không dual-write lúc DB bình thường. Chứa nguyên văn câu người dùng nói, local-only.
+    # Rỗng = tắt hẳn outcome recording ở cả DB lẫn file.
     OUTCOMES_FILE = _get_path("OUTCOMES_FILE", "logs/outcomes.jsonl")
     OUTCOMES_MAX_BYTES = _get_int("OUTCOMES_MAX_BYTES", 1_000_000)
 

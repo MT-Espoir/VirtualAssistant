@@ -7,8 +7,10 @@ catalog tool và tuyệt đối không thay đổi policy/state.
 from dataclasses import dataclass
 from typing import Optional
 
+from features.salm.checkin import match_snooze
 from llm.client import Message
 from utils.logger import get_logger
+from utils.text_norm import norm
 
 logger = get_logger(__name__)
 
@@ -20,7 +22,7 @@ RELEASE_CONDITIONS = frozenset({
     "deadline", "work_cycle_reset", "app_session", "explicit_resume",
 })
 REASON_CODES = frozenset({
-    "explicit_accept", "short_delay", "explicit_duration",
+    "explicit_accept", "explicit_decline", "short_delay", "explicit_duration",
     "finish_current_work", "suppress_session", "explicit_resume",
     "ambiguous_request", "conflicting_request", "unrelated_request",
 })
@@ -42,15 +44,23 @@ CARE_INTENT_TOOL = {
             "intent": {"type": "string", "enum": sorted(CARE_INTENTS)},
             "requested_minutes": {
                 "type": "integer", "nullable": True,
-                "description": "Whole minutes explicitly requested, otherwise null.",
+                "description": (
+                    "Whole minutes explicitly requested, otherwise null. Never infer a "
+                    "duration from words such as a little or until finished."),
             },
             "until_local_time": {
                 "type": "string", "nullable": True,
-                "description": "Explicit local clock time in HH:MM, otherwise null.",
+                "description": (
+                    "Explicit local clock time in HH:MM, otherwise null. Use only for "
+                    "care_dnd with release_condition deadline."),
             },
             "release_condition": {
                 "type": "string", "nullable": True,
                 "enum": sorted(RELEASE_CONDITIONS),
+                "description": (
+                    "For snooze, accept, decline_once, unclear and unrelated this MUST "
+                    "be null. Use deadline/work_cycle_reset/app_session only for "
+                    "care_dnd; explicit_resume only for resume_care."),
             },
             "confidence": {"type": "number"},
             "reason_code": {"type": "string", "enum": sorted(REASON_CODES)},
@@ -64,16 +74,23 @@ _SYSTEM = """You classify one Vietnamese user response to a gentle break check-i
 Call submit_care_intent exactly once and output no prose.
 
 Rules:
-- "làm thêm tí nữa", "chốt nốt", or a short delay means snooze; use null minutes if
-  the user gave no number.
+- Output fields must obey the exact intent contract below. Never attach a release condition
+  merely because the wording mentions a session, deadline, or current work.
+- snooze: requested_minutes is the explicit whole number or null; until_local_time=null;
+  release_condition=null. "làm thêm tí nữa", "chốt nốt", "cho tôi thêm 20 phút" are snooze.
+- accept: all three optional action fields null; reason_code=explicit_accept.
+- decline_once: all three optional action fields null; reason_code=explicit_decline.
 - "đừng nhắc trong X" means care_dnd/deadline even when X is 120 minutes or less.
-- "để tôi làm xong việc này" means care_dnd/work_cycle_reset. Do not claim the system
-  can detect task completion.
-- "tạm thời đừng nhắc nữa" means care_dnd/app_session.
-- a clear request to enable break reminders again means resume_care/explicit_resume.
-- a broad "đừng làm phiền" that does not clearly refer to break care is unclear.
-- contradictory, double-negative, permanent, over-24-hour, or multi-action requests are
-  unclear. Unrelated assistant commands are unrelated.
+- care_dnd/deadline: release_condition=deadline and exactly one of requested_minutes or
+  until_local_time is set. "tắt nhắc nghỉ 30 phút" is care_dnd, never snooze.
+- care_dnd/work_cycle_reset: both time fields null. "để tôi làm xong việc này" and
+  "đừng chen vào phiên làm việc này nữa" use this mapping. Do not claim task detection.
+- care_dnd/app_session: both time fields null. Use only for broad but break-specific wording
+  such as "tạm thời đừng nhắc nghỉ nữa".
+- resume_care: both time fields null and release_condition=explicit_resume.
+- unclear: all optional fields null. A broad "đừng làm phiền" without break-care wording,
+  permanent request, contradiction, double negative, over-24-hour or multi-action is unclear.
+- unrelated: all optional fields null. Unrelated assistant commands are unrelated.
 - requested_minutes is a whole number only when explicitly stated. until_local_time is
   HH:MM only when explicitly stated. Never invent either.
 - confidence is 0..1. reason_code must describe the evidence category, not private
@@ -101,12 +118,30 @@ class CareDialogue:
         self.llm = llm
 
     def classify(self, text, clock=None, level=None):
+        raw = str(text or "")
+        normalized = norm(raw)
+        # Hai guard hẹp, tất định: giữ fast-path SALM-1 cũ và không trao quyền tắt rộng
+        # cho model. Chúng không lưu/log raw utterance.
+        broad_scope = any(phrase in normalized for phrase in (
+            "moi thong bao", "tat ca thong bao", "toan bo thong bao"))
+        permanent = any(phrase in normalized for phrase in (
+            "khong bao gio", "dung bao gio", "vinh vien", "mai mai",
+            "may ngay", "vai ngay"))
+        if broad_scope or permanent:
+            return CareIntent(
+                "unclear", None, None, None, 1.0,
+                "conflicting_request" if broad_scope else "ambiguous_request",
+                source="guard")
+        if match_snooze(raw):
+            return CareIntent(
+                "snooze", None, None, None, 1.0, "short_delay",
+                source="guard")
         # Context coarse nằm trong system để raw utterance vẫn là duy nhất một user message.
         context = f"\nCurrent care context: clock={clock or 'unknown'}, level={level or 'unknown'}."
         try:
             turn = self.llm.generate(
                 system=_SYSTEM + context,
-                messages=[Message(role="user", text=str(text or ""))],
+                messages=[Message(role="user", text=raw)],
                 tools=[CARE_INTENT_TOOL],
             )
         except Exception as exc:

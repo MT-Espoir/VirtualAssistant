@@ -167,6 +167,12 @@ ANTHROPIC_API_KEY=<khoá của bạn>
 cd src && python app.py
 ```
 
+Double-click `launch_assistant.vbs` để chạy ẩn terminal. Panel debug mặc định tắt;
+nhấn `F10`, mở nhóm **Dịch vụ** trong bảng điều khiển và bật **Bảng chẩn đoán** khi cần.
+Công tắc này chỉ áp dụng cho phiên hiện tại. Khi panel đang bật, `F12` ẩn/hiện cửa sổ.
+Có thể khởi động trực tiếp với `python app.py --debug-panel` hoặc đặt
+`DEBUG_PANEL_ENABLED=true` nếu muốn mở debug ngay từ đầu phiên.
+
 Mặc định phải gọi tên trước: **"trợ lý, mở Chrome"**. Nói *"trợ lý, chế độ làm việc"* để tạm
 tắt phần gọi tên, *"chế độ bình thường"* để bật lại. Không có micro thì trợ lý tự chuyển sang
 gõ phím.
@@ -206,6 +212,7 @@ Toàn bộ tham số nằm trong `src/utils/config.py`, ghi đè được bằng
 | `FAST_COMMANDS` | `true` | Lệnh quen chạy thẳng, không tốn lượt gọi LLM |
 | `BARGE_IN` | `true` | Cho phép nói chen ngang lúc trợ lý đang đọc |
 | `AVATAR_SCALE` | `0.7` | Cỡ cửa sổ avatar (0.4–1.5); `AVATAR_OPACITY` chỉnh độ mờ |
+| `DEBUG_PANEL_ENABLED` | `false` | Mở panel debug ngay đầu phiên khi bật tường minh; launcher mặc định tắt |
 | `WEATHER_DEFAULT_LOCATION` | `Hà Nội` | Nơi mặc định khi hỏi thời tiết |
 
 Danh sách đầy đủ (hơn 90 biến) nằm ngay trong `src/utils/config.py`, mỗi biến một dòng chú
@@ -273,6 +280,18 @@ cd src && python -m evals.run_eval --gap=9
 
 ---
 
+## IoT phòng ngủ
+
+Gateway IoT chạy độc lập với cửa sổ Alice, kết nối broker tại `192.168.2.19:1883`.
+Alice nhận nhiệt độ, độ ẩm, danh sách thiết bị và cảnh báo nhiệt độ; webcam laptop
+chỉ báo có người trong phòng, không nhận diện danh tính hoặc lưu khung hình.
+Hướng dẫn cấu hình broker, Windows Service, nhiều phòng và hợp đồng lệnh A/C nằm ở
+[`packaging/iot/README.md`](packaging/iot/README.md). Lệnh thủ công dùng payload
+`on 24 cool` hoặc `off` theo giao thức hiện có; tự động bật vẫn tắt mặc định
+cho tới khi kiểm tra đường cảm biến, camera và IR trên phần cứng thật.
+Broker Mosquitto portable nằm trong dự án; chạy `packaging/iot/start-broker.ps1`
+sau bước `setup-broker.ps1` để thử MQTT tại `192.168.2.19:1883`.
+
 ## Bảo mật & riêng tư
 
 - Cầu nối Chrome chỉ lắng nghe ở `127.0.0.1` và **chỉ nhận kết nối từ tiện ích**, website
@@ -301,3 +320,29 @@ cd src && python -m evals.run_eval --gap=9
   diện thì phải chỉnh lại.
 - **Nội dung web và chữ trên màn hình là dữ liệu không đáng tin.** Trợ lý có thể bị dẫn dụ bởi
   chỉ dẫn giấu trong đó; cổng xác nhận là lớp phòng vệ chính.
+
+## Camera và gợi ý khuôn mặt (v1)
+
+Camera có chỉ báo `CAM` trên avatar. Bấm chỉ báo để tạm dừng/tiếp tục webcam, bật/tắt gợi ý khuôn mặt, đăng ký hoặc xóa template. Panel debug (`--debug-panel` hoặc `DEBUG_PANEL_ENABLED=true`) có tab CAMERA với ảnh xem trước, khung mặt, trạng thái frame và log. Ẩn panel debug xóa ảnh xem trước trong RAM; tạm dừng camera đóng webcam. Nút `DỪNG LOG` trên panel chỉ dừng log, không dừng webcam.
+
+Webcam được yêu cầu chạy ở 640×480 và 40 FPS; tốc độ thực tế phụ thuộc driver, ánh sáng và tải máy. Tab CAMERA hiển thị FPS capture đo được cùng số mẫu tay mỗi giây. Khi panel mở, preview vẽ khung xương MediaPipe trên đúng ảnh được nhận diện, tô màu riêng từng ngón; preview và mã hóa JPEG dừng khi debug tắt. Nhận diện tay lấy mẫu tối đa khoảng 20 lần/giây, còn xử lý face/presence vẫn có nhịp giới hạn riêng.
+
+Nếu OpenCV không cung cấp Haar cascade (ví dụ bản 5.x), presence dùng YuNet đã cài bằng lệnh bên dưới. Preview gốc vẫn hiện khi detector không khả dụng; panel ghi `PREVIEW GỐC` và báo lỗi detector riêng.
+
+Face Auth v1 mặc định tắt và chỉ hiện gợi ý khớp một chủ máy; nó không đổi hồ sơ đang hoạt động, không xác thực danh tính và không cấp quyền. Để dùng, cài hai model đã pin từ OpenCV Zoo bằng lệnh `py -3.12 packaging/install_camera_models.py`, sau đó bấm `CAM` → `ĐĂNG KÝ KHUÔN MẶT` và đồng ý. Script tải model vào `src/models/camera/` (đã gitignore) và kiểm SHA-256; ứng dụng không tự tải model khi mở. Template là embedding đã mã hóa Windows DPAPI trong `%LOCALAPPDATA%/Alice/camera/owner-face-v1.bin`; không lưu ảnh đăng ký. Nếu template không giải mã được, tính năng báo lỗi và cần đăng ký lại.
+
+Emotion là tính năng tùy chọn, mặc định tắt và chỉ ghi ước lượng biểu cảm vào tab CAMERA của panel debug. Cài bằng **cùng Python đang chạy Alice**: `python -m pip install -r src/requirements-emotion.txt`, rồi `python packaging/install_camera_models.py --emotion`. Script tải model ONNX EmotiEffLib đã pin vào `src/models/camera/` và kiểm SHA-256; Alice không tự tải weights khi khởi động. Mở panel debug, bấm `BẬT EMOTION` trong tab CAMERA. Ẩn panel hoặc bấm `TẮT EMOTION` sẽ dừng suy luận và xóa estimate hiện tại. Không có nhãn Emotion trên avatar/HUD, không đổi persona hay điều khiển Alice. Ngưỡng confidence 0,50 chỉ là mức tạm cho debug, chưa được hiệu chỉnh trên webcam đích.
+
+Gesture dùng MediaPipe Hand Landmarker, mặc định chạy khi camera bật. Trên **Python hiện đang chạy Alice**, cài bằng `python -m pip install --no-deps -r src/requirements-gesture.txt` để giữ OpenCV đang hoạt động, rồi `python packaging/install_camera_models.py --gesture`. Môi trường này đã có các dependency cần cho Hand Landmarker; khi cài mới hoàn toàn, cần chuẩn bị `numpy`, `opencv-python`, `absl-py` và `flatbuffers` trước. Model `.task` từ Google được pin SHA-256, không tự tải khi khởi động. Giữ thumbs-up (nắm tay, ngón cái chỉ lên) hoặc dấu OK (ngón cái/trỏ thành vòng, ba ngón còn lại duỗi) ít nhất 0,7 giây: nếu Alice đã hỏi xác nhận trước khi bắt đầu pose, cử chỉ tương đương nói “đồng ý”. Thumbs-up còn được Alice tiếp nhận như lời khen. Giữ pose chỉ phát một lần; hạ tay trước lần kế. Trạng thái/nhãn nhận diện xem trong tab CAMERA của debug panel. Log `geometry.loop_gap_ratio` là khoảng cách hai đầu ngón chia cho bề ngang lòng bàn tay; `geometry.ok_extended` liệt kê ba ngón được coi là duỗi. Đây chỉ là các số đo suy ra, không chứa ảnh hoặc tọa độ landmark. Pause camera sẽ dừng gesture.
+
+`CAMERA_SOURCE_LABEL` và `CAMERA_SOURCE_ROLE` đặt nhãn/vai trò cho webcam local; index OpenCV chưa phải ID phần cứng ổn định. Tab CAMERA có nút `HIỆU CHỈNH`: ngồi tại vị trí thường dùng khoảng 6–10 giây để lấy baseline kích thước mặt; Alice lưu tỷ lệ/ngữ cảnh detector vào `data/camera-proximity.json`, không lưu ảnh. `near/far/unknown` là vùng tương đối, không phải mét hay xác minh danh tính.
+
+Nói **“Alice tắt webcam”**, **“Alice tắt camera”** hoặc **“Alice tạm dừng camera”** để dừng capture webcam của Alice trong phiên hiện tại. Lệnh chạy trực tiếp sau wake-word/STT gate, không gọi LLM và vẫn hoạt động khi `FAST_COMMANDS=false`. Cơ chế pause hiện có giải phóng webcam, xóa preview, ngừng nhận diện và hủy visual confirmation đang chờ. Có thể bật lại bằng điều khiển camera hiện có trên giao diện; khởi động lại app sẽ áp dụng cấu hình `CAMERA_ENABLED` như trước.
+
+Với câu ghép như **“Alice mở YouTube và tắt camera”**, Alice xử lý vế tắt webcam độc lập ở local và chuyển phần còn lại tới luồng lệnh thông thường. Yêu cầu có phủ định, điều kiện hoặc thứ tự rõ ràng được giữ nguyên cho Agent, với tool `turn_off_webcam` riêng. `kill_process` từ chối các tên thiết bị chung `camera`/`webcam` để tránh hiểu việc dừng camera thành kết thúc tiến trình.
+
+`CAMERA_WORKSTATION_RETURN_MODE` hỗ trợ `off`, `shadow` (chỉ chẩn đoán, mặc định mã), `local` (câu chào có sẵn) và `llm` (viết lời chào qua client riêng có quota). Sau thử nghiệm camera, chủ máy đã chọn `llm` trong `src/.env`. Mỗi lượt quay lại chỉ thử chào một lần, hợp nhất với desktop Return; nhánh camera không thay presence/clock/care của SALM. LLM camera mặc định tối thiểu 15 phút giữa hai attempt, tối đa 3/giờ và 12/24 giờ, tính cả lỗi/timeout; bộ đếm SQLite giữ qua restart. Không retry/xoay model; hết quota/lỗi dùng local. Đây là quota camera welcome, không phải quota chung toàn hệ thống. LLM chỉ nhận yêu cầu viết lời chào text; không nhận ảnh/score/emotion/proximity/gesture/log. Xem [thiết kế tích hợp](docs/camera_llm_integration.md).
+
+`CAMERA_HEAD_CONFIRMATION_ENABLED=true` đã được bật trong cấu hình máy chủ dự án: gật/lắc dùng landmark YuNet và cổng xác nhận chung với thumbs-up/OK. Chỉ chốt pending action đã tồn tại trước motion; không pending thì không tạo lệnh hoặc API call. Yes/no trái nhau trong cửa sổ 0,8 giây bị bỏ. Nếu presence dùng Haar, head motion báo unavailable. Diagnostic vẫn chỉ ở debug panel; log có queue giới hạn ở bus và sample log giảm tần suất. Khởi động lại Alice để nạp cấu hình mới.
+
+Thiết kế và ranh giới dữ liệu: [đặc tả](docs/camera_ai_spec.md), [kiến trúc](docs/camera_ai_architecture.md), [riêng tư/bảo mật](docs/camera_ai_security_privacy.md).

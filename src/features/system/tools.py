@@ -268,6 +268,10 @@ def cam_kill(name_or_pid):
     Quy pid về TÊN trước khi so: cấm theo tên mà không quy đổi thì vòng qua được chỉ bằng
     cách nói số pid thay vì nói tên.
     """
+    target = str(name_or_pid or "").strip().strip('"\'').lower()
+    if target in {"camera", "webcam", "web cam", "cam", "camera.exe", "webcam.exe"}:
+        return ("camera/webcam là tên thiết bị trong lệnh này, không phải tiến trình "
+                "để kết thúc; hãy dùng lệnh tắt webcam của Alice")
     from actions.system.system_control import TIEN_TRINH_CAM, ten_tien_trinh
     ten = ten_tien_trinh(name_or_pid)
     if ten and ten in TIEN_TRINH_CAM:

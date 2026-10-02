@@ -6,24 +6,40 @@ Tool của feature `profile` — Ghi nhớ / quên thông tin về người dùn
 from agent.tools import Tool, ToolRegistry
 
 
+def _export_memory(profile):
+    path = profile.export_data()
+    return f"Đã xuất dữ liệu bộ nhớ ra: {path}"
+
+
+def _clear_memory(profile, habits=None):
+    profile.clear()
+    if habits is not None:
+        habits.clear()
+    return "Đã xóa toàn bộ hồ sơ, sở thích và trí nhớ dài hạn về bạn."
+
+
+def _manage_memory(profile, action, habits=None):
+    if action == "export":
+        return _export_memory(profile)
+    if action == "delete_all":
+        return _clear_memory(profile, habits)
+    return "Hành động quản lý bộ nhớ không hợp lệ."
+
+
 
 def register(reg, ctx):
     """Đăng ký tool của feature `profile` theo đúng thứ tự đăng ký cũ."""
     if ctx.profile is not None:
-        _register_profile_tools(reg, ctx.profile)
+        _register_profile_tools(reg, ctx.profile, ctx.habits)
 
 
-def _register_profile_tools(reg: ToolRegistry, profile):
+def _register_profile_tools(reg: ToolRegistry, profile, habits=None):
     """Tool ghi nhớ thông tin cá nhân LÂU DÀI về người dùng (tên, xưng hô, địa điểm...)."""
     reg.register(Tool(
         name="remember_about_user",
-        description=("Ghi nhớ thông tin cá nhân LÂU DÀI về người dùng khi họ cho biết, để "
-                     "cá nhân hoá về sau. Dùng khi người dùng nói 'tôi tên là...', 'gọi tôi "
-                     "là...', 'tôi ở/sống ở...', 'nhớ giúp tôi rằng...'. CHỈ truyền trường "
-                     "người dùng thực sự nói (bỏ trống các trường khác). QUAN TRỌNG: nếu "
-                     "điều cần nhớ là một SỰ KIỆN có thời điểm (phỏng vấn, cuộc hẹn, deadline) "
-                     "thì truyền thêm 'when' — nhờ đó sau khi qua giờ trợ lý biết việc đã "
-                     "xong, không nhắc lại như sắp diễn ra."),
+        description=("Ghi nhớ LÂU DÀI thông tin người dùng vừa trực tiếp cho biết. Chỉ "
+                     "truyền trường họ thực sự nói. Nếu note là sự kiện có thời điểm "
+                     "(cuộc hẹn, deadline), phải truyền thêm when để sự kiện tự hết hạn."),
         input_schema={
             "type": "object",
             "properties": {
@@ -47,10 +63,8 @@ def _register_profile_tools(reg: ToolRegistry, profile):
 
     reg.register(Tool(
         name="forget_about_user",
-        description=("QUÊN một điều đã ghi nhớ về người dùng (ghi chú, quan sát, hoặc sự "
-                     "kiện), khớp theo từ khoá. Dùng khi người dùng nói 'quên chuyện... đi', "
-                     "'đừng nhớ... nữa', 'bỏ ghi chú...'. Trợ lý sẽ tự hỏi xác nhận trước "
-                     "khi quên."),
+        description=("QUÊN ghi chú, quan sát hoặc sự kiện theo từ khoá khi họ "
+                     "yêu cầu đừng nhớ điều cụ thể đó; hệ thống hỏi xác nhận trước khi xóa."),
         input_schema={
             "type": "object",
             "properties": {
@@ -62,4 +76,24 @@ def _register_profile_tools(reg: ToolRegistry, profile):
         handler=lambda keyword: profile.forget(keyword),
         destructive=True,      # xoá trí nhớ KHÔNG khôi phục được -> chốt xác nhận trong code
         confirm_message=lambda keyword=None: f"quên chuyện '{keyword}'",
+    ))
+
+    reg.register(Tool(
+        name="manage_user_memory",
+        description=("Quản lý TOÀN BỘ trí nhớ người dùng: export tạo bản JSON cục bộ; "
+                     "delete_all xóa sạch hồ sơ/sở thích/trí nhớ. Xóa một mục riêng lẻ "
+                     "thì dùng forget_about_user."),
+        input_schema={
+            "type": "object",
+            "properties": {"action": {"type": "string",
+                                        "enum": ["export", "delete_all"]}},
+            "required": ["action"],
+        },
+        handler=lambda action: _manage_memory(profile, action, habits),
+        destructive=lambda action=None: action == "delete_all",
+        confirm_message=lambda action=None: (
+            "xóa toàn bộ hồ sơ và trí nhớ dài hạn về bạn"
+            if action == "delete_all" else "quản lý bộ nhớ người dùng"),
+        persistent=True,
+        speakable=True,
     ))

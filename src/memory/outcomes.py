@@ -32,9 +32,8 @@ liền nhau khi chúng cùng một lần chạy.
 hữu nó. `nhom` được gắn ở bộ nạp feature, không suy đoán lại từ tên lúc đọc log. Bản ghi
 cũ chưa có trường này vẫn đọc bình thường.
 
-Định dạng JSONL NỐI THÊM, không phải JSON ghi đè. Ghi nối không có bước đọc–sửa–ghi nên
-không có cửa sổ cắt trắng file (`utils/atomic_json.py` nói vì sao điều đó quan trọng), và
-đây cũng là dạng duy nhất còn đọc được khi file đang được ghi dở.
+Production dùng SQLite có transaction/WAL. JSONL nối thêm vẫn được giữ làm đường rollback,
+import legacy và fallback khi database tạm lỗi; không dual-write khi SQLite hoạt động bình thường.
 
 RIÊNG TƯ: file chứa nguyên văn câu người dùng nói. Chỉ nằm trên máy, đã gitignore, không
 gửi đi đâu. `clear()` xoá sạch.
@@ -59,16 +58,23 @@ MAX_DAP = 600
 
 
 class OutcomeLog:
-    """Ghi nối JSONL, xoay vòng một bản. `path` rỗng = tắt hẳn (không ghi gì)."""
+    """Outcome repository; SQLite in production, JSONL compatibility for rollback/tests."""
 
-    def __init__(self, path=None, max_bytes=1_000_000):
+    def __init__(self, path=None, max_bytes=1_000_000, database=None,
+                 import_legacy=True):
         self.path = path or None
         self.max_bytes = int(max_bytes)
+        self.database = database
         # Định danh MỘT LẦN CHẠY. Bộ dò lỗ hổng năng lực đọc bản ghi kế bên để biết người
         # dùng phản ứng thế nào sau đó — nhưng chỉ được nối khi hai bản ghi CÙNG phiên.
         # Không có trường này thì lượt cuối hôm qua sẽ bị nối với lượt đầu hôm nay.
         # (Nhờ vậy khỏi phải lưu sẵn "câu lượt kế tiếp": thứ tự trong file đã mang tin đó.)
         self.phien = uuid.uuid4().hex[:8]
+        if self.path and self.database is not None and import_legacy:
+            try:
+                self.database.import_outcome_files((self.path + ".1", self.path))
+            except Exception as e:
+                logger.warning("Không import được outcome legacy vào SQLite: %s", e)
 
     def record(self, ban_ghi: dict):
         """Ghi một lượt. Hỏng ở đây KHÔNG được làm vỡ lượt nói chuyện — nuốt kèm log."""
@@ -80,6 +86,12 @@ class OutcomeLog:
             dong["phien"] = self.phien
             dong["cau"] = (dong.get("cau") or "")[:MAX_CAU]
             dong["dap"] = (dong.get("dap") or "")[:MAX_DAP]
+            if self.database is not None:
+                try:
+                    self.database.record_outcome(dong)
+                    return
+                except Exception as e:
+                    logger.warning("SQLite outcome lỗi; fallback JSONL: %s", e)
             self._xoay_neu_day()
             thu_muc = os.path.dirname(self.path)
             if thu_muc:
@@ -109,6 +121,11 @@ class OutcomeLog:
         Bỏ qua dòng hỏng là có chủ đích: file có thể bị cắt giữa dòng cuối nếu máy tắt
         đúng lúc ghi, và một dòng cụt không được phép làm mù cả nhật ký.
         """
+        if self.database is not None:
+            try:
+                return self.database.outcomes()
+            except Exception as e:
+                logger.warning("Không đọc được outcome SQLite; fallback JSONL: %s", e)
         ban_ghi = []
         for p in (self.path + ".1", self.path) if self.path else ():
             if not os.path.exists(p):
@@ -131,6 +148,11 @@ class OutcomeLog:
         """Xoá sạch nhật ký (cả bản lưu). Dữ liệu riêng tư -> phải có đường xoá."""
         if not self.path:
             return
+        if self.database is not None:
+            try:
+                self.database.clear_outcomes()
+            except Exception as e:
+                logger.warning("Không xóa được outcome SQLite: %s", e)
         for p in (self.path, self.path + ".1"):
             try:
                 os.remove(p)

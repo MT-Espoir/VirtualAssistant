@@ -4,7 +4,20 @@ Fast-path lệnh trực tiếp — logic THUẦN, để test được.
 
 import re
 
-from utils.text_norm import norm as _norm
+from utils.text_norm import norm as _norm, strip_accents as _strip_accents
+
+
+def match_control_panel_command(text):
+    """Local UI commands, available even when tool fast paths are disabled."""
+    words = _norm(text)
+    words = re.sub(r"^alice\s+", "", words)
+    words = re.sub(r"^(?:hay|vui long|lam on)\s+", "", words)
+    words = re.sub(r"\s+(?:giup toi|nhe|voi|di|a)$", "", words)
+    match = re.fullmatch(r"(?:(mo|bat|hien|hien thi|dong|tat|an)\s+)?"
+                         r"(?:bang dieu khien|bang chuc nang|bang cai dat|control panel)", words)
+    if not match:
+        return None
+    return "hide" if match.group(1) in ("dong", "tat", "an") else "show"
 
 
 def _first_match(text, rules):
@@ -34,6 +47,85 @@ _RULES = [
 # `features/<tên>/fast.py` và khai qua `Feature.fast_paths` — xem `features/fast.py`.
 # File này chỉ còn các lệnh KHÔNG phải tool: giao diện avatar, chế độ, xác nhận, tính
 # cách, routine. Chúng thuộc về chính trợ lý chứ không thuộc tính năng nào.
+
+# Lệnh chỉnh HUD phải có từ chỉ đích rõ ràng để không cướp các câu "phóng to" vốn đang
+# điều khiển avatar. Giá trị là số thực liên tục: giọng nói chỉ là một nguồn input; bộ
+# nhận diện pinch/gesture sau này có thể phát cùng payload ``scale_delta`` nhỏ tuỳ ý.
+_HUD_CONTEXT = ("hud", "panel", "bang thong tin", "bang hien thi", "bang thong ke",
+                "bang nay", "khung thong tin", "khung nay", "cua so thong tin",
+                "cua so nay", "man hinh thong ke", "thong ke nay")
+_AVATAR_CONTEXT = ("avatar", "nhan vat", "hinh dai dien")
+_HUD_BIGGER = ("to hon", "lon hon", "phong to", "to len", "mo rong")
+_HUD_SMALLER = ("nho hon", "nho lai", "thu nho", "be lai", "be hon", "thu gon")
+_HUD_RESET = ("mac dinh", "ban dau", "binh thuong", "reset")
+_NUMBER = r"(\d+(?:[\.,]\d+)?)"
+
+
+def _number(raw):
+    try:
+        return float(raw.replace(",", "."))
+    except (AttributeError, TypeError, ValueError):
+        return None
+
+
+def _mentions_hud(text, normalized):
+    # Giữ chữ có dấu để phân biệt "bảng" (HUD) với "bằng" trong "phóng to bằng 120%".
+    raw = (text or "").lower()
+    return (re.search(r"(?<!\w)bảng(?!\w)", raw) is not None or
+            any(marker in normalized for marker in _HUD_CONTEXT))
+
+
+def explicit_ui_target(text):
+    """Đích UI được người dùng gọi tên rõ ràng: ``hud`` / ``avatar`` / ``None``."""
+    t = _norm(text)
+    if not t:
+        return None
+    if _mentions_hud(text, t):
+        return "hud"
+    if any(marker in t for marker in _AVATAR_CONTEXT):
+        return "avatar"
+    return None
+
+
+def match_hud_command(text, contextual_target=False):
+    """Nhận lệnh scale HUD linh hoạt, trả payload UI hoặc ``None``.
+
+    Ví dụ: ``HUD 137%`` đặt tuyệt đối; ``tăng panel thêm 12%`` cộng 0.12;
+    ``HUD 1,25 lần`` đặt 1.25. Biên an toàn được áp ở tầng UI, không lượng tử hoá.
+    """
+    t = _norm(text)
+    if not t or (not contextual_target and not _mentions_hud(text, t)):
+        return None
+    raw = _strip_accents((text or "").lower())
+
+    if any(word in t for word in _HUD_RESET):
+        return {"target": "hud", "scale": 1.0}
+
+    percent = re.search(_NUMBER + r"\s*(?:%|phan tram)", raw)
+    if percent:
+        amount = _number(percent.group(1))
+        if amount is None:
+            return None
+        delta = amount / 100.0
+        if any(word in t for word in ("giam", "bot", "thu nho", "nho di")):
+            return {"target": "hud", "scale_delta": -delta}
+        if ("them" in t or
+                any(word in t for word in ("tang", "phong to", "to them", "lon them"))):
+            return {"target": "hud", "scale_delta": delta}
+        return {"target": "hud", "scale": delta}
+
+    multiple = re.search(_NUMBER + r"\s*lan", raw)
+    if multiple:
+        amount = _number(multiple.group(1))
+        if amount is not None:
+            return {"target": "hud", "scale": amount}
+
+    if any(word in t for word in _HUD_SMALLER):
+        return {"target": "hud", "scale_delta": -0.10}
+    if any(word in t for word in _HUD_BIGGER):
+        return {"target": "hud", "scale_delta": 0.10}
+    return None
+
 
 # Lệnh chỉnh GIAO DIỆN avatar (đổi kích thước / độ mờ) — trả dict lệnh UI cho bus.
 _UI_RULES = [

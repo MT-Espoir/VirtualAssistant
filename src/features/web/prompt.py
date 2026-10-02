@@ -8,6 +8,10 @@ Hai hằng ở đây phục vụ hai lượt LLM khác nhau — xem chú thích 
 CASE_WEB = (
     'Yêu cầu thuộc nhóm WEB. TRƯỚC HẾT phân biệt HAI Ý ĐỊNH khác nhau — đây là điều quan '
     'trọng nhất của nhóm này:\n'
+    'Chỉ dùng web khi người dùng yêu cầu tìm/tra/đọc/mở nguồn ngoài, hoặc câu hỏi phụ thuộc '
+    'thông tin hiện thời và sự kiện có thể đã thay đổi. Câu hỏi trò chuyện, suy ngẫm, ý kiến '
+    'cá nhân hay khái niệm đời thường (ví dụ "yêu và thương khác nhau thế nào") phải trả '
+    'lời trực tiếp, KHÔNG gọi web chỉ vì câu có dạng "vì sao/thế nào".\n'
     "1) CÂU HỎI cần TRẢ LỜI trực tiếp bằng nội dung (vd 'hôm nay có sự kiện gì mà...', "
     "'vì sao...', 'tại sao...', 'X là ai/là gì', 'khi nào...', 'có tin gì về...'): gọi "
     'web_search_list để tìm, RỒI gọi read_search_result (index=1, thử thêm index=2 nếu '
@@ -36,4 +40,5 @@ CASE_WEB = (
 
 # Dòng mô tả case gửi cho BỘ PHÂN LOẠI (prompt ROUTER), khác `CASE_*` ở trên là
 # chỉ dẫn gửi cho lượt LÀM VIỆC. Hai vai trò khác nhau nên tách hẳn hai hằng.
-ROUTER_HINT = '- web: MỞ MỚI trang web, tìm kiếm Google, tìm/PHÁT một video hoặc bài hát MỚI trên YouTube, tra cứu Wikipedia, đọc trang'
+ROUTER_HINT = ('- web: mở/đọc/tìm/tra web, thông tin hiện thời, phát nội dung MỚI trên '
+               'YouTube; KHÔNG dùng cho trò chuyện, suy ngẫm hay hỏi ý kiến đời thường')

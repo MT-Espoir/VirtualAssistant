@@ -1,0 +1,4 @@
+# Optional hand gesture worker. Use --no-deps in Alice's existing Python to
+# preserve its working OpenCV build (MediaPipe otherwise adds opencv-contrib-python).
+# The existing environment already provides numpy, cv2, absl-py and flatbuffers.
+mediapipe==1.0.1
