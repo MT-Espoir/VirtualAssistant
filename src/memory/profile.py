@@ -421,14 +421,20 @@ class UserProfile:
             return (f"Có {len(hits)} điều khớp: {listing}. "
                     f"Bạn muốn tôi quên điều nào?")
         source, index, text = hits[0]
-        removed = self.data[source].pop(index)
-        if self.database is not None:
-            try:
-                self.database.delete_profile_item(source, removed)
-            except Exception as e:
-                self._database_failed("xóa trí nhớ", e)
-        else:
-            self._save()
+        # Xoá ở nơi lưu bền TRƯỚC, thành công mới bỏ khỏi RAM. Không chuyển sang file
+        # fallback như remember(): bản import fallback không mang được lệnh xoá, row còn
+        # trong SQLite sẽ quay lại sau khi khởi động lại.
+        try:
+            if self.database is not None:
+                self.database.delete_profile_item(source, self.data[source][index])
+            else:
+                kept = [item for i, item in enumerate(self.data[source]) if i != index]
+                write_json(self.path, {**self.data, source: kept})
+        except Exception as e:
+            logger.error("Không xoá được trí nhớ: %s", e)
+            return (f'Tôi chưa xoá được "{text}" vì lỗi lưu trữ, thông tin vẫn còn. '
+                    "Bạn thử lại sau nhé.")
+        self.data[source].pop(index)
         return f'Đã quên: "{text}".'
 
     def add_event(self, text, when=None, evidence=None, confidence=0.8, source_id=None):

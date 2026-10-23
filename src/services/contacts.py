@@ -35,15 +35,12 @@ class ContactStore:
         if not name or not email:
             return None
         key = strip_accents(name.lower())
-        for c in self._contacts.values():
-            if strip_accents(c["name"].lower()) == key:
-                c["email"] = email
-                self._save()
-                return c
-        c = {"id": uuid.uuid4().hex[:6], "name": name, "email": email,
-             "created_at": datetime.now().isoformat()}
-        self._contacts[c["id"]] = c
-        self._save()
+        c = next((dict(c, email=email) for c in self._contacts.values()
+                  if strip_accents(c["name"].lower()) == key), None)
+        if c is None:
+            c = {"id": uuid.uuid4().hex[:6], "name": name, "email": email,
+                 "created_at": datetime.now().isoformat()}
+        self._commit({**self._contacts, c["id"]: c})
         return c
 
     def list(self):
@@ -61,9 +58,11 @@ class ContactStore:
 
     def remove(self, contact_id):
         """Xoá theo id chính xác. Trả contact đã xoá, hoặc None."""
-        c = self._contacts.pop(contact_id, None)
-        if c is not None:
-            self._save()
+        if contact_id not in self._contacts:
+            return None
+        contacts = dict(self._contacts)
+        c = contacts.pop(contact_id)
+        self._commit(contacts)
         return c
 
     # ------------------------- lưu / nạp ------------------------- #
@@ -77,8 +76,11 @@ class ContactStore:
         except (OSError, ValueError, KeyError) as e:
             logger.warning("Không đọc được sổ danh bạ: %s", e)
 
-    def _save(self):
-        try:
-            write_json(self.path, list(self._contacts.values()))
-        except OSError as e:
-            logger.error("Không lưu được sổ danh bạ: %s", e)
+    def _commit(self, contacts):
+        """Ghi đĩa TRƯỚC rồi mới đổi state RAM.
+
+        Ghi lỗi thì OSError nổi lên cho tool báo lỗi, state cũ giữ nguyên: không có
+        chuyện báo "đã lưu" rồi mất sau khi khởi động lại.
+        """
+        write_json(self.path, list(contacts.values()))
+        self._contacts = contacts

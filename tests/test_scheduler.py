@@ -81,6 +81,81 @@ def test_fire_due_passes_kind_do():
     assert notified == [("mở youtube", "do")]          # hành động theo lịch -> kind 'do'
 
 
+def _failing_notify(calls):
+    def notify(message, kind):
+        calls.append((message, kind))
+        raise RuntimeError("speaker unavailable")
+    return notify
+
+
+def test_loi_nhac_loi_duoc_hen_lai_roi_bo_sau_so_lan_toi_da():
+    """F03: notify lỗi không được xóa ngay lời nhắc; thử lại có giới hạn."""
+    from services.scheduler import MAX_ATTEMPTS, RETRY_DELAY
+    calls = []
+    path = _temp_store()
+    sched = ReminderScheduler(notify=_failing_notify(calls), store_path=path)
+    now = datetime(2030, 1, 1, 12, 0)
+    sched.add("uống thuốc", now - timedelta(seconds=1))
+    sched._fire_due(now)
+    [task] = ReminderScheduler(store_path=path).list()      # bền qua restart
+    assert task["attempts"] == 1
+    assert datetime.fromisoformat(task["fire_at"]) == now + RETRY_DELAY
+    for attempt in range(2, MAX_ATTEMPTS + 1):
+        now += RETRY_DELAY
+        sched._fire_due(now)
+    assert len(calls) == MAX_ATTEMPTS and sched.list() == []
+    os.unlink(path)
+
+
+def test_lenh_do_loi_khong_tu_chay_lai():
+    """Lệnh theo lịch có thể đã chạy dở: không tự thực thi lại."""
+    calls = []
+    sched = ReminderScheduler(notify=_failing_notify(calls), store_path=_temp_store())
+    now = datetime(2030, 1, 1, 12, 0)
+    sched.add("tắt máy lạnh", now - timedelta(seconds=1), kind="do")
+    sched._fire_due(now)
+    sched._fire_due(now + timedelta(hours=1))
+    assert calls == [("tắt máy lạnh", "do")] and sched.list() == []
+
+
+def test_gio_co_mui_gio_so_duoc_voi_gio_naive():
+    """F03: trước đây task aware làm due(naive) ném TypeError cho cả lượt quét."""
+    from datetime import timezone
+    sched = ReminderScheduler(store_path=_temp_store())
+    now = datetime(2030, 1, 1, 12, 0)
+    aware_past = (now - timedelta(minutes=5)).astimezone(timezone.utc)
+    sched.add("aware", aware_past)
+    sched.add("naive", now + timedelta(minutes=5))
+    assert [t["message"] for t in sched.due(now)] == ["aware"]
+    assert [t["message"] for t in sched.due(now.astimezone(timezone.utc))] == ["aware"]
+
+
+def test_nap_file_cu_co_gio_aware_va_bo_muc_hong():
+    import json
+    from datetime import timezone
+    path = _temp_store()
+    now = datetime(2030, 1, 1, 12, 0)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump([{"id": "a1", "message": "cũ", "kind": "remind",
+                    "fire_at": (now - timedelta(minutes=1)).astimezone(timezone.utc).isoformat()},
+                   {"id": "b2", "message": "hỏng", "kind": "remind", "fire_at": "không phải giờ"}], f)
+    sched = ReminderScheduler(store_path=path)
+    assert [t["message"] for t in sched.due(now)] == ["cũ"]
+    os.unlink(path)
+
+
+def test_ghi_dia_loi_thi_add_bao_loi(monkeypatch):
+    import services.scheduler as module
+    sched = ReminderScheduler(store_path=_temp_store())
+
+    def disk_full(*_):
+        raise OSError("disk full")
+    monkeypatch.setattr(module, "write_json", disk_full)
+    with pytest.raises(OSError):
+        sched.add("họp", datetime(2030, 1, 1, 9, 0))
+    assert sched.list() == []
+
+
 # --------------------------- _parse_fire_time --------------------------- #
 
 def test_parse_delay_minutes():

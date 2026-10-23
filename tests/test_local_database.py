@@ -446,3 +446,22 @@ def test_memory_export_contains_habit_observations(tmp_path):
 
     assert exported["habit_observations"][0]["habit_key"] == "chrome"
     assert exported["habit_observations"][0]["source_domain"] == "tool"
+
+
+def test_forget_failed_in_database_is_reported_and_not_resurrected(tmp_path, monkeypatch):
+    """F01: DB lỗi khi xoá thì không được báo 'Đã quên' rồi để note quay lại sau restart."""
+    profile_path = tmp_path / "profile.json"
+    database = LocalDatabase(tmp_path / "alice.db")
+    profile = UserProfile(profile_path, database=database)
+    profile.remember(note="thích trà")
+
+    def locked(*_):
+        raise sqlite3.OperationalError("database is locked")
+    monkeypatch.setattr(database, "delete_profile_item", locked)
+    reply = profile.forget("trà")
+
+    assert "chưa xoá được" in reply and "Đã quên" not in reply
+    assert profile.data["notes"] == ["thích trà"] and profile.database is database
+    monkeypatch.undo()
+    assert "Đã quên" in profile.forget("trà")
+    assert UserProfile(profile_path, database=database).data["notes"] == []

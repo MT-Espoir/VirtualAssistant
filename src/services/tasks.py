@@ -34,8 +34,7 @@ class TaskStore:
             return None
         task = {"id": uuid.uuid4().hex[:6], "text": text, "done": False,
                 "created_at": datetime.now().isoformat(), "due": due or None}
-        self._tasks[task["id"]] = task
-        self._save()
+        self._commit({**self._tasks, task["id"]: task})
         return task
 
     def list(self, include_done=False):
@@ -60,15 +59,17 @@ class TaskStore:
         task = self._tasks.get(task_id)
         if task is None:
             return None
-        task["done"] = True
-        self._save()
+        task = dict(task, done=True)
+        self._commit({**self._tasks, task_id: task})
         return task
 
     def remove(self, task_id):
         """Xoá theo id chính xác. Trả task đã xoá, hoặc None."""
-        task = self._tasks.pop(task_id, None)
-        if task is not None:
-            self._save()
+        if task_id not in self._tasks:
+            return None
+        tasks = dict(self._tasks)
+        task = tasks.pop(task_id)
+        self._commit(tasks)
         return task
 
     # ------------------------- lưu / nạp ------------------------- #
@@ -82,8 +83,11 @@ class TaskStore:
         except (OSError, ValueError, KeyError) as e:
             logger.warning("Không đọc được file việc cần làm: %s", e)
 
-    def _save(self):
-        try:
-            write_json(self.path, list(self._tasks.values()))
-        except OSError as e:
-            logger.error("Không lưu được file việc cần làm: %s", e)
+    def _commit(self, tasks):
+        """Ghi đĩa TRƯỚC rồi mới đổi state RAM.
+
+        Ghi lỗi thì OSError nổi lên cho tool báo lỗi, state cũ giữ nguyên: không có
+        chuyện báo "đã lưu" rồi mất sau khi khởi động lại.
+        """
+        write_json(self.path, list(tasks.values()))
+        self._tasks = tasks

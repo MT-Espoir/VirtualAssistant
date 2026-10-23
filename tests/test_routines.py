@@ -111,3 +111,20 @@ def test_delete_routine_is_destructive():
         assert "xoá routine" in reg.get("delete_routine").confirm_message(name="buổi sáng")
     finally:
         if os.path.exists(path): os.unlink(path)
+
+
+def test_ghi_dia_loi_thi_bao_loi_va_giu_nguyen_state(tmp_path, monkeypatch):
+    """F07: routine chỉ tồn tại trong RAM sẽ mất sau khi khởi động lại -> phải báo lỗi."""
+    import pytest
+    import services.routines as module
+    s = RoutineStore(path=str(tmp_path / "routines.json"))
+    s.create("buổi sáng", ["mở chrome"])
+
+    def disk_full(*_):
+        raise OSError("disk full")
+    monkeypatch.setattr(module, "write_json", disk_full)
+    with pytest.raises(OSError):
+        s.create("tối", ["tắt đèn"])
+    with pytest.raises(OSError):
+        s.delete("buổi sáng")
+    assert [r["name"] for r in s.list()] == ["buổi sáng"]

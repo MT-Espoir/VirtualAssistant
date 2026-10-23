@@ -139,13 +139,25 @@ def _fmt_event(e):
 
 # --------------------------- Calendar (read-only) --------------------------- #
 
+def _today_range(now=None):
+    """[0h hôm nay, 0h ngày mai) theo GIỜ MÁY, dạng aware.
+
+    Trước đây dùng ngày UTC và bắt đầu từ lúc gọi: người dùng UTC+7 hỏi lúc 23h thì
+    mất hết sự kiện đã qua và lấn sang 7h sáng mai. Ngày mai tính từ nửa đêm naive rồi
+    mới gắn tz để không lệch một giờ ở ngày đổi giờ mùa hè.
+    """
+    now = (now or datetime.now()).astimezone()
+    start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    end = (start.replace(tzinfo=None) + timedelta(days=1)).astimezone(start.tzinfo)
+    return start, end
+
+
 @mcp.tool()
 def gws_calendar_today(user_email: str = "") -> str:
     """Liệt kê sự kiện Google Calendar HÔM NAY. user_email: tài khoản cần dùng (rỗng = mặc định)."""
-    now = datetime.now(timezone.utc)
-    end = now.replace(hour=23, minute=59, second=59)
+    start, end = _today_range()
     items = _calendar(user_email or None).events().list(
-        calendarId="primary", timeMin=now.isoformat(), timeMax=end.isoformat(),
+        calendarId="primary", timeMin=start.isoformat(), timeMax=end.isoformat(),
         singleEvents=True, orderBy="startTime", maxResults=20).execute().get("items", [])
     if not items:
         return "Hôm nay không có sự kiện nào trên lịch."

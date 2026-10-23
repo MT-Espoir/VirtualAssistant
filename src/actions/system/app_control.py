@@ -62,7 +62,7 @@ def open_application(app_name):
         return f"Đã mở {app_name}."
     except OSError as e:
         logger.error("Không mở được %s (exe=%s): %s", app_name, exe, e)
-        return f"Không mở được {app_name}: {e}"
+        raise RuntimeError(f"Không mở được {app_name}.") from e
 
 
 def close_application(app_name):
@@ -74,10 +74,13 @@ def close_application(app_name):
         if os.name == 'nt':
             # Truyền dạng ARGV (không qua shell) -> không thể tiêm lệnh; không /f để đóng
             # nhẹ nhàng, tránh mất dữ liệu chưa lưu.
-            subprocess.run(['taskkill', '/im', f'{exe}.exe'], check=False)
+            code = subprocess.run(['taskkill', '/im', f'{exe}.exe'], check=False).returncode
         else:
-            subprocess.call(['pkill', exe])
+            code = subprocess.call(['pkill', exe])
+        if code != 0:
+            # 128 (taskkill) / 1 (pkill): không có tiến trình nào khớp, hoặc bị từ chối.
+            raise RuntimeError(f"Không đóng được {app_name} (mã lỗi {code}).")
         return f"Đã đóng {app_name}."
     except OSError as e:
         logger.error("Không đóng được %s: %s", app_name, e)
-        return f"Không đóng được {app_name}: {e}"
+        raise RuntimeError(f"Không đóng được {app_name}.") from e

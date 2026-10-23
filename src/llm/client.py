@@ -186,8 +186,17 @@ class OllamaLLMClient:
             "stream": False,
         }
         resp = self._post(payload)
-        data = resp.json()
-        msg = data.get("message", {}) or {}
+        status = getattr(resp, "status_code", 200)
+        try:
+            data = resp.json()
+        except ValueError:
+            data = None
+        # HTTP 500 kèm {"error": ...} trước đây thành lượt rỗng, Agent tưởng LLM đã trả lời
+        # xong. Lỗi phải nổi lên như ở Gemini để lượt được báo là thất bại.
+        if status >= 400 or not isinstance(data, dict) or data.get("error")                 or not isinstance(data.get("message"), dict):
+            reason = data.get("error") if isinstance(data, dict) else None
+            raise RuntimeError(f"Ollama lỗi {status}: {reason or 'phản hồi không hợp lệ'}")
+        msg = data["message"]
 
         tool_calls = []
         for i, tc in enumerate(msg.get("tool_calls") or []):

@@ -171,3 +171,20 @@ def test_giai_ca_lo_tham_so():
     ra = giai_tham_chieu({"to": "@lienhe:Sếp", "subject": "Xin nghỉ"}, kho)
     assert ra == {"to": "boss@x.com", "subject": "Xin nghỉ"}
     _rm(path)
+
+
+def test_ghi_dia_loi_thi_bao_loi_va_giu_nguyen_state(tmp_path, monkeypatch):
+    """F07: cập nhật email thất bại không được sửa dở bản trong RAM."""
+    import pytest
+    import services.contacts as module
+    s = ContactStore(path=str(tmp_path / "contacts.json"))
+    c = s.add("Sếp", "boss@example.com")
+
+    def disk_full(*_):
+        raise OSError("disk full")
+    monkeypatch.setattr(module, "write_json", disk_full)
+    for action in (lambda: s.add("Sếp", "new@example.com"), lambda: s.add("Lan", "lan@example.com"),
+                   lambda: s.remove(c["id"])):
+        with pytest.raises(OSError):
+            action()
+    assert [(x["name"], x["email"]) for x in s.list()] == [("Sếp", "boss@example.com")]

@@ -238,3 +238,15 @@ def test_profile_data_control_tools_export_and_gate_full_delete(tmp_path):
     assert profile.data["name"] is None
     assert habits.data == {"items": {}}
     assert not (tmp_path / "habits.json").exists()
+
+
+def test_forget_reports_when_file_cannot_be_written(tmp_path, monkeypatch):
+    """F01: ghi file lỗi thì không báo 'Đã quên' và giữ nguyên trí nhớ."""
+    import memory.profile as module
+    p = _profile(tmp_path, notes=["thích cà phê"])
+
+    def disk_full(*_):
+        raise OSError("disk full")
+    monkeypatch.setattr(module, "write_json", disk_full)
+    assert "chưa xoá được" in p.forget("cà phê")
+    assert p.data["notes"] == ["thích cà phê"]

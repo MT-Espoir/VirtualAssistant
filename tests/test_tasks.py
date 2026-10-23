@@ -137,3 +137,21 @@ def test_remove_task_is_destructive():
 def test_tools_absent_without_store():
     reg = registry_with(actions=MagicMock())
     assert not reg.has("add_task")
+
+
+def test_ghi_dia_loi_thi_bao_loi_va_giu_nguyen_state(tmp_path, monkeypatch):
+    """F07: không được báo 'đã thêm/đã xong' khi file chưa ghi được."""
+    import pytest
+    import services.tasks as module
+    s = TaskStore(path=str(tmp_path / "tasks.json"))
+    task = s.add("mua sữa")
+
+    def disk_full(*_):
+        raise OSError("disk full")
+    monkeypatch.setattr(module, "write_json", disk_full)
+    for action in (lambda: s.add("nộp báo cáo"), lambda: s.complete(task["id"]),
+                   lambda: s.remove(task["id"])):
+        with pytest.raises(OSError):
+            action()
+    assert [(t["text"], t["done"]) for t in s.list(include_done=True)] == [("mua sữa", False)]
+    assert [t["text"] for t in TaskStore(path=s.path).list()] == ["mua sữa"]

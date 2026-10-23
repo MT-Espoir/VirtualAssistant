@@ -15,8 +15,9 @@ from llm.client import Message, ToolCall, ToolResult, OllamaLLMClient
 
 
 class FakeResp:
-    def __init__(self, data):
+    def __init__(self, data, status_code=200):
         self._data = data
+        self.status_code = status_code
 
     def json(self):
         return self._data
@@ -103,3 +104,17 @@ if __name__ == "__main__":
                 print("FAIL", _name, "->", repr(_e))
     print(f"\n{'ALL PASS' if not failures else str(failures) + ' FAILED'}")
     raise SystemExit(1 if failures else 0)
+
+
+@pytest.mark.parametrize("data, status", [
+    ({"error": "model not found"}, 500),
+    ({"error": "model not found"}, 200),
+    ({}, 200),
+    ({"message": {"content": "nửa chừng"}}, 503),
+])
+def test_http_error_or_invalid_body_raises_instead_of_empty_turn(data, status):
+    """F06: trước đây HTTP 500 thành AssistantTurn rỗng, Agent coi như đã trả lời xong."""
+    client = OllamaLLMClient(model="m", base_url="http://localhost:11434",
+                             http_post=lambda url, payload: FakeResp(data, status))
+    with pytest.raises(RuntimeError, match="Ollama lỗi"):
+        client.generate(system="s", messages=[Message(role="user", text="chào")], tools=[])

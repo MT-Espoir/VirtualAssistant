@@ -36,10 +36,9 @@ class RoutineStore:
             return None
         k = _key(name)
         replaced = k in self._routines
-        self._routines[k] = {"name": name, "steps": steps,
-                             "created_at": datetime.now().isoformat()}
-        self._save()
-        out = dict(self._routines[k]); out["replaced"] = replaced
+        routine = {"name": name, "steps": steps, "created_at": datetime.now().isoformat()}
+        self._commit({**self._routines, k: routine})
+        out = dict(routine); out["replaced"] = replaced
         return out
 
     def get(self, name):
@@ -49,10 +48,13 @@ class RoutineStore:
         return sorted(self._routines.values(), key=lambda r: r["name"])
 
     def delete(self, name):
-        removed = self._routines.pop(_key(name), None) is not None
-        if removed:
-            self._save()
-        return removed
+        k = _key(name)
+        if k not in self._routines:
+            return False
+        routines = dict(self._routines)
+        del routines[k]
+        self._commit(routines)
+        return True
 
     # ------------------------- lưu / nạp ------------------------- #
     def _load(self):
@@ -65,8 +67,11 @@ class RoutineStore:
         except (OSError, ValueError, KeyError) as e:
             logger.warning("Không đọc được file routine: %s", e)
 
-    def _save(self):
-        try:
-            write_json(self.path, list(self._routines.values()))
-        except OSError as e:
-            logger.error("Không lưu được file routine: %s", e)
+    def _commit(self, routines):
+        """Ghi đĩa TRƯỚC rồi mới đổi state RAM.
+
+        Ghi lỗi thì OSError nổi lên cho tool báo lỗi, state cũ giữ nguyên: không có
+        chuyện báo "đã lưu" rồi mất sau khi khởi động lại.
+        """
+        write_json(self.path, list(routines.values()))
+        self._routines = routines
