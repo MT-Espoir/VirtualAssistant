@@ -8,6 +8,7 @@ __pycache__/
 
 # Virtual environments
 .venv/
+.venv-baseline/
 venv/
 env/
 
@@ -72,6 +73,7 @@ data/control-settings.json
 data/control-settings.lock
 data/control-settings.json.tmp
 artifacts/control-panel/
+artifacts/latency/
 
 # Camera AI design documents requested for this project; other docs remain local-only.
 !docs/

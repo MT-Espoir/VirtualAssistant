@@ -1,0 +1,2 @@
+# Optional, local measurement SDK. No collector or remote exporter is enabled.
+opentelemetry-sdk>=1.24,<2

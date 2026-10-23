@@ -203,7 +203,7 @@ class OllamaLLMClient:
         return AssistantTurn(text=msg.get("content", "") or "", tool_calls=tool_calls)
 
 
-def build_default_llm_client() -> LLMClient:
+def _build_default_llm_client() -> LLMClient:
     """Tạo LLM client theo config.LLM_PROVIDER (mặc định 'ollama' — local)."""
     provider = (config.LLM_PROVIDER or "ollama").lower()
 
@@ -223,3 +223,9 @@ def build_default_llm_client() -> LLMClient:
 
     raise RuntimeError(f"LLM_PROVIDER không hỗ trợ: {provider} "
                        "(dùng 'ollama', 'claude' hoặc 'gemini')")
+
+
+def build_default_llm_client() -> LLMClient:
+    from utils.telemetry import get_session, traced_llm
+    client = _build_default_llm_client()
+    return traced_llm(client) if get_session() is not None else client

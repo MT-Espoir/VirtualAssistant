@@ -16,6 +16,7 @@ from features.iot.registry import load_devices
 from features.iot.settings import settings
 from features.iot.storage import IoTStore
 from utils.control_settings import controls
+from utils.telemetry import annotate, received_trace
 
 
 logger = logging.getLogger(__name__)
@@ -64,6 +65,8 @@ class IoTGateway:
                 logger.debug("IoT API: " + format, *args)
 
             def _send(self, status, data):
+                if status >= 400:
+                    annotate(outcome="failed")
                 raw = json.dumps(data, ensure_ascii=False,
                                  separators=(",", ":")).encode("utf-8")
                 self.send_response(status)
@@ -80,6 +83,7 @@ class IoTGateway:
                     return False
                 return True
 
+            @received_trace("iot", "iot_server")
             def do_GET(self):
                 if not self._authorized():
                     return
@@ -117,6 +121,7 @@ class IoTGateway:
                 except (ValueError, TypeError) as exc:
                     self._send(400, {"error": str(exc)})
 
+            @received_trace("iot", "iot_server")
             def do_POST(self):
                 if not self._authorized():
                     return

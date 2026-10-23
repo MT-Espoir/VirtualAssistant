@@ -5,6 +5,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from features.iot.settings import settings
+from utils.telemetry import measured, trace_headers
 
 
 class IoTClient:
@@ -12,6 +13,7 @@ class IoTClient:
         self.cfg = cfg
         self.base_url = f"http://127.0.0.1:{cfg.api_port}/v1"
 
+    @measured("iot", "iot_roundtrip")
     def _call(self, method, path, body=None):
         try:
             token = self.cfg.token_path.read_text(encoding="utf-8").strip()
@@ -20,7 +22,7 @@ class IoTClient:
         payload = json.dumps(body, separators=(",", ":")).encode() if body is not None else None
         request = Request(
             self.base_url + path, data=payload, method=method,
-            headers={"X-Alice-IoT-Token": token, "Content-Type": "application/json"},
+            headers={"X-Alice-IoT-Token": token, "Content-Type": "application/json", **trace_headers()},
         )
         try:
             with urlopen(request, timeout=3) as response:
