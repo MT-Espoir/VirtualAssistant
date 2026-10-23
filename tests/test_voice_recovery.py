@@ -99,10 +99,10 @@ def test_cut_audio_without_wake_word_is_silent(monkeypatch):
     )
 
     debug = bus.drain_debug()
-    assert any(event["message"] == "Bỏ qua câu không có từ khoá kích hoạt"
+    assert any(event['data'].get('event_code') == 'wake_word_missing'
                for event in debug)
     assert not any(event["category"] == "assistant" for event in debug)
-    assert not any(event["message"] == "Yêu cầu nói lại vì STT không chắc"
+    assert not any(event['data'].get('event_code') == 'repeat_required'
                    for event in debug)
     agent.run.assert_not_called()
     recorder.discard_buffered.assert_not_called()
@@ -116,10 +116,10 @@ def test_cut_audio_with_wake_word_still_requests_repeat(monkeypatch):
     )
 
     debug = bus.drain_debug()
-    assert any(event["message"] == "Yêu cầu nói lại vì STT không chắc"
+    assert any(event['data'].get('event_code') == 'repeat_required'
                for event in debug)
     assert any(event["category"] == "assistant"
-               and event["message"].startswith("Văn bản đưa vào TTS:")
+               and event['data'].get('event_code') == 'tts_input'
                for event in debug)
     agent.run.assert_not_called()
     recorder.discard_buffered.assert_called_once()

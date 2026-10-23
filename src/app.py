@@ -35,6 +35,7 @@ from features.salm.welcome import (STARTUP_GREETING_TEXT, WelcomeDialogue,
 from services.location import LocationStore
 from memory.habits import HabitLog
 from memory.outcomes import OutcomeLog
+from utils.privacy import runtime_learning_bindings
 from memory.profile import UserProfile
 from persistence import LocalDatabase
 from features.salm.storage import SalmStorage
@@ -63,6 +64,7 @@ from ui.avatar import AvatarWindow
 from ui.avatar_face import guess_emotion
 from utils.config import config
 from utils.logger import get_logger
+from utils.telemetry import annotate, mark, measure, measured
 
 logger = get_logger(__name__)
 _NO_INPUT = object()
@@ -120,6 +122,11 @@ class _VoiceTurnCoordinator:
         if callback is not None:
             callback()
 
+def _build_release_agent(**options):
+    options.update(runtime_learning_bindings())
+    return Agent(**options)
+
+
 def _make_speaker():
     """Tạo bộ tổng hợp giọng nói (TTS); lỗi thì trả None (hệ thống vẫn chạy, mất giọng)."""
     try:
@@ -174,7 +181,7 @@ def _emit_tts_input(bus, text, emotion, proactive=False, mode="sync"):
     visible = (raw_text.replace("\\", "\\\\").replace("\r", "\\r")
                .replace("\n", "\\n").replace("\t", "\\t"))
     bus.emit_debug("assistant", f"Văn bản đưa vào TTS: {visible}",
-                   {"emotion": emotion, "proactive": proactive,
+                   {"event_code": "tts_input", "emotion": emotion, "proactive": proactive,
                     "mode": mode,
                     "characters": len(raw_text),
                     "line_breaks": raw_text.count("\n"),
@@ -190,6 +197,7 @@ def _say(synth, bus, text, emotion, proactive=False):
     speak_sync() chặn tới khi loa im, mic sẽ KHÔNG mở lại giữa lúc AI đang nói —
     loại bỏ vòng vọng âm (AI tự nghe lại giọng mình rồi tự trả lời).
     """
+    mark("response_ready")
     raw_text = _emit_tts_input(bus, text, emotion, proactive, mode="sync")
     bus.emit(state="speaking", emotion=emotion, text=text, proactive=proactive)
     if synth:
@@ -246,6 +254,7 @@ def _speak_and_watch(synth, bus, text, emotion, voice_io, wake_words):
     bình thường. Vì không có AEC, mic vẫn nghe cả giọng TTS — nên loại các wake word
     có trong chính câu trả lời (tránh AI tự ngắt lời mình khi đọc trúng từ khoá).
     """
+    mark("response_ready")
     recorder, recognizer = voice_io
     raw_text = _emit_tts_input(bus, text, emotion, mode="async_barge_in")
     bus.emit(state="speaking", emotion=emotion, text=text)
@@ -301,10 +310,16 @@ def _listen_voice(recorder, recognizer, bus):
         print("Không phát hiện giọng nói.")
         return _NO_INPUT
 
+    # VAD software estimate, not an acoustic measurement. Never persist PCM.
+    capture = getattr(recorder, "last_capture", None)
+    if getattr(capture, "ended_by_silence", False):
+        mark("vad_end_proxy", seconds_ago=getattr(capture, "trailing_silence_seconds", 0.0))
+
     text = recognizer.recognize_speech_from_data(audio_data)
     if not text:
         print("Không nghe rõ, vui lòng thử lại.")
         return _NO_INPUT
+    mark("input_ready")
     result = getattr(recognizer, "last_result", None)
     capture = getattr(recorder, "last_capture", None)
     capture_data = (capture.to_dict() if hasattr(capture, "to_dict") else {})
@@ -347,6 +362,7 @@ def _next_input(voice_io, bus):
 _AGENT_LOCK = threading.Lock()
 
 
+@measured("unknown", "response_ready")
 def _dispatch(agent, text, bus, fast_match=None, proactive=False):
     """Xử lý MỘT câu lệnh -> (response, emotion). KHÔNG tự nói (người gọi lo phần NÓI).
 
@@ -356,6 +372,7 @@ def _dispatch(agent, text, bus, fast_match=None, proactive=False):
     bus.emit_debug("agent", f"Xử lý yêu cầu: {text}", {"proactive": proactive})
     control_action = match_control_panel_command(text)
     if control_action is not None and not proactive:
+        annotate(channel="fast_local")
         bus.emit_control(control_action)
         return ("Đã mở bảng điều khiển." if control_action == "show" else "Đã đóng bảng điều khiển."), "neutral"
     # Scheduled action vẫn được thực thi trong DND, nhưng không được lộ trạng thái UI
@@ -387,10 +404,13 @@ def _dispatch(agent, text, bus, fast_match=None, proactive=False):
                              ui_cmd and ui_cmd.get("target") == "hud"
                              else "default_avatar")
     if fast is not None and agent.registry.has(fast[0]):
+        annotate(channel=("browser_media" if fast[0] == "browser_media_control" else
+                          "iot" if fast[0] in {"control_room_ac", "configure_climate_automation"} else "fast_local"))
         noi = _run_fast(agent, fast)
         if noi is not None:                     # None = tool cần duyệt -> để agent đi hỏi
             return noi, "happy"
     if ui_cmd is not None:
+        annotate(channel="fast_local")
         bus.emit_ui(**ui_cmd)
         bus.emit_debug("ui", "Áp lệnh giao diện không qua LLM",
                        dict(ui_cmd, resolved_by=ui_resolution),
@@ -398,10 +418,12 @@ def _dispatch(agent, text, bus, fast_match=None, proactive=False):
         print(f"⚡ (giao diện, không qua LLM) {ui_cmd}")
         return _ui_ack(ui_cmd), "happy"
     try:
+        annotate(channel="agent")
         with _AGENT_LOCK:                       # chống 2 agent.run song song
             reply = agent.run(text)
         return reply.text, reply.emotion
     except Exception as e:
+        annotate(outcome="failed", error_type=type(e).__name__)
         logger.error("Lỗi khi chạy agent: %s", e)
         return "Xin lỗi, có lỗi khi xử lý yêu cầu.", "sad"
 
@@ -435,7 +457,7 @@ def _run_routine(agent, routines, name, bus, synth, voice_io, fast_match=None):
 def _assistant_loop(agent, bus, synth, voice_io, routines=None, fast_match=None,
                     intervention_gate=None, voice_turn=None, salm_care_response=None,
                     salm_style_command=None, salm_late_night_command=None, camera=None,
-                    stop_event=None):
+                    stop_event=None, input_reader=None):
     """Vòng xử lý (thread nền): nghe/gõ -> agent -> phát trạng thái cho avatar + nói.
 
     Chu trình half-duplex nghiêm ngặt cho từng lượt: NGHE -> NGHĨ -> NÓI (chặn) ->
@@ -450,6 +472,7 @@ def _assistant_loop(agent, bus, synth, voice_io, routines=None, fast_match=None,
     Hết cửa sổ, từ khoá bắt buộc trở lại.
     """
     hint = "Đang lắng nghe micro..." if voice_io else "Gõ yêu cầu ở cửa sổ terminal."
+    read_input = input_reader or _next_input
     # Wake word chỉ áp dụng cho đầu vào giọng nói (gõ phím là chủ đích rõ ràng rồi).
     gate_wake = bool(voice_io) and config.REQUIRE_WAKE_WORD
     wake_words = parse_wake_words(config.WAKE_WORDS)
@@ -474,188 +497,193 @@ def _assistant_loop(agent, bus, synth, voice_io, routines=None, fast_match=None,
     answered_at = None
     fails = 0
     while stop_event is None or not stop_event.is_set():
-        # 1) Lấy câu lệnh
-        if pending is not None:
-            text = pending
-            pending = None
-        else:
-            try:
-                if voice_io and voice_turn is not None:
-                    raw = voice_turn.next_input(lambda: _next_input(voice_io, bus))
-                else:
-                    raw = _next_input(voice_io, bus)
-                if stop_event is not None and stop_event.is_set():
-                    break
-                fails = 0
-            except Exception as e:   # lỗi thiết bị/mạng: thử lại, không quay vô hạn
-                fails += 1
-                logger.error("Lỗi khi lấy đầu vào (%d/%d): %s", fails, MAX_INPUT_FAILS, e)
-                if fails >= MAX_INPUT_FAILS:
-                    print("\nĐầu vào lỗi liên tiếp — dừng nhận lệnh.")
-                    break
-                time.sleep(1)
-                continue
-            if raw is None:                     # EOF/Ctrl+C -> thoát
-                break
-            if raw is _NO_INPUT or not raw:     # không nghe/gõ được gì -> nghe tiếp
-                bus.emit(state="idle")
-                continue
-
-            # Tính assessment sớm để giữ nguyên metadata STT/VAD, nhưng CHƯA được phát
-            # lời hỏi lại. Recovery chỉ có quyền lên tiếng sau khi lượt nói đã vượt qua
-            # wake-word gate (hoặc thuộc một ngoại lệ chủ đích như work/follow-up/
-            # confirmation). Nếu không, tiếng nền dài chạm max duration sẽ vô tình tạo
-            # một đường vòng qua wake word.
-            awaiting_confirm = (agent.pending is not None
-                                and match_confirmation(raw) is not None)
-            assessment = assess_voice_utterance(
-                raw, allow_short_confirmation=awaiting_confirm)
-            if raw.lower() in ("thoát", "exit", "quit"):
-                break
-
-            # SALM-1.1 chỉ nhận phản hồi thuộc check-in đang mở (cùng escape hatch bật
-            # lại DND). Chỉ đưa transcript đủ chắc vào matcher vì handler có thể commit
-            # state; câu không chắc sẽ fail-closed và tiếp tục qua cổng chủ đích bên dưới.
-            # unrelated/fail-closed trả None nên câu gốc vẫn đi Agent pipeline.
-            if salm_care_response is not None and not assessment.retry:
-                care_reply = salm_care_response(raw)
-                if care_reply:
-                    answered_at = _reply_and_idle(
-                        synth, bus, voice_io, care_reply, "happy")
+        with measure("turn", "turn", scenario="interactive"):
+            # 1) Lấy câu lệnh
+            if pending is not None:
+                text = pending
+                pending = None
+                mark("input_ready")
+            else:
+                try:
+                    if voice_io and voice_turn is not None:
+                        raw = voice_turn.next_input(lambda: read_input(voice_io, bus))
+                    else:
+                        raw = read_input(voice_io, bus)
+                    if stop_event is not None and stop_event.is_set():
+                        break
+                    fails = 0
+                except Exception as e:   # lỗi thiết bị/mạng: thử lại, không quay vô hạn
+                    fails += 1
+                    logger.error("Lỗi khi lấy đầu vào (%d/%d): %s", fails, MAX_INPUT_FAILS, e)
+                    if fails >= MAX_INPUT_FAILS:
+                        print("\nĐầu vào lỗi liên tiếp — dừng nhận lệnh.")
+                        break
+                    time.sleep(1)
                     continue
-
-            # Đang CHỜ xác nhận một hành động khó hoàn tác + câu là 'có'/'không' -> nhận
-            # trực tiếp, không cần gọi tên (đối thoại tự nhiên). Câu KHÁC vẫn cần wake word
-            # nên không nới lỏng an toàn chung.
-            # Mốc BẮT ĐẦU nói, không phải lúc nhận dạng xong: một câu dài (hoặc STT
-            # chậm) không được ăn mất cửa sổ nối lời của chính nó.
-            onset = voice_io[0].speech_started_at if voice_io else None
-            follow_up = in_follow_up_window(answered_at, onset or time.monotonic(),
-                                            follow_up_s)
-
-            # Ba đường được miễn từ khoá: chế độ làm việc, câu 'có/không' đang chờ xác
-            # nhận, và cửa sổ nối lời ngay sau câu trả lời trước.
-            if gate_wake and not work_mode and not awaiting_confirm and not follow_up:
-                matched, remainder = match_wake_word(raw, wake_words)
-                if not matched:
-                    print(f"(bỏ qua — không có từ khoá kích hoạt): {raw}")
-                    bus.emit_debug("voice", "Bỏ qua câu không có từ khoá kích hoạt",
-                                   {"text": raw}, level="DEBUG")
+                if raw is None:                     # EOF/Ctrl+C -> thoát
+                    break
+                if raw is _NO_INPUT or not raw:     # không nghe/gõ được gì -> nghe tiếp
                     bus.emit(state="idle")
                     continue
-                if not remainder:               # chỉ gọi tên, chưa có yêu cầu cụ thể
-                    answered_at = _reply_and_idle(synth, bus, voice_io, "Dạ, bạn cần gì?")
-                    continue
-                text = remainder
-            else:
-                if follow_up and not work_mode:      # follow_up chỉ bật khi có gác cổng
-                    print("↩ (nối lời — trong cửa sổ sau câu trả lời, khỏi gọi tên)")
-                text = raw
+                mark("input_ready")
 
-            # Đến đây lượt nói đã được xác lập là có chủ đích. Recovery được phép hỏi
-            # lại, nhưng không bao giờ có thể tự mở wake-word gate chỉ vì VAD/STT báo
-            # câu bị cắt hoặc confidence thấp.
-            if assessment.retry:
-                bus.emit_debug(
-                    "voice", "Yêu cầu nói lại vì STT không chắc",
-                    {"reason_codes": list(assessment.reason_codes)},
-                    level="WARNING")
-                answered_at = _reply_and_idle(
-                    synth, bus, voice_io, assessment.prompt, "neutral")
-                continue
+                # Tính assessment sớm để giữ nguyên metadata STT/VAD, nhưng CHƯA được phát
+                # lời hỏi lại. Recovery chỉ có quyền lên tiếng sau khi lượt nói đã vượt qua
+                # wake-word gate (hoặc thuộc một ngoại lệ chủ đích như work/follow-up/
+                # confirmation). Nếu không, tiếng nền dài chạm max duration sẽ vô tình tạo
+                # một đường vòng qua wake word.
+                awaiting_confirm = (agent.pending is not None
+                                    and match_confirmation(raw) is not None)
+                assessment = assess_voice_utterance(
+                    raw, allow_short_confirmation=awaiting_confirm)
+                if raw.lower() in ("thoát", "exit", "quit"):
+                    break
 
-        # Camera privacy control stays local, including when FAST_COMMANDS is disabled.
-        # It runs only after the same wake-word and STT certainty gates as normal input.
-        camera_off, remaining_request = extract_camera_off_command(text, wake_words)
-        if camera_off:
-            try:
-                camera_reply = turn_off_webcam(camera)
-            except Exception as exc:
-                bus.emit_debug("camera", "Không thể tắt webcam bằng giọng nói", {
-                    "error": type(exc).__name__}, level="ERROR")
-                camera_reply = "Tôi chưa tắt được webcam. Bạn thử lại giúp tôi."
-            answered_at = _reply_and_idle(synth, bus, voice_io, camera_reply, "neutral")
-            if not remaining_request:
-                continue
-            bus.emit_debug("camera", "Đã xử lý vế tắt webcam trong câu ghép", {
-                "has_remaining_request": True})
-            text = remaining_request
+                # SALM-1.1 chỉ nhận phản hồi thuộc check-in đang mở (cùng escape hatch bật
+                # lại DND). Chỉ đưa transcript đủ chắc vào matcher vì handler có thể commit
+                # state; câu không chắc sẽ fail-closed và tiếp tục qua cổng chủ đích bên dưới.
+                # unrelated/fail-closed trả None nên câu gốc vẫn đi Agent pipeline.
+                if salm_care_response is not None and not assessment.retry:
+                    care_reply = salm_care_response(raw)
+                    if care_reply:
+                        answered_at = _reply_and_idle(
+                            synth, bus, voice_io, care_reply, "happy")
+                        continue
 
-        # 1b) CHUYỂN CHẾ ĐỘ nghe (chỉ khi wake word đang được dùng): "chế độ làm việc"
-        # tắt wake word để ra lệnh trực tiếp; "chế độ bình thường" bật lại.
-        if gate_wake:
-            mode = match_mode_command(text)
-            if mode is not None:
-                work_mode = (mode == "work")
-                if intervention_gate is not None:
-                    intervention_gate.set_work_mode(work_mode)
-                msg = ("Đã bật chế độ làm việc. Bạn ra lệnh trực tiếp, không cần gọi tên tôi nữa."
-                       if work_mode else
-                       "Đã trở lại chế độ bình thường. Hãy gọi tên tôi trước mỗi yêu cầu.")
-                answered_at = _reply_and_idle(synth, bus, voice_io, msg)
-                continue
+                # Đang CHỜ xác nhận một hành động khó hoàn tác + câu là 'có'/'không' -> nhận
+                # trực tiếp, không cần gọi tên (đối thoại tự nhiên). Câu KHÁC vẫn cần wake word
+                # nên không nới lỏng an toàn chung.
+                # Mốc BẮT ĐẦU nói, không phải lúc nhận dạng xong: một câu dài (hoặc STT
+                # chậm) không được ăn mất cửa sổ nối lời của chính nó.
+                onset = voice_io[0].speech_started_at if voice_io else None
+                follow_up = in_follow_up_window(answered_at, onset or time.monotonic(),
+                                                follow_up_s)
 
-        # SALM-2 chỉ nhận lệnh chỉnh phong cách SAU wake-word gate. Ngoại lệ duy nhất
-        # là response window của check-in, đã được runtime xử lý ở try_care_response.
-        if salm_style_command is not None:
-            style_reply = salm_style_command(text)
-            if style_reply:
-                answered_at = _reply_and_idle(
-                    synth, bus, voice_io, style_reply, "happy")
-                continue
-
-        # Late-night Care là policy tường minh, cùng đi qua wake-word gate như các lệnh
-        # SALM khác. Matcher hẹp để câu kể "hôm nay làm việc khuya" vẫn đến Agent.
-        if salm_late_night_command is not None:
-            late_reply = salm_late_night_command(text)
-            if late_reply:
-                answered_at = _reply_and_idle(
-                    synth, bus, voice_io, late_reply, "happy")
-                continue
-
-        # 1c) CHỈNH TÍNH CÁCH bằng lời (học tường minh): "vui tính hơn", "nghiêm túc hơn",
-        # "reset tính cách". Áp thẳng lên núm (có biên) + cập nhật baseline tâm trạng.
-        if agent.persona is not None:
-            pcmd = match_persona_command(text)
-            if pcmd is not None:
-                if pcmd.get("reset"):
-                    agent.persona.reset_traits()
+                # Ba đường được miễn từ khoá: chế độ làm việc, câu 'có/không' đang chờ xác
+                # nhận, và cửa sổ nối lời ngay sau câu trả lời trước.
+                if gate_wake and not work_mode and not awaiting_confirm and not follow_up:
+                    matched, remainder = match_wake_word(raw, wake_words)
+                    if not matched:
+                        print(f"(bỏ qua — không có từ khoá kích hoạt): {raw}")
+                        bus.emit_debug("voice", "Bỏ qua câu không có từ khoá kích hoạt",
+                                       {"event_code": "wake_word_missing"}, level="DEBUG")
+                        bus.emit(state="idle")
+                        continue
+                    if not remainder:               # chỉ gọi tên, chưa có yêu cầu cụ thể
+                        answered_at = _reply_and_idle(synth, bus, voice_io, "Dạ, bạn cần gì?")
+                        continue
+                    text = remainder
                 else:
-                    agent.persona.adjust(pcmd["trait"], pcmd["delta"])
-                if agent.mood is not None:
-                    agent.mood.set_baseline(agent.persona.baseline_valence(),
-                                            agent.persona.baseline_arousal())
-                answered_at = _reply_and_idle(synth, bus, voice_io, pcmd["say"])
-                continue
+                    if follow_up and not work_mode:      # follow_up chỉ bật khi có gác cổng
+                        print("↩ (nối lời — trong cửa sổ sau câu trả lời, khỏi gọi tên)")
+                    text = raw
 
-        # 1d) CHẠY ROUTINE bằng lời: "chạy routine X" -> lặp từng bước qua _dispatch.
-        if routines is not None:
-            rname = match_routine_command(text)
-            if rname is not None:
-                if not controls.get("feature.task", True):
-                    answered_at = _reply_and_idle(synth, bus, voice_io, "Routine đang tắt trong bảng điều khiển.")
+                # Đến đây lượt nói đã được xác lập là có chủ đích. Recovery được phép hỏi
+                # lại, nhưng không bao giờ có thể tự mở wake-word gate chỉ vì VAD/STT báo
+                # câu bị cắt hoặc confidence thấp.
+                if assessment.retry:
+                    annotate(channel="voice", outcome="fallback")
+                    bus.emit_debug(
+                        "voice", "Yêu cầu nói lại vì STT không chắc",
+                        {"event_code": "repeat_required", "reason_codes": list(assessment.reason_codes)},
+                        level="WARNING")
+                    answered_at = _reply_and_idle(
+                        synth, bus, voice_io, assessment.prompt, "neutral")
                     continue
-                _run_routine(agent, routines, rname, bus, synth, voice_io, fast_match)
-                answered_at = time.monotonic()
-                bus.emit(state="idle")
-                continue
 
-        # 2) NGHĨ — qua _dispatch (fast-path giao diện/cuộn/chụp, hoặc agent)
-        response, emotion = _dispatch(agent, text, bus, fast_match)
+            # Camera privacy control stays local, including when FAST_COMMANDS is disabled.
+            # It runs only after the same wake-word and STT certainty gates as normal input.
+            camera_off, remaining_request = extract_camera_off_command(text, wake_words)
+            if camera_off:
+                try:
+                    camera_reply = turn_off_webcam(camera)
+                except Exception as exc:
+                    bus.emit_debug("camera", "Không thể tắt webcam bằng giọng nói", {
+                        "error": type(exc).__name__}, level="ERROR")
+                    camera_reply = "Tôi chưa tắt được webcam. Bạn thử lại giúp tôi."
+                answered_at = _reply_and_idle(synth, bus, voice_io, camera_reply, "neutral")
+                if not remaining_request:
+                    continue
+                bus.emit_debug("camera", "Đã xử lý vế tắt webcam trong câu ghép", {
+                    "has_remaining_request": True})
+                text = remaining_request
 
-        # 3) NÓI — có barge-in (vừa nói vừa nghe wake word) hoặc chặn như cũ
-        print(f"Trợ lý: {response}\n")
-        emo = emotion or guess_emotion(response)
-        if bargein:
-            pending = _speak_and_watch(synth, bus, response, emo, voice_io, wake_words)
-        else:
-            _say(synth, bus, response, emo)     # chặn tới khi nói xong
+            # 1b) CHUYỂN CHẾ ĐỘ nghe (chỉ khi wake word đang được dùng): "chế độ làm việc"
+            # tắt wake word để ra lệnh trực tiếp; "chế độ bình thường" bật lại.
+            if gate_wake:
+                mode = match_mode_command(text)
+                if mode is not None:
+                    work_mode = (mode == "work")
+                    if intervention_gate is not None:
+                        intervention_gate.set_work_mode(work_mode)
+                    msg = ("Đã bật chế độ làm việc. Bạn ra lệnh trực tiếp, không cần gọi tên tôi nữa."
+                           if work_mode else
+                           "Đã trở lại chế độ bình thường. Hãy gọi tên tôi trước mỗi yêu cầu.")
+                    answered_at = _reply_and_idle(synth, bus, voice_io, msg)
+                    continue
 
-        # Chỉ sau khi nói/ngắt xong mới dọn mic + mở lại vòng nghe (chống vọng âm).
-        if voice_io:
-            _flush_mic_after_speaking(voice_io[0])
-        answered_at = time.monotonic()      # mở cửa sổ nối lời cho lượt kế
-        bus.emit(state="idle")
+            # SALM-2 chỉ nhận lệnh chỉnh phong cách SAU wake-word gate. Ngoại lệ duy nhất
+            # là response window của check-in, đã được runtime xử lý ở try_care_response.
+            if salm_style_command is not None:
+                style_reply = salm_style_command(text)
+                if style_reply:
+                    answered_at = _reply_and_idle(
+                        synth, bus, voice_io, style_reply, "happy")
+                    continue
+
+            # Late-night Care là policy tường minh, cùng đi qua wake-word gate như các lệnh
+            # SALM khác. Matcher hẹp để câu kể "hôm nay làm việc khuya" vẫn đến Agent.
+            if salm_late_night_command is not None:
+                late_reply = salm_late_night_command(text)
+                if late_reply:
+                    annotate(channel="fast_local")
+                    answered_at = _reply_and_idle(
+                        synth, bus, voice_io, late_reply, "happy")
+                    continue
+
+            # 1c) CHỈNH TÍNH CÁCH bằng lời (học tường minh): "vui tính hơn", "nghiêm túc hơn",
+            # "reset tính cách". Áp thẳng lên núm (có biên) + cập nhật baseline tâm trạng.
+            if agent.persona is not None:
+                pcmd = match_persona_command(text)
+                if pcmd is not None:
+                    if pcmd.get("reset"):
+                        agent.persona.reset_traits()
+                    else:
+                        agent.persona.adjust(pcmd["trait"], pcmd["delta"])
+                    if agent.mood is not None:
+                        agent.mood.set_baseline(agent.persona.baseline_valence(),
+                                                agent.persona.baseline_arousal())
+                    answered_at = _reply_and_idle(synth, bus, voice_io, pcmd["say"])
+                    continue
+
+            # 1d) CHẠY ROUTINE bằng lời: "chạy routine X" -> lặp từng bước qua _dispatch.
+            if routines is not None:
+                rname = match_routine_command(text)
+                if rname is not None:
+                    if not controls.get("feature.task", True):
+                        answered_at = _reply_and_idle(synth, bus, voice_io, "Routine đang tắt trong bảng điều khiển.")
+                        continue
+                    _run_routine(agent, routines, rname, bus, synth, voice_io, fast_match)
+                    answered_at = time.monotonic()
+                    bus.emit(state="idle")
+                    continue
+
+            # 2) NGHĨ — qua _dispatch (fast-path giao diện/cuộn/chụp, hoặc agent)
+            response, emotion = _dispatch(agent, text, bus, fast_match)
+
+            # 3) NÓI — có barge-in (vừa nói vừa nghe wake word) hoặc chặn như cũ
+            print(f"Trợ lý: {response}\n")
+            emo = emotion or guess_emotion(response)
+            if bargein:
+                pending = _speak_and_watch(synth, bus, response, emo, voice_io, wake_words)
+            else:
+                _say(synth, bus, response, emo)     # chặn tới khi nói xong
+
+            # Chỉ sau khi nói/ngắt xong mới dọn mic + mở lại vòng nghe (chống vọng âm).
+            if voice_io:
+                _flush_mic_after_speaking(voice_io[0])
+            answered_at = time.monotonic()      # mở cửa sổ nối lời cho lượt kế
+            bus.emit(state="idle")
 
     if voice_io:
         voice_io[0].close()
@@ -705,6 +733,7 @@ def _ui_ack(ui):
     return "Đã cập nhật giao diện."
 
 
+@measured("tool", "fast_handler")
 def _run_fast(agent, fast):
     """Chạy thẳng một tool (fast-path), không qua LLM. Trả câu kết quả để nói.
 
@@ -717,11 +746,14 @@ def _run_fast(agent, fast):
     try:
         out = str(agent.registry.run(tool_name, tool_args))
     except NeedsConfirmation:
+        annotate(outcome="awaiting_confirmation")
         logger.info("Fast-path %s cần xác nhận -> nhường cho đường LLM.", tool_name)
         return None
     except ActionRefused as exc:
+        annotate(outcome="refused")
         return exc.ly_do
     except Exception as e:
+        annotate(outcome="failed", error_type=type(e).__name__)
         logger.error("Lỗi chạy nhanh %s: %s", tool_name, e)
         return "Xin lỗi, có lỗi khi thực hiện."
     print(f"⚡ (chạy nhanh, không qua LLM) {tool_name} → {out}")
@@ -1097,7 +1129,7 @@ def main():
 
             salm_storage = SalmStorage(
                 config.SALM_DATA_DIR, ttl_days=14, daily_ttl_days=90,
-                database=database)
+                database=database, recording=False)
             salm = SalmRuntime(
                 data_dir=config.SALM_DATA_DIR,
                 storage=salm_storage,
@@ -1146,11 +1178,10 @@ def main():
             logger.warning("MCP không kết nối được — bỏ qua (kiểm tra MCP_COMMAND/server/OAuth).")
             mcp = None
 
-    habits = HabitLog(database=database) if config.HABITS_ENABLED else None
+    habits = None  # R0.5: inferred observations await R4 consent/retention.
     # Nhật ký kết quả: chỉ QUAN SÁT, không đổi hành vi lượt nào. Phải chạy thật một thời
     # gian mới có mốc nền để về sau biết trợ lý có khá lên không.
-    outcomes = OutcomeLog(config.OUTCOMES_FILE, config.OUTCOMES_MAX_BYTES,
-                          database=database)
+    outcomes = None  # R0.5: do not import/append legacy transcript-bearing outcomes.
     tasks = TaskStore(config.TASKS_PATH or None)
     routines = RoutineStore(config.ROUTINES_PATH or None)
     contacts = ContactStore(config.CONTACTS_PATH or None)
@@ -1240,15 +1271,13 @@ def main():
         system_prompt = prompts.merged(report)
     logger.info("🧭 bề mặt tool: %s", che_do)
 
-    agent = Agent(llm=llm,
+    agent = _build_release_agent(llm=llm,
                   registry=registry,
                   **({"system": system_prompt} if system_prompt else {}),
                   max_history_turns=config.MAX_HISTORY_TURNS,
-                  memory_path=config.MEMORY_PATH or None, surface=surface, profile=profile,
-                  auto_extract=config.LTM_AUTO_EXTRACT,
+                  surface=surface, profile=profile,
                   consolidate_every=config.LTM_CONSOLIDATE_EVERY,
-                  persona=persona, mood=mood, habits=habits, outcomes=outcomes,
-                  auto_tune=config.PERSONA_AUTO_TUNE,
+                  persona=persona, mood=mood,
                   skip_respond_for_speakable=config.SKIP_RESPOND_FOR_SPEAKABLE,
                   # Hành động chờ xác nhận mà có nội dung đáng NHÌN (thân thư email) ->
                   # trưng lên panel thay vì bắt tai nghe TTS đọc cả lá thư.

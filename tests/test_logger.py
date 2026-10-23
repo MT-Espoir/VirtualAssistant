@@ -85,7 +85,7 @@ def test_file_ghi_kem_NGAY_khong_chi_gio(monkeypatch, tmp_path):
     finally:
         h.close()
     dong = duong_dan.read_text(encoding="utf-8")
-    assert "xin chào" in dong
+    assert "xin chào" not in dong and 'diagnostic event' in dong
     assert dong[:4].isdigit()                 # bắt đầu bằng năm, vd "2026-08-28 21:26:22"
 
 

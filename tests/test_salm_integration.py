@@ -10,10 +10,12 @@ def test_app_id_normalization_never_keeps_path():
     assert normalize_app_id("Code - Insiders.exe") == "code"
 
 
-def test_browser_bridge_accepts_only_boolean_meeting_state():
+def test_browser_bridge_ignores_unsolicited_meeting_state_without_data_permission():
     bridge = BrowserBridge()
-    bridge._on_message(json.dumps({"type": "MEETING_STATE", "meeting_tab_open": True}))
-    assert bridge.meeting_open is True
+    trusted_socket = object()
+    bridge._client = trusted_socket
+    bridge._on_message(json.dumps({"type": "MEETING_STATE", "meeting_tab_open": True}), trusted_socket)
+    assert bridge.meeting_open is None
     bridge._on_message(json.dumps({"type": "MEETING_STATE", "meeting_tab_open": "yes",
-                                   "url": "https://meet.google.com/private"}))
-    assert bridge.meeting_open is True
+                                   "url": "https://meet.google.com/private"}), trusted_socket)
+    assert bridge.meeting_open is None

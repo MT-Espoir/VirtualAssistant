@@ -462,7 +462,7 @@
   },
   {
     "name": "browser_list_tabs",
-    "description": "Liệt kê các tab Chrome đang mở (tiêu đề + trang). Dùng khi người dùng hỏi 'đang mở tab gì', hoặc để biết tab nào trước khi đóng.",
+    "description": "Liệt kê tabId và domain của các tab Chrome đang mở. Dùng khi người dùng hỏi 'đang mở tab gì', hoặc để biết tab nào trước khi đóng.",
     "input_schema": {
       "type": "object",
       "properties": {}
@@ -470,7 +470,7 @@
   },
   {
     "name": "browser_close_tab",
-    "description": "Đóng (các) tab Chrome có tiêu đề hoặc URL chứa 'keyword'. Trợ lý sẽ tự hỏi xác nhận và đọc danh sách tab trước khi đóng.",
+    "description": "Đóng (các) tab Chrome có tiêu đề hoặc URL chứa 'keyword'. Trợ lý sẽ tự hỏi xác nhận bằng tabId và domain, chỉ đóng tập tab đã duyệt.",
     "input_schema": {
       "type": "object",
       "properties": {

@@ -17,16 +17,44 @@ lại của app vẫn chạy bình thường.
 """
 
 import asyncio
+import hmac
 import json
 import threading
 import uuid
 
 from utils.logger import get_logger
+from utils.telemetry import annotate, mark, measured, trace_headers
 
 logger = get_logger(__name__)
 
 KEEPALIVE_INTERVAL_S = 20      # < 30s để giữ service worker MV3 sống
 _HANDSHAKE_TIMEOUT_S = 5
+PROTOCOL_VERSION = 2
+_DATA_ACTIONS = {"PING", "GET_TABS", "CONTROL_MEDIA", "GET_MEDIA_STATE",
+                 "CLOSE_TAB_BY_KEYWORD", "OPEN_OR_REUSE_URL"}
+_HELLO_FIELDS = {"type", "token", "protocolVersion", "profileId", "sessionId"}
+_MAX_HELLO_BYTES = 4096
+_MAX_ACCEPTED_SESSIONS = 4096
+
+
+def _anonymous_id(value):
+    """Canonical random UUID, never an account name, path or browser fingerprint."""
+    if not isinstance(value, str):
+        return False
+    try:
+        parsed = uuid.UUID(value)
+        return parsed.version == 4 and str(parsed) == value
+    except (ValueError, AttributeError):
+        return False
+
+
+def _unique_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate_json_key")
+        result[key] = value
+    return result
 
 
 def is_origin_allowed(origin):
@@ -53,7 +81,14 @@ class BrowserBridge:
         self._thread = None
         self._server = None
         self._client = None            # kết nối extension hiện tại
+        self._connection_id = None      # opaque local session; not a Chrome profile ID
         self._pending = {}             # request_id -> asyncio.Future
+        self._pending_sources = {}     # every request is bound to its socket
+        self._selected_profile_id = None  # pinned for this bridge process, even offline
+        self._profile_id = None
+        self._session_id = None
+        self._seen_session_ids = set()
+        self._last_rejection = None    # reason code only, never HELLO/token content
         self._started = threading.Event()
         # None = extension chưa kết nối/chưa gửi snapshot; bool = duy nhất dữ liệu Meet
         # được phép rời extension. Không URL/title/tab id.
@@ -62,6 +97,24 @@ class BrowserBridge:
     @property
     def connected(self) -> bool:
         return self._client is not None
+
+    @property
+    def connection_id(self):
+        return self._connection_id if self.connected else None
+
+    @property
+    def selected_profile_id(self):
+        return self._selected_profile_id
+
+    @property
+    def profile_id(self):
+        return self._profile_id if self.connected else None
+
+    @property
+    def connection_status(self):
+        return {"state": "connected" if self.connected else
+                "awaiting_selected_profile" if self._selected_profile_id else "waiting",
+                "last_rejection": self._last_rejection}
 
     @property
     def meeting_open(self):
@@ -116,6 +169,11 @@ class BrowserBridge:
             logger.error("Cầu nối Chrome dừng do lỗi: %s", e)
             self._started.set()
         finally:
+            pending = asyncio.all_tasks(self.loop)
+            for task in pending:
+                task.cancel()
+            if pending:
+                self.loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
             self.loop.close()
 
     async def _start_server(self):
@@ -140,52 +198,104 @@ class BrowserBridge:
     async def _handler(self, ws):
         """Một kết nối extension: kiểm Origin -> bắt tay token -> vòng nhận message."""
         if not self._origin_ok(ws):
-            logger.warning("Từ chối kết nối WS: Origin không hợp lệ (chỉ nhận extension).")
-            await ws.close()
+            await self._reject(ws, "origin_not_allowed")
             return
-        if not await self._handshake(ws):
+        identity = await self._handshake(ws)
+        if identity is None:
             return
+        # No await between arbitration and installing the owner. Concurrent HELLOs
+        # cannot both win; a later authenticated client never replaces the owner.
+        if self._client is not None:
+            await self._reject(ws, "client_already_active")
+            return
+        if self._selected_profile_id is not None and identity["profileId"] != self._selected_profile_id:
+            await self._reject(ws, "profile_not_selected")
+            return
+        if identity["sessionId"] in self._seen_session_ids:
+            await self._reject(ws, "session_replayed")
+            return
+        if len(self._seen_session_ids) >= _MAX_ACCEPTED_SESSIONS:
+            await self._reject(ws, "session_history_full")
+            return
+        self._selected_profile_id = identity["profileId"]
+        self._seen_session_ids.add(identity["sessionId"])
+        self._profile_id, self._session_id = identity["profileId"], identity["sessionId"]
+        self._connection_id = uuid.uuid4().hex
+        self._meeting_open = None
         self._client = ws
         logger.info("Chrome Extension đã kết nối.")
         try:
             async for message in ws:
-                self._on_message(message)
+                self._on_message(message, ws)
         except Exception as e:
             logger.info("Extension ngắt kết nối: %s", e)
         finally:
             if self._client is ws:
                 self._client = None
+                self._connection_id = None
+                self._profile_id = self._session_id = None
                 self._meeting_open = None
+                for rid, source in list(self._pending_sources.items()):
+                    future = self._pending.get(rid)
+                    if source is ws and future is not None and not future.done():
+                        future.set_result({"type": "ERROR", "request_id": rid,
+                                           "reason": "connection_lost", "outcome": "unknown",
+                                           "message": "Kết nối Chrome ngắt trong khi xử lý; chưa xác nhận kết quả. Không tự gửi lại."})
+
+    async def _reject(self, ws, reason):
+        self._last_rejection = reason
+        logger.warning("Từ chối kết nối extension: %s", reason)
+        try:
+            await ws.close()
+        except Exception:
+            pass
 
     async def _handshake(self, ws):
-        """Chờ HELLO {token}. Sai token -> đóng. Trả True nếu hợp lệ."""
+        """Strict versioned HELLO; return only anonymous identity after authentication."""
         try:
             raw = await asyncio.wait_for(ws.recv(), timeout=_HANDSHAKE_TIMEOUT_S)
-            hello = json.loads(raw)
+            if not isinstance(raw, str) or len(raw.encode("utf-8")) > _MAX_HELLO_BYTES:
+                raise ValueError("invalid_hello_frame")
+            hello = json.loads(raw, object_pairs_hook=_unique_object)
         except Exception:
-            logger.warning("Bắt tay extension thất bại (không nhận được HELLO).")
-            await ws.close()
-            return False
-        if self.token and hello.get("token") != self.token:
-            logger.warning("Extension gửi token sai — từ chối kết nối.")
-            await ws.close()
-            return False
-        return True
+            await self._reject(ws, "invalid_hello_frame")
+            return None
+        if (not isinstance(hello, dict) or set(hello) != _HELLO_FIELDS
+                or hello.get("type") != "HELLO"
+                or type(hello.get("protocolVersion")) is not int
+                or hello["protocolVersion"] != PROTOCOL_VERSION
+                or not _anonymous_id(hello.get("profileId")) or not _anonymous_id(hello.get("sessionId"))):
+            await self._reject(ws, "invalid_hello_schema")
+            return None
+        candidate = hello.get("token")
+        authenticated = False
+        if isinstance(self.token, str) and self.token and isinstance(candidate, str):
+            try:
+                authenticated = hmac.compare_digest(candidate.encode("utf-8"), self.token.encode("utf-8"))
+            except UnicodeError:
+                pass
+        if not authenticated:
+            await self._reject(ws, "authentication_failed")
+            return None
+        return {"profileId": hello["profileId"], "sessionId": hello["sessionId"]}
 
-    def _on_message(self, message):
-        """Khớp phản hồi theo request_id -> giải Future đang chờ."""
+    def _on_message(self, message, ws=None):
+        """Only the active owner may publish state or fulfill its own pending request."""
+        if ws is None or ws is not self._client:
+            return
         try:
-            data = json.loads(message)
-        except ValueError:
+            data = json.loads(message, object_pairs_hook=_unique_object)
+        except (ValueError, TypeError):
+            return
+        if not isinstance(data, dict):
             return
         if data.get("type") == "MEETING_STATE":
-            value = data.get("meeting_tab_open")
-            if isinstance(value, bool):
-                self._meeting_open = value
             return
         rid = data.get("request_id")
-        if not rid:
+        if not isinstance(rid, str) or not rid:
             return                              # PONG hoặc thông báo không cần khớp
+        if self._pending_sources.get(rid) is not ws:
+            return
         fut = self._pending.get(rid)
         if fut is not None and not fut.done():
             fut.set_result(data)
@@ -201,37 +311,68 @@ class BrowserBridge:
                     pass
 
     # ------------------------- gửi lệnh (đồng bộ) ------------------------- #
-    def send_command(self, action, timeout=None, **kwargs):
+    @measured("browser_media", "browser_roundtrip")
+    def send_command(self, action, timeout=None, expected_connection=None, **kwargs):
         """Gửi lệnh và CHỜ phản hồi tương ứng (đồng bộ). Trả dict phản hồi, hoặc
         dict {'type':'ERROR','message':...} thân thiện khi chưa kết nối/timeout."""
+        if action not in _DATA_ACTIONS:
+            return {"type": "ERROR", "reason": "data_scope_not_authorized", "outcome": "failed",
+                    "message": "Đường đọc nội dung trang đang tạm khóa. Chưa gửi lệnh."}
         if self.loop is None or not self.connected:
+            annotate(outcome="failed", dependency="unavailable")
             logger.warning("Bridge: không gửi được '%s' — extension chưa kết nối "
                            "(kiểm tra: extension đã bật? token .env == token background.js?).",
                            action)
-            return {"type": "ERROR", "message": "Chrome chưa kết nối (extension chưa bật?)."}
+            reason = "selected_profile_disconnected" if self._selected_profile_id else "no_client"
+            message = ("Profile Chrome đã ghim đang ngắt kết nối; chưa gửi lệnh. Client khác không được tự thay đích."
+                       if self._selected_profile_id else "Chrome chưa kết nối (cần kiểm tra extension/HELLO/token).")
+            return {"type": "ERROR", "reason": reason, "outcome": "failed", "message": message}
 
         timeout = timeout or self.timeout
-        payload = {"action": action, **kwargs}
+        annotate(dependency="available")
+        payload = {"action": action, **kwargs, **trace_headers()}
+        if expected_connection is None:
+            expected_connection = self.connection_id
+        cfut = None
         try:
             cfut = asyncio.run_coroutine_threadsafe(
-                self._send_and_wait(payload, timeout), self.loop)
+                self._send_and_wait(payload, timeout, expected_connection), self.loop)
             resp = cfut.result(timeout + 2)
             if isinstance(resp, dict) and resp.get("type") == "ERROR":
+                annotate(outcome="unknown" if resp.get("outcome") == "unknown" else "failed")
                 logger.warning("Bridge: extension báo lỗi cho '%s': %s",
                                action, resp.get("message"))
             return resp
         except Exception as e:
+            if cfut is not None:
+                cancel = getattr(cfut, "cancel", None)
+                if cancel is not None:
+                    cancel()
+            annotate(outcome="unknown", error_type=type(e).__name__)
             logger.warning("Bridge: lỗi/timeout khi gửi '%s' (extension treo/ngủ?): %s",
-                           action, e)
-            return {"type": "ERROR", "message": f"Lỗi cầu nối: {e}"}
+                           action, type(e).__name__)
+            return {"type": "ERROR", "reason": "transport_error", "outcome": "unknown",
+                    "message": f"Lỗi cầu nối ({type(e).__name__}); chưa xác nhận kết quả. Không tự gửi lại."}
 
-    async def _send_and_wait(self, payload, timeout):
-        rid = uuid.uuid4().hex[:8]
+    async def _send_and_wait(self, payload, timeout, expected_connection=None):
+        if payload.get("action") not in _DATA_ACTIONS:
+            return {"type": "ERROR", "reason": "data_scope_not_authorized",
+                    "message": "Chưa có quyền đọc nội dung trang."}
+        ws = self._client
+        if ws is None or (expected_connection is not None
+                          and expected_connection != self.connection_id):
+            return {"type": "ERROR", "reason": "connection_changed",
+                    "message": "Kết nối Chrome đã đổi. Cần xem lại tab và xác nhận lại."}
+        rid = uuid.uuid4().hex
         payload["request_id"] = rid
         fut = self.loop.create_future()
         self._pending[rid] = fut
+        self._pending_sources[rid] = ws
+        deadline = self.loop.time() + timeout
         try:
-            await self._client.send(json.dumps(payload))
-            return await asyncio.wait_for(fut, timeout)
+            await asyncio.wait_for(ws.send(json.dumps(payload)), timeout)
+            mark("packet_sent")
+            return await asyncio.wait_for(fut, max(0, deadline - self.loop.time()))
         finally:
             self._pending.pop(rid, None)
+            self._pending_sources.pop(rid, None)

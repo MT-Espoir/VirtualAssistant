@@ -7,8 +7,18 @@ import tempfile
 import pygame
 import time
 import queue
+import contextvars
 
 from utils.logger import get_logger
+from utils.telemetry import mark, measured, get_session, annotate
+
+
+class _TracedText(str):
+    """Keep queue items string-compatible while propagating worker context."""
+    def __new__(cls, text):
+        value = str.__new__(cls, text)
+        value.context = contextvars.copy_context()
+        return value
 
 logger = get_logger(__name__)
 
@@ -133,6 +143,8 @@ class SpeechSynthesizer:
             # pyttsx3 chỉnh tốc độ đúng nghĩa (không đổi cao độ) qua 'rate'.
             self.engine.setProperty('rate', int(self.rate * self.speed))
             self.engine.setProperty('volume', self.volume)
+            if get_session() and callable(getattr(self.engine, "connect", None)):
+                self.engine.connect("started-utterance", lambda _name: mark("tts_driver_started"))
             
             # Try to set a voice based on the language
             voices = self.engine.getProperty('voices')
@@ -197,11 +209,11 @@ class SpeechSynthesizer:
                     text = self.voice_queue.get(timeout=0.5)
                     self.is_speaking = True
                     
-                    if self.engine_type == "pyttsx3":
-                        self.engine.say(text)
-                        self.engine.runAndWait()
-                    elif self._phat_qua_file:
-                        self._speak_with_gtts(text)
+                    context = getattr(text, "context", None)
+                    if context is None:
+                        self._speak_queued_text(text)
+                    else:
+                        context.run(self._speak_queued_text, str(text))
                     
                     self.is_speaking = False
                     self.voice_queue.task_done()
@@ -214,6 +226,15 @@ class SpeechSynthesizer:
             else:
                 time.sleep(0.1)  # Sleep to reduce CPU usage when stopped
                 
+    @measured("voice", "tts_complete")
+    def _speak_queued_text(self, text):
+        annotate(backend=self.engine_type)
+        if self.engine_type == "pyttsx3":
+            self.engine.say(text)
+            self.engine.runAndWait()
+        elif self._phat_qua_file:
+            self._speak_with_gtts(text)
+
     def _play_processed(self, mp3_path):
         """Phát file có xử lý mẫu: đổi tốc độ (speed) và/hoặc giọng robot.
 
@@ -236,6 +257,7 @@ class SpeechSynthesizer:
 
             out = pygame.sndarray.make_sound(np.ascontiguousarray(samples))
             out.play()
+            mark("playback_requested")
             while pygame.mixer.get_busy():
                 time.sleep(0.1)
             return True
@@ -280,8 +302,8 @@ class SpeechSynthesizer:
     def _giong_rieng_synth(self, text):
         """Tổng hợp bằng GIỌNG RIÊNG. Trả đường dẫn wav, None nếu không dùng được.
 
-        Trả None là đường lui hợp lệ: người gọi tự chuyển sang gtts. Giọng riêng hỏng chỉ
-        nên làm trợ lý đổi giọng, không được làm nó câm.
+        Khi engine local không dùng được, trả None. R0.5 không tự gửi text lên gTTS;
+        caller vẫn có thể hiển thị phản hồi văn bản.
         """
         if self._giong_rieng is None:
             return None
@@ -295,9 +317,14 @@ class SpeechSynthesizer:
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
             path = f.name
-        if self._giong_rieng.synth_wav(text, path):
-            return path
-        self._discard(path)
+        ok = False
+        try:
+            ok = self._giong_rieng.synth_wav(text, path)
+            if ok:
+                return path
+        finally:
+            if not ok:
+                self._discard(path)
         self._giong_rieng = None          # hỏng THẬT một lần thì thôi, khỏi thử lại mỗi câu
         return None
 
@@ -305,8 +332,14 @@ class SpeechSynthesizer:
         """Tổng hợp MỘT đoạn thành file mp3 tạm. Trả đường dẫn, hoặc None nếu lỗi cả 2 lần."""
         rieng = self._giong_rieng_synth(text)
         if rieng is not None:
+            annotate(backend=self.engine_type)
             return rieng
 
+        if self.engine_type in {"vieneu", "piper"}:
+            annotate(outcome="failed", dependency="unavailable")
+            return None  # Local engine failure never grants permission to send text to cloud.
+
+        annotate(backend="gtts")
         for attempt in (1, 2):
             if self._speak_gen != gen:            # đã bị cắt lời -> khỏi tốn thêm request
                 return None
@@ -330,6 +363,7 @@ class SpeechSynthesizer:
             if not (needs_processing and self._play_processed(path)):
                 pygame.mixer.music.load(path)
                 pygame.mixer.music.play()
+                mark("playback_requested")
                 while pygame.mixer.music.get_busy():
                     if self._speak_gen != gen:            # barge-in giữa lúc phát
                         pygame.mixer.music.stop()
@@ -354,10 +388,11 @@ class SpeechSynthesizer:
             text (str): Text to be spoken
         """
         if text and not self.stop_requested:
-            self.voice_queue.put(text)
+            self.voice_queue.put(_TracedText(text) if get_session() else text)
             return True
         return False
     
+    @measured("voice", "tts_complete")
     def speak_sync(self, text):
         """
         Speak the given text synchronously (blocking until speech finishes)
@@ -365,6 +400,7 @@ class SpeechSynthesizer:
         Args:
             text (str): Text to be spoken
         """
+        annotate(backend=self.engine_type)
         if not text or self.stop_requested:
             return False
             

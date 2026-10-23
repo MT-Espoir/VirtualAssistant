@@ -221,8 +221,9 @@ def _log_cache_usage(model, usage):
     if not tong:
         return
     cache = usage.get("cachedContentTokenCount", 0)
-    logger.info("💾 %s: %d token vào, %d trúng cache (%.0f%%)",
-                model, tong, cache, 100 * cache / tong)
+    logger.info("llm cache usage", extra={"diagnostic": {
+        "event_code": "llm_cache_usage", "model": model, "prompt_tokens": tong,
+        "cached_tokens": cache, "cache_hit_percent": round(100 * cache / tong)}})
 
 
 class RotatingGeminiClient:

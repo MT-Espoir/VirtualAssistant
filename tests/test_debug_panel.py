@@ -24,8 +24,7 @@ def test_debug_event_che_secret_va_giu_thu_tu():
     event = bus.drain_debug()[0]
     assert bus.drain() == []       # debug không làm nhiễu queue chức năng của avatar
     assert event["category"] == "tool"
-    assert event["data"]["api_key"] == "<đã che>"
-    assert event["data"]["nested"] == {"access_token": "<đã che>", "ok": 7}
+    assert event['data'] == {}  # Drop unknown keys, not just secret-labelled values.
 
 
 def test_phan_loai_tab_va_format_event():
@@ -57,7 +56,7 @@ def test_llm_raw_response_shows_blank_lines_as_literal_escape_before_cleanup():
     reply = Agent(_LLM(), registry).run("trả lời thử")
 
     event = next(item for item in seen if item["category"] == "llm")
-    assert "\\n\\n" in event["message"]
+    assert event['message'] == 'llm: llm_turn'
     assert "Câu một.\n\nCâu hai." not in event["message"]
     assert event["data"]["line_breaks"] == 3
     assert event["data"]["blank_line_boundaries"] == 1
@@ -84,10 +83,11 @@ def test_say_logs_exact_tts_text_and_total_duration():
     events = bus.drain_debug()
 
     assert synth.spoken == ["Câu một.\nCâu hai."]
-    assert "Câu một.\\nCâu hai." in events[0]["message"]
+    assert 'Câu một' not in str(events)
+    assert events[0]['data']['event_code'] == 'tts_input'
     assert events[0]["data"]["line_breaks"] == 1
     assert events[0]["data"]["blank_line_boundaries"] == 0
-    assert events[-1]["message"] == "TTS hoàn tất"
+    assert 'Câu một' not in events[-1]['message']
     assert events[-1]["data"]["duration_ms"] >= 0
 
 
@@ -101,8 +101,8 @@ def test_registry_phat_tool_start_va_result():
         seen.append((category, message, data, level)))
 
     assert registry.run("cong", {"a": 2, "b": 3}) == 5
-    assert [item[1] for item in seen] == ["Bắt đầu cong", "Hoàn tất cong"]
-    assert seen[-1][2]["result"] == "5"
+    assert [item[2]['event_code'] for item in seen] == ['started', 'returned']
+    assert 'result' not in seen[-1][2]
     assert seen[-1][3] == "SUCCESS"
 
 
@@ -119,9 +119,9 @@ def test_registry_phat_tool_error_roi_nem_lai():
         seen.append((message, data, level)))
     with pytest.raises(ValueError, match="hỏng"):
         registry.run("fail", {})
-    assert seen[-1][0] == "Tool lỗi: fail"
+    assert seen[-1][0] == "tool: failed"
     assert seen[-1][2] == "ERROR"
-    assert "ValueError" in seen[-1][1]["error"]
+    assert seen[-1][1]['error_type'] == 'ValueError' and 'error' not in seen[-1][1]
 
 
 def test_salm_chi_phat_khi_trang_thai_nhan_dien_thay_doi():

@@ -235,11 +235,17 @@ def test_LUON_chan_dong_tab_du_dat_confirm():
     """HỒI QUY: tool này từng tự làm hai pha bằng `confirm`, luật nằm trong MÔ TẢ TOOL —
     đúng thứ injection ghi đè được."""
     br = MagicMock()
-    br.send_command.return_value = {"type": "STATUS", "matched": [], "dryRun": True}
+    br.connection_id = 'red-team-fixture-session'
+    br.send_command.return_value = {
+        "type": "STATUS", "action": "CLOSE_TAB_BY_KEYWORD", "dryRun": True,
+        "previewToken": "red-team-fixture-token", "tabIds": [11],
+        "targets": [{"id": 11, "domain": "example.invalid"}],
+    }
     reg = registry_with(actions=_actions(), browser=br)
     assert "confirm" not in reg.get("browser_close_tab").input_schema["properties"]
-    with pytest.raises(NeedsConfirmation):
+    with pytest.raises(NeedsConfirmation) as blocked:
         reg.run("browser_close_tab", {"keyword": "ngân hàng", "confirm": True})
+    assert set(blocked.value.arguments) == {'keyword', '_close_approval'}
     assert all(g.kwargs.get("dryRun") is True for g in br.send_command.call_args_list)
 
 

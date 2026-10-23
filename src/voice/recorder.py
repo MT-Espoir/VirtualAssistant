@@ -6,6 +6,7 @@ from collections import deque
 from dataclasses import asdict, dataclass
 
 from utils.logger import get_logger
+from utils.telemetry import measured
 
 logger = get_logger(__name__)
 
@@ -55,7 +56,7 @@ class Recorder:
                  speech_threshold_ratio=1.2, calibration_duration=1.0,
                  recalibration_interval=60,  # Thêm tham số recalibration_interval - giây
                  silence_duration=1.5, max_utterance_s=15.0,
-                 speech_start_timeout_s=15.0, pre_roll_s=0.35):
+                 speech_start_timeout_s=15.0, pre_roll_s=0.35, audio_source=None):
         """
         Initialize recorder with audio settings
         
@@ -83,7 +84,9 @@ class Recorder:
         # không có tiếng nào. Dùng monotonic chứ không phải time.time() vì đây là để đo
         # KHOẢNG CÁCH giữa hai sự kiện, mà đồng hồ hệ thống có thể bị chỉnh giữa chừng.
         self.speech_started_at = None
-        self.audio = pyaudio.PyAudio()
+        # A paced PCM source can exercise the real VAD in a controlled baseline.
+        # Production continues to use the physical microphone by default.
+        self.audio = audio_source if audio_source is not None else pyaudio.PyAudio()
         
         # Silence detection parameters
         self.speech_threshold_ratio = speech_threshold_ratio  # Multiplier for noise threshold
@@ -211,6 +214,7 @@ class Recorder:
             self.stream = None
             self.is_recording = False
 
+    @measured("voice", "capture")
     def listen_once(self, max_chunks=None, silence_limit=None, max_seconds=None,
                     start_timeout_s=None):
         """Ghi một lượt nói: chờ có tiếng, dừng khi im lặng đủ lâu.
@@ -383,7 +387,8 @@ class Recorder:
             return None
             
         # Return the combined audio frames data
-        return b''.join(self.frames)
+        frames, self.frames = self.frames, []
+        return b''.join(frames)
             
     def reset(self):
         """Xoá buffer frame, chuẩn bị cho lượt nghe kế tiếp.

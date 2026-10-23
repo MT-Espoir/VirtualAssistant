@@ -81,6 +81,10 @@ def test_specs_khop_anh_chup_truoc_refactor():
     byte với bản gốc thay vì "chạy thử thấy ổn". Đổi tức là đã lỡ tay đụng vào hành vi —
     hoặc thứ tự nạp feature vừa xê dịch.
 
+    CẬP NHẬT R0.3 (2026-10-13): chỉ mô tả `browser_close_tab` đổi để phản ánh câu hỏi
+    tabId/domain và tập tab đã duyệt. Kiểm diff trước cập nhật: số tool, thứ tự và schema
+    giữ nguyên; không thêm capability/ticket hoặc quyền xác nhận vào schema của model.
+
     CHỤP LẠI LẦN NĂM (2026-09-19): Phase 2 của SQLite memory thêm hai thao tác kiểm
     soát dữ liệu ở cuối feature `profile`: manage_user_memory với hai action export và
     delete_all. Tool mới chèn ngay sau các tool profile hiện hữu; thứ tự toàn registry

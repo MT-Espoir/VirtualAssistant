@@ -149,7 +149,9 @@ def test_vuot_tran_van_nap_nhung_co_canh_bao(caplog):
     report = load_features(reg, FeatureContext(), [feat])
 
     assert reg.has("tool_dai")                       # vẫn nạp
-    assert "vượt trần specs" in caplog.text
+    import logging
+    assert any(record.levelno >= logging.WARNING for record in caplog.records)
+    assert 'diagnostic event' in caplog.text
 
 
 def test_ngan_sach_tong_la_mot_con_so_duong():

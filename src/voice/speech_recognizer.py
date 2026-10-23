@@ -10,6 +10,7 @@ from voice.corrections import correct as correct_transcript
 from voice.stt_utils import whisper_lang_code
 from utils.config import config
 from utils.logger import get_logger
+from utils.telemetry import annotate, measured
 
 logger = get_logger(__name__)
 
@@ -76,6 +77,7 @@ class SpeechRecognizer:
         except Exception as e:
             logger.warning("Không tải được faster-whisper (%s); sẽ thử openai-whisper.", e)
 
+    @measured("voice", "stt")
     def recognize_speech_from_data(self, audio_data):
         """Nhận dạng từ bytes âm thanh của recorder.
         Trả về văn bản (đã qua lớp sửa lỗi) nếu nhận dạng được, ngược lại None.
@@ -101,6 +103,7 @@ class SpeechRecognizer:
                     cleaned.append((candidate, confidence))
             text = cleaned[0][0] if cleaned else ""
             if not text:
+                annotate(outcome="no_input")
                 logger.debug("Không nghe rõ nội dung")
                 self.last_result = None
                 return None
@@ -110,14 +113,17 @@ class SpeechRecognizer:
                 confidence=cleaned[0][1], engine=self.engine)
             return text
         except sr.UnknownValueError:
+            annotate(outcome="no_input")
             logger.debug("Không nghe rõ nội dung")
             self.last_result = None
             return None
         except sr.RequestError as e:
+            annotate(outcome="failed", error_type=type(e).__name__)
             logger.warning("Lỗi gọi dịch vụ nhận dạng (kiểm tra mạng): %s", e)
             self.last_result = None
             return None
         except Exception as e:  # phòng lỗi lạ từ backend whisper
+            annotate(outcome="failed", error_type=type(e).__name__)
             logger.error("Lỗi nhận dạng không mong đợi: %s", e)
             self.last_result = None
             return None

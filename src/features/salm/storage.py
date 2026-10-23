@@ -83,14 +83,15 @@ def _merge_metrics(base, current):
 class SalmStorage:
     def __init__(self, directory, ttl_days=TTL_DAYS, daily_ttl_days=DAILY_TTL_DAYS,
                  database=None,
-                 import_legacy=True):
+                 import_legacy=True, recording=True):
+        self.recording = bool(recording)
         self.directory = Path(directory)
         self.ttl_days = max(1, int(ttl_days))
         self.daily_ttl_days = max(self.ttl_days, int(daily_ttl_days))
         self.database = database
         self._lock = threading.RLock()
         self._daily_base = {}
-        if self.database is not None and import_legacy:
+        if self.recording and self.database is not None and import_legacy:
             try:
                 self.database.import_salm_directory(
                     self.directory, validator=_assert_private,
@@ -99,6 +100,8 @@ class SalmStorage:
                 logger.warning("Không import được SALM legacy vào SQLite: %s", exc)
 
     def append(self, record):
+        if not self.recording:
+            return
         _assert_private(record)
         with self._lock:
             if self.database is not None:
@@ -120,6 +123,8 @@ class SalmStorage:
                                         separators=(",", ":")) + "\n")
 
     def write_daily(self, daily):
+        if not self.recording:
+            return
         with self._lock:
             for day, metrics in daily.items():
                 payload = {"schema_version": 3, "day": day,
@@ -146,7 +151,9 @@ class SalmStorage:
                 os.replace(temp, path)
 
     def purge_expired(self, now=None):
-        """Purge raw events and privacy-reduced daily projections independently."""
+        """Purge only when recording is enabled; restricted runtime preserves legacy."""
+        if not self.recording:
+            return
         now = now or datetime.now(timezone.utc)
         event_cutoff = now.date() - timedelta(days=self.ttl_days)
         daily_cutoff = now.date() - timedelta(days=self.daily_ttl_days)

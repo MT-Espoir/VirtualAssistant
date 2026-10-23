@@ -109,7 +109,8 @@ def test_piper_thieu_dieu_kien_thi_tra_None_chu_khong_nem(caplog):
     with caplog.at_level(logging.WARNING):
         got = piper_voice.tao(vcfg.NoiConfig(engine="piper", piper_model="/khong/co.onnx"))
     assert got is None
-    assert "dùng gtts thay" in caplog.text
+    assert 'diagnostic event' in caplog.text
+    assert '/khong/co.onnx' not in caplog.text
 
 
 # --- bộ tổng hợp coi giọng riêng như một engine sinh file -----------------------------

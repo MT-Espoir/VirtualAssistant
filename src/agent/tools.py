@@ -20,6 +20,8 @@ from typing import Callable, Dict, List
 
 from utils.config import config
 from utils.logger import get_logger
+from utils.telemetry import measured
+from utils.privacy import diagnostic_event
 from utils.outbound import duoc_nguoi_dung_cung_cap, mo_ta_ra_ngoai
 from utils.text_norm import strip_accents
 
@@ -115,6 +117,10 @@ class Tool:
     # để không đổi ý nghĩa các lời gọi `Tool(...)` positional cũ.
     group: str = None
 
+    # Build the approval text AND frozen execution arguments in one read-only step.
+    # Hidden capabilities are created by code, never exposed in the LLM schema.
+    prepare_confirmation: Callable[..., dict] = None
+
     def spec(self) -> dict:
         """Định nghĩa tool gửi cho LLM (định dạng Anthropic tool-use)."""
         return {
@@ -193,6 +199,7 @@ class ToolRegistry:
         if self._debug_sink is None:
             return
         try:
+            category, message, data, level = diagnostic_event(category, message, data, level)
             self._debug_sink(category, message, data or {}, level=level)
         except Exception:
             pass
@@ -314,12 +321,20 @@ class ToolRegistry:
                 preview = mo_ta_ra_ngoai(args)
         if not can_duyet:
             return None
+        if tool.prepare_confirmation is not None:
+            try:
+                prepared = tool.prepare_confirmation(**args)
+                return {"name": name, "arguments": prepared["arguments"],
+                        "phrase": prepared["phrase"], "preview": prepared.get("preview")}
+            except Exception as exc:
+                raise ActionRefused(name, args, str(exc)) from exc
         try:
             phrase = tool.confirm_message(**args) if tool.confirm_message else name
         except Exception:                 # confirm_message lỗi -> vẫn hỏi, dùng tên tool
             phrase = name
         return {"name": name, "arguments": args, "phrase": phrase, "preview": preview}
 
+    @measured("tool", "tool_call")
     def run(self, name: str, arguments: dict, confirmed: bool = False,
             nhiem: bool = False, tu_dong: bool = False,
             user_text: str = None) -> str:
@@ -339,6 +354,9 @@ class ToolRegistry:
         started = time.perf_counter()
         meta = {"name": name, "arguments": arguments or {}, "confirmed": confirmed,
                 "automatic": tu_dong, "tainted_context": nhiem}
+        meta['event_code'] = 'started'
+        if name in self._tools:
+            meta['tool_index'] = list(self._tools).index(name)
         self.debug_event(f"Bắt đầu {name}", meta)
         try:
             tool = self._tools[name]
@@ -356,23 +374,23 @@ class ToolRegistry:
             output = tool.handler(**(arguments or {}))
         except NeedsConfirmation as exc:
             self.debug_event(f"Chờ xác nhận: {name}",
-                             dict(meta, phrase=exc.phrase), level="WARNING")
+                             dict(meta, phrase=exc.phrase, event_code='awaiting_confirmation'), level="WARNING")
             raise
         except ActionRefused as exc:
             self.debug_event(f"Bị từ chối: {name}",
-                             dict(meta, reason=exc.ly_do), level="WARNING")
+                             dict(meta, reason=exc.ly_do, event_code='refused'), level="WARNING")
             raise
         except Exception as exc:
             self.debug_event(
                 f"Tool lỗi: {name}",
                 dict(meta, duration_ms=round((time.perf_counter() - started) * 1000, 1),
-                     error=f"{type(exc).__name__}: {exc}"),
+                     error=f"{type(exc).__name__}: {exc}", error_type=type(exc).__name__, event_code='failed'),
                 level="ERROR")
             raise
         self.debug_event(
             f"Hoàn tất {name}",
             dict(meta, duration_ms=round((time.perf_counter() - started) * 1000, 1),
-                 result=str(output)),
+                 result=str(output), event_code='returned'),
             level="SUCCESS")
         return output
 

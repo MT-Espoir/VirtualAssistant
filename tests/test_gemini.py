@@ -204,7 +204,8 @@ if __name__ == "__main__":
 
 def test_ghi_lai_ti_le_token_trung_cache(caplog):
     """Gemini bật cache ngầm định sẵn (2.5+), giảm 90% token trúng cache — nhưng trước
-    đây không ai ĐO, nên không biết thực tế có trúng không. Dòng log này là cái đo đó."""
+    đây không ai ĐO, nên không biết thực tế có trúng không. Dòng log này là cái đo đó.
+    R0.5: log chỉ giữ metadata đã allowlist, không có câu chữ tự do."""
     import logging
 
     from llm.gemini import _log_cache_usage
@@ -212,8 +213,8 @@ def test_ghi_lai_ti_le_token_trung_cache(caplog):
     with caplog.at_level(logging.INFO):
         _log_cache_usage("gemini-3.1-flash-lite",
                          {"promptTokenCount": 10000, "cachedContentTokenCount": 9000})
-    assert "10000 token vào" in caplog.text
-    assert "9000 trúng cache (90%)" in caplog.text
+    assert ("llm_cache_usage model=gemini-3.1-flash-lite prompt_tokens=10000 "
+            "cached_tokens=9000 cache_hit_percent=90") in caplog.text
 
 
 def test_khong_co_so_lieu_thi_khong_ghi(caplog):
@@ -225,7 +226,7 @@ def test_khong_co_so_lieu_thi_khong_ghi(caplog):
     with caplog.at_level(logging.INFO):
         _log_cache_usage("m", {})
         _log_cache_usage("m", {"promptTokenCount": 0})
-    assert "trúng cache" not in caplog.text
+    assert "llm_cache_usage" not in caplog.text
 
 
 def test_khong_trung_cache_van_ghi_de_thay_0(caplog):
@@ -236,4 +237,4 @@ def test_khong_trung_cache_van_ghi_de_thay_0(caplog):
 
     with caplog.at_level(logging.INFO):
         _log_cache_usage("m", {"promptTokenCount": 1400})
-    assert "0 trúng cache (0%)" in caplog.text
+    assert "cached_tokens=0 cache_hit_percent=0" in caplog.text

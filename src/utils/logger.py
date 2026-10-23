@@ -5,12 +5,10 @@ Dùng thay cho print() để có level (DEBUG/INFO/WARNING/ERROR), timestamp và
 ghi ra file. Cấu hình qua utils.config (LOG_LEVEL, LOG_FILE, LOG_MAX_BYTES,
 LOG_BACKUP_COUNT).
 
-HAI NƠI log đi tới, đừng lẫn:
-  - `assistant.log` (gốc repo): `launch_assistant.vbs` đổ stdout+stderr vào đó bằng `>`,
-    nên nó có CẢ print() — nhưng bị GHI ĐÈ mỗi lần chạy, và chỉ có khi mở bằng launcher.
-  - `logs/app.log` (LOG_FILE): do chính module này ghi, chỉ có dòng logger, nhưng SỐNG
-    QUA nhiều lần chạy và có trần dung lượng. Chạy từ terminal thì chỉ file này có.
-Logger KHÔNG ghi vào `assistant.log`: hai cơ chế cùng mở một file sẽ chèn lẫn nhau.
+R0.5: logger sản phẩm chỉ xuất metadata, không giữ message/args/traceback.
+`logs/app.log` (LOG_FILE) xoay vòng theo dung lượng, chưa có TTL theo ngày.
+Launcher bỏ stdout/stderr vào NUL; file `assistant.log` cũ không được tự xóa.
+Hội thoại hiển thị trên terminal vẫn là đầu ra chức năng, không phải diagnostic log.
 
 Cách dùng:
     from utils.logger import get_logger
@@ -25,6 +23,7 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 from utils.config import config
+from utils.privacy import MetadataLogFormatter, MetadataLogFilter
 
 _configured = False
 _FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
@@ -52,11 +51,11 @@ def _file_handler():
                                       backupCount=config.LOG_BACKUP_COUNT, encoding="utf-8")
         # Console chỉ cần giờ (bạn đang ngồi xem, biết hôm nay là ngày nào); file thì
         # sống qua nhiều ngày nên giờ trần là mốc mơ hồ — phải có NGÀY.
-        handler.setFormatter(logging.Formatter(_FORMAT, datefmt="%Y-%m-%d %H:%M:%S"))
+        handler.setFormatter(MetadataLogFormatter(_FORMAT, datefmt="%Y-%m-%d %H:%M:%S"))
         return handler
     except OSError as e:
         # Mất log còn hơn không khởi động được trợ lý -> nuốt lỗi, vẫn còn console.
-        print(f"(không mở được file log {config.LOG_FILE}: {e})")
+        print("(không mở được file log; nội dung lỗi đã được lược bỏ)")
         return None
 
 
@@ -70,6 +69,7 @@ def _configure_root():
 
     # Console handler (stdout, hỗ trợ UTF-8 cho tiếng Việt)
     handlers = [logging.StreamHandler(sys.stdout)]
+    handlers[0].setFormatter(MetadataLogFormatter(_FORMAT, datefmt="%H:%M:%S"))
 
     if _nen_ghi_file():
         handler = _file_handler()
@@ -82,10 +82,16 @@ def _configure_root():
         datefmt="%H:%M:%S",
         handlers=handlers,
     )
+    # basicConfig is a no-op when a dependency configured root earlier.
+    for handler in logging.getLogger().handlers:
+        handler.setFormatter(MetadataLogFormatter(_FORMAT, datefmt="%Y-%m-%d %H:%M:%S"))
     _configured = True
 
 
 def get_logger(name: str) -> logging.Logger:
     """Lấy logger đã cấu hình cho module."""
     _configure_root()
-    return logging.getLogger(name)
+    logger = logging.getLogger(name)
+    if not any(isinstance(filter, MetadataLogFilter) for filter in logger.filters):
+        logger.addFilter(MetadataLogFilter())
+    return logger

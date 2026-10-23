@@ -15,6 +15,7 @@ from datetime import datetime
 from typing import Optional
 
 from utils.debug import safe_debug_value
+from utils.privacy import diagnostic_event
 
 
 @dataclass
@@ -124,13 +125,14 @@ class AssistantBus:
         """
         if not self._debug_active.is_set():
             return
+        category, message, data, level = diagnostic_event(category, message, data, level)
         event = {
             "time": datetime.now().astimezone().isoformat(timespec="milliseconds"),
             "category": str(category or "system").strip().lower(),
             "level": str(level or "INFO").strip().upper(),
             "message": safe_debug_value(str(message or "")),
             "data": safe_debug_value(data or {}),
-            "thread": threading.current_thread().name,
+            "thread": "worker" if threading.current_thread() is not threading.main_thread() else "main",
         }
         with self._debug_lock:
             if len(self._debug_q) >= self._debug_capacity:

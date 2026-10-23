@@ -32,6 +32,7 @@ from agent.persona import (score_fluster, score_user_valence, parse_trait_nudges
 from voice.fast_commands import match_confirmation
 from utils.config import config
 from utils.logger import get_logger
+from utils.telemetry import measured
 from memory.timefmt import format_now
 
 logger = get_logger(__name__)
@@ -204,6 +205,7 @@ class Agent:
 
         return "\n\n".join(p for p in parts if p)
 
+    @measured("agent", "agent_run")
     def run(self, user_text: str) -> AgentReply:
         """Chạy một lượt qua vòng lặp tool-calling, có nhớ ngữ cảnh trước đó."""
         try:
@@ -288,7 +290,13 @@ class Agent:
                 for call in turn.tool_calls:
                     if call.name == "control_room_ac":
                         call.arguments.update(ac_request[1])
-            deferred = self._find_destructive(turn.tool_calls, user_text)
+            try:
+                deferred = self._find_destructive(turn.tool_calls, user_text)
+            except ActionRefused as exc:
+                self._ghi_nhan_tool(exc.name)
+                self._ghi_nhan_loi(f"{exc.name}: {exc.ly_do}")
+                final_text = f"Tôi chưa thực hiện: {exc.ly_do}"
+                break
             if deferred is not None:
                 debug_tool = getattr(self.registry, "debug_event", None)
                 if debug_tool is not None:
@@ -405,6 +413,7 @@ class Agent:
         emit(
             f"LLM phản hồi vòng {iteration}: {shown}",
             {
+                "event_code": "llm_turn",
                 "iteration": iteration,
                 "duration_ms": round(max(0.0, duration_ms), 1),
                 "characters": len(raw),

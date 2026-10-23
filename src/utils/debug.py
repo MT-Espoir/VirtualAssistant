@@ -5,7 +5,7 @@ vào ``AssistantBus``; cửa sổ avatar mới là nơi đọc queue và vẽ tr
 """
 
 import logging
-import traceback
+from utils.privacy import logger_group
 
 
 _SECRET_MARKERS = ("password", "passwd", "secret", "token", "api_key", "apikey",
@@ -54,12 +54,9 @@ class DebugBusLogHandler(logging.Handler):
 
     def emit(self, record):
         try:
-            details = {"logger": record.name, "thread": record.threadName}
-            if record.exc_info:
-                details["exception"] = "".join(
-                    traceback.format_exception(*record.exc_info))
+            details = {"logger": logger_group(record.name)}
             self.bus.emit_debug(
-                "log", record.getMessage(), details,
+                "log", "Log record", details,
                 level=record.levelname,
             )
         except Exception:

@@ -22,9 +22,12 @@ class _FakeBrowser:
     def __init__(self, response):
         self.response = response
         self.sent = None
+        self.connection_id = 'fixture-session'
 
     def send_command(self, **kwargs):
         self.sent = kwargs
+        if kwargs.get('action') == 'CLOSE_TAB_BY_KEYWORD' and isinstance(self.response, dict):
+            self.response.setdefault('action', 'CLOSE_TAB_BY_KEYWORD')
         return self.response
 
 
@@ -100,7 +103,8 @@ def test_close_tab_LA_DESTRUCTIVE_khong_con_tu_xac_nhan_bang_prompt():
     injection ghi đè được. Mô phỏng tấn công xác nhận nó lọt: `confirm=True` ngay lần đầu
     là tab đóng thật. Nay cổng nằm ở tầng code."""
     br = _FakeBrowser({"type": "STATUS", "matched": [
-        {"id": 1, "title": "Facebook", "url": "https://facebook.com"}], "dryRun": True})
+        {"id": 1, "title": "Facebook", "url": "https://facebook.com"}], "dryRun": True,
+        "tabIds": [1], "targets": [{"id": 1, "domain": "facebook.com"}], "previewToken": "fixture"})
     reg = _registry(br)
     assert reg.get("browser_close_tab").destructive is True
     # Tham số `confirm` đã biến mất khỏi lược đồ -> model không còn đường tự cấp phép.
@@ -109,21 +113,26 @@ def test_close_tab_LA_DESTRUCTIVE_khong_con_tu_xac_nhan_bang_prompt():
         reg.run("browser_close_tab", {"keyword": "facebook"})
 
 
-def test_cau_hoi_xac_nhan_van_doc_ten_tab_se_dong():
-    """Phần giá trị duy nhất của cơ chế cũ: người dùng biết MÌNH sắp đóng cái gì."""
-    br = _FakeBrowser({"type": "STATUS", "matched": [
-        {"id": 1, "title": "Ngân hàng ACB", "url": "https://acb.com.vn"}], "dryRun": True})
+def test_cau_hoi_xac_nhan_doc_tab_id_va_domain():
+    """Cho biết đích mà không lấy title/full URL ra khỏi extension."""
+    br = _FakeBrowser({"type": "STATUS", "targets": [{"id": 1, "domain": "acb.com.vn"}],
+                       "tabIds": [1], "previewToken": "fixture", "dryRun": True})
     g = _registry(br).gate("browser_close_tab", {"keyword": "ngân hàng"})
-    assert "Ngân hàng ACB" in g["phrase"]
+    assert "tab 1 (acb.com.vn)" in g["phrase"]
     assert br.sent["dryRun"] is True             # hỏi thì chỉ chạy thử, KHÔNG đóng
 
 
 def test_da_duyet_thi_dong_that():
-    br = _FakeBrowser({"type": "STATUS", "matched": [
-        {"id": 1, "title": "Facebook", "url": "https://facebook.com"}],
-        "dryRun": False, "closedCount": 1})
-    out = _registry(br).run("browser_close_tab", {"keyword": "facebook"}, confirmed=True)
+    br = _FakeBrowser({"type": "STATUS", "targets": [{"id": 1, "domain": "facebook.com"}],
+                       "tabIds": [1], "previewToken": "fixture", "dryRun": True})
+    reg = _registry(br)
+    gated = reg.gate("browser_close_tab", {"keyword": "facebook"})
+    br.response = {"type": "STATUS", "dryRun": False, "closedCount": 1,
+                   "outcome": "verified", "readBack": True, "closedIds": [1],
+                   "targetIds": [1], "remainingIds": [], "unknownIds": [], "failedIds": []}
+    out = reg.run("browser_close_tab", gated["arguments"], confirmed=True)
     assert br.sent["dryRun"] is False
+    assert br.sent["tabIds"] == [1] and br.sent["expected_connection"] == br.connection_id
     assert "đã đóng" in out.lower()
 
 

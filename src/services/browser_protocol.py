@@ -128,17 +128,38 @@ def summarize_tab_list(resp, limit=20):
         return "Hiện không có tab Chrome nào đang mở."
     lines = []
     for i, t in enumerate(tabs[:limit], 1):
-        title = (t.get("title") or "(không tiêu đề)").strip()
-        lines.append(f"{i}. {title} — {_domain(t.get('url'))}")
+        if "domain" in t:
+            lines.append(f"{i}. tab {t.get('id')} — {t.get('domain') or 'trang nội bộ'}")
+        else:  # Legacy parsing only; protocol v2 product endpoint does not send these fields.
+            title = (t.get("title") or "(không tiêu đề)").strip()
+            lines.append(f"{i}. {title} — {_domain(t.get('url'))}")
     extra = f"\n… và {len(tabs) - limit} tab nữa." if len(tabs) > limit else ""
     return f"Đang mở {len(tabs)} tab Chrome:\n" + "\n".join(lines) + extra
 
 
 def summarize_close(resp, keyword, confirm):
-    """Phản hồi CLOSE_TAB_BY_KEYWORD -> câu xác nhận (confirm=False) hoặc kết quả."""
+    """Never infer completion from matches, an ACK or the legacy closedCount."""
     err = _error_or_none(resp)
     if err:
         return err
+
+    if confirm:
+        ids = resp.get("closedIds")
+        targets = resp.get("targetIds")
+        if (resp.get("readBack") is not True or not isinstance(ids, list)
+                or not isinstance(targets, list) or not targets
+                or any(type(i) is not int for i in ids + targets)
+                or len(set(ids)) != len(ids) or len(set(targets)) != len(targets)
+                or not set(ids).issubset(set(targets)) or resp.get("closedCount") != len(ids)):
+            return "Đã gửi yêu cầu đóng tab, nhưng chưa xác minh được kết quả."
+        closed = len(ids)
+        if (resp.get("outcome") == "verified" and set(ids) == set(targets)
+                and not resp.get("failedIds") and not resp.get("remainingIds") and not resp.get("unknownIds")):
+            return f"Đã đóng {closed} tab đã duyệt; đã đọc lại và xác nhận chúng không còn mở."
+        remaining = len(resp.get("remainingIds") or [])
+        unknown = len(resp.get("unknownIds") or [])
+        return (f"Xác minh đã đóng {closed} tab; còn {remaining} tab đang mở, "
+                f"{unknown} tab chưa rõ kết quả. Yêu cầu đóng tab chưa hoàn tất.")
 
     matched = resp.get("matched") or []
     if not matched:
@@ -151,9 +172,6 @@ def summarize_close(resp, keyword, confirm):
         return (f"Tìm thấy {len(matched)} tab khớp '{keyword}': {titles}. "
                 f"Bạn có chắc muốn đóng {'chúng' if len(matched) > 1 else 'tab này'} không? "
                 "(xác nhận thì tôi sẽ đóng)")
-
-    closed = resp.get("closedCount", len(matched))
-    return f"Đã đóng {closed} tab khớp '{keyword}': {titles}."
 
 
 # --------------------------------------------------------------------------- #

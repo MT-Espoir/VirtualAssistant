@@ -130,9 +130,15 @@ def test_close_no_match():
     assert "không tìm thấy" in out.lower()
 
 
-def test_close_commit_reports_closed_count():
+def test_legacy_close_count_is_not_evidence():
     matched = [{"id": 1, "title": "FB", "url": "x"}, {"id": 2, "title": "FB2", "url": "y"}]
     out = summarize_close(_close_resp(matched, dry=False, closed=2), "fb", confirm=True)
+    assert "chưa xác minh" in out.lower()
+
+
+def test_close_commit_reports_verified_count():
+    out = summarize_close({"type": "STATUS", "closedCount": 2, "closedIds": [1, 2],
+                           "readBack": True, "outcome": "verified", "targetIds": [1, 2]}, "fb", confirm=True)
     assert "đã đóng 2 tab" in out.lower()
 
 
