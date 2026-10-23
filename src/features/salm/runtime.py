@@ -605,6 +605,10 @@ class SalmRuntime:
         now = time.monotonic() if now is None else float(now)
         at = at or datetime.now().astimezone()
         action = command["action"]
+        if action == "no_change":
+            if command.get("reason") == "invalid_cutoff":
+                return "Tôi chưa đổi nhắc khuya. Giờ hợp lệ nằm từ 18:00 đến 03:30."
+            return "Tôi giữ nguyên cài đặt nhắc khuya."
         if action == "show":
             policy = self.late_night_policy.snapshot()
             if not policy.get("enabled"):

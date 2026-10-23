@@ -232,21 +232,56 @@ def _parse_clock(value):
 def match_late_night_command(text):
     """Narrow deterministic matcher; unrelated mentions of staying late pass through."""
     value = " ".join(norm(text or "").split())
+    original_value = value
     # Whisper/STT tiếng Việt thường thay phụ âm cuối của "nhắc" thành "nhất". Chỉ
     # sửa đúng cụm domain này, không fuzzy-match từ "nhất" ở nơi khác.
     value = re.sub(r"\b(?:nhat khuya|nhac khue)\b", "nhac khuya", value)
-    scoped = any(phrase in value for phrase in (
+    scopes = (
         "nhac khuya", "nhac toi khi dung may khuya", "nhac toi khi lam viec khuya",
-        "nhac dung may khuya", "late night care", "nhac qua khuya"))
-    if not scoped:
+        "nhac dung may khuya", "late night care", "nhac qua khuya")
+    scope_pattern = r"\b(?:" + "|".join(re.escape(phrase) for phrase in scopes) + r")\b"
+    if not re.search(scope_pattern, value):
         return None
+    if (value != original_value
+            and not re.search(r"\b(?:bat|tat|nhac|dat|reset|xoa|hoan|ngung|"
+                              r"kich hoat|xem|dung|khong|chua)\b", original_value)
+            and not re.match(r"^nhat khuya\b", original_value)):
+        return None  # Do not turn the ordinary superlative "nhat" into a feature.
+
+    # A scoped rejection must be consumed by SALM, not fall through to Agent as
+    # an unrecognised command. Collapse the scope first: "dung may" inside the
+    # supported phrase describes computer use, not the negation "dung".
+    body = re.sub(r"^(?:alice[, :]\s*)?(?:(?:hay|vui long|lam on|ban|em|"
+                  r"giup toi|cho toi|toi muon|minh muon)\s+)*", "", value)
+    body = re.sub(r"(?:\s+(?:nhe|nha|giup toi|cho toi))+$", "", body)
+    scoped_body = re.sub(scope_pattern, "late_night_scope", body)
+    stop = re.fullmatch(
+        r"(?:dem nay\s+)?(?:dung|khong|ngung|thoi|bo qua)\s+"
+        r"late_night_scope(?:\s+nua)?(?:\s+dem nay)?", scoped_body)
+    if stop:
+        return {"action": "mute_tonight" if "dem nay" in scoped_body else "disable"}
+    if re.search(r"\b(?:khong|dung|chua|chang|cho)\b", scoped_body):
+        return {"action": "no_change", "reason": "negated_or_ambiguous"}
     if any(phrase in value for phrase in (
             "xem", "dang cai", "cai dat", "may gio")):
         return {"action": "show"}
+
+    # A clock in a story/condition is not permission to configure a reminder.
+    # Uncertain scoped language stays a no-op until the user gives a clear
+    # request; language recovery/confirmation belongs to the later voice slice.
+    if (re.search(r"\b(?:da|tung|vua|dang|se|neu|gia su|vi du|thuong|ngay mai)\b", scoped_body)
+            or (scoped_body.startswith("late_night_scope")
+                and re.search(r"\b(?:la|cua|truoc day)\b", scoped_body))
+            or not re.match(r"^(?:bat|tat|dat|reset|xoa|kich hoat|hoan|ngung|"
+                            r"late_night_scope)\b", scoped_body)
+            or (re.search(r"\bbat\b", scoped_body) and re.search(r"\btat\b", scoped_body))):
+        return {"action": "no_change", "reason": "not_a_clear_request"}
     if any(phrase in value for phrase in ("dat lai", "reset", "xoa cai dat")):
         return {"action": "reset"}
     duration = re.search(r"(?:sau|them)\s+(\d{1,3})\s*phut", value)
     if duration and any(phrase in value for phrase in ("nhac lai", "nhac khuya")):
+        if re.match(r"^(?:bat|dat|kich hoat)\b", scoped_body):
+            return {"action": "no_change", "reason": "not_a_clear_request"}
         minutes = int(duration.group(1))
         if 1 <= minutes <= MAX_SNOOZE_MINUTES:
             return {"action": "snooze", "minutes": minutes}
@@ -260,6 +295,8 @@ def match_late_night_command(text):
     cutoff = _parse_clock(value)
     if cutoff is not None:
         return {"action": "enable", "cutoff_minute": cutoff}
+    if re.search(r"\d", value):
+        return {"action": "no_change", "reason": "invalid_cutoff"}
     if any(word in value for word in ("bat", "nhac toi", "kich hoat")):
         return {"action": "need_cutoff"}
     return None
