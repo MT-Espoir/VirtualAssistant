@@ -75,10 +75,11 @@ data/control-settings.json.tmp
 artifacts/control-panel/
 artifacts/latency/
 
-# Camera AI design documents requested for this project; other docs remain local-only.
+# Tài liệu được công bố: thiết kế camera AI và báo cáo đánh giá kiến trúc; còn lại giữ cục bộ.
 !docs/
 docs/*
 !docs/camera_ai_spec.md
 !docs/camera_ai_architecture.md
 !docs/camera_ai_security_privacy.md
 !docs/camera_llm_integration.md
+!docs/architectural_audit_report.md

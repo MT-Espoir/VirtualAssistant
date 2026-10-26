@@ -340,6 +340,9 @@ sau bước `setup-broker.ps1` để thử MQTT tại `192.168.2.19:1883`.
 - **Nội dung web và chữ trên màn hình là dữ liệu không đáng tin.** Trợ lý có thể bị dẫn dụ bởi
   chỉ dẫn giấu trong đó; cổng xác nhận là lớp phòng vệ chính.
 
+Danh sách đầy đủ các lỗi và điểm nghẽn đã biết, kèm trạng thái đã sửa hay còn mở, nằm trong
+[báo cáo đánh giá kiến trúc](docs/architectural_audit_report.md).
+
 ## Camera và gợi ý khuôn mặt (v1)
 
 Camera có chỉ báo `CAM` trên avatar. Bấm chỉ báo để tạm dừng/tiếp tục webcam, bật/tắt gợi ý khuôn mặt, đăng ký hoặc xóa template. Panel debug (`--debug-panel` hoặc `DEBUG_PANEL_ENABLED=true`) có tab CAMERA với ảnh xem trước, khung mặt, trạng thái frame và log. Ẩn panel debug xóa ảnh xem trước trong RAM; tạm dừng camera đóng webcam. Nút `DỪNG LOG` trên panel chỉ dừng log, không dừng webcam.
