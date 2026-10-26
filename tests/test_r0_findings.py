@@ -64,6 +64,9 @@ def observe(record_property, finding, **values):
 
 
 def node_fixture(**payload):
+    # Tiện ích Chrome nằm ngoài repo (.gitignore), nên bản clone sạch như CI không có nó.
+    if not (Path(__file__).parent.parent / 'chrome_extension' / 'background.js').exists():
+        pytest.skip('chrome_extension/ không có trong bản clone này')
     script = Path(__file__).with_name('r0_extension_fixture.cjs')
     result = subprocess.run(['node', str(script)], input=json.dumps(payload),
                             text=True, encoding='utf-8', capture_output=True, timeout=10, check=True)

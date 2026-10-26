@@ -1,5 +1,23 @@
 # Trợ lý ảo tiếng Việt cho Windows
 
+[![tests](https://github.com/MT-Espoir/VirtualAssistant/actions/workflows/tests.yml/badge.svg)](https://github.com/MT-Espoir/VirtualAssistant/actions/workflows/tests.yml)
+
+**In English:** a Vietnamese voice assistant for Windows. You say one sentence; an LLM picks and
+calls the right tools (apps, volume, Chrome, Gmail/Calendar, reminders, multi-source web
+research) and answers by voice, with an avatar whose expression follows its mood.
+
+- **LLM tool-calling, not keyword matching.** "Open Chrome then set volume to 60" runs both
+  steps; frequent commands skip the LLM entirely for instant response.
+- **Safety enforced in code, not in the prompt.** Hard-to-undo actions (delete, close app, send
+  mail) pass a confirmation gate the model cannot bypass. An attack-simulation suite assumes the
+  model *was* fooled and checks what the code still blocks.
+- **Two-tier, time-aware memory.** Separates lasting facts (name, preferences) from dated events,
+  so a finished appointment is not reminded again; habits are learned from repeated behavior.
+- **Swappable backends.** Gemini, Claude, or fully local via Ollama.
+- **1,900+ tests** that need no microphone, API key or real apps, run on every push (Windows CI).
+
+---
+
 > Nói một câu, máy tính làm việc đó. Trợ lý chạy ngay trên máy bạn, nghe tiếng Việt, tự chọn
 > công cụ để thực thi, rồi trả lời bằng giọng nói — kèm một avatar nhân vật đổi biểu cảm
 > theo tâm trạng.
@@ -108,7 +126,7 @@ src/
 mcp_servers/          Máy chủ Gmail + Lịch Google (chạy local)
 packaging/            Launcher 1-icon + script cắt ảnh avatar và icon
 chrome_extension/     Tiện ích Chrome (nằm ngoài repo)
-tests/                1168 test, không cần micro hay API key
+tests/                Hơn 1.900 test, không cần micro hay API key
 ```
 
 `features/` khai báo *model được thấy công cụ nào*, `actions/` là phần thật sự chạm vào máy —
@@ -266,8 +284,9 @@ pip install -r requirements-dev.txt
 pytest
 ```
 
-1168 test — **không** mở ứng dụng thật, không cần micro hay API key (LLM và các hành động đều
-được thay bằng bản giả). Trong đó có một bộ **mô phỏng tấn công** chạy như test hồi
+Hơn 1.900 test — **không** mở ứng dụng thật, không cần micro hay API key (LLM và các hành động đều
+được thay bằng bản giả). GitHub Actions chạy lại toàn bộ trên Windows mỗi lần push; các test
+cần tiện ích Chrome tự bỏ qua khi bản clone không có thư mục `chrome_extension/`. Trong đó có một bộ **mô phỏng tấn công** chạy như test hồi
 quy: nó *giả định model đã bị lừa*, rồi kiểm xem code còn chặn được tới đâu — vì câu hỏi đáng
 hỏi không phải "model có bị lừa không" mà "lúc bị lừa thì thiệt hại tới đâu".
 

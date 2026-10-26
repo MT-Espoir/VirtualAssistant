@@ -1,4 +1,6 @@
+# -*- coding: utf-8 -*-
 # MCP server cá nhân (Google Calendar + Gmail, read-only). Cài trong ml_env.
 mcp
+fastmcp
 google-api-python-client
 google-auth-oauthlib

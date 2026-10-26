@@ -1,3 +1,6 @@
+# -*- coding: utf-8 -*-
 # Phụ thuộc cho phát triển & chạy test (không cần khi chạy trợ lý)
 -r src/requirements.txt
+-r src/requirements-telemetry.txt
+-r mcp_servers/requirements.txt
 pytest>=7.4.0

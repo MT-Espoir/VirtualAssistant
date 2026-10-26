@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # Voice Assistant - Python dependencies (target: Python 3.9+)
 #
 # Version floors (>=) are conservative. After installing and running successfully on your machine,

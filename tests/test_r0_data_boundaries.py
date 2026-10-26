@@ -114,7 +114,7 @@ def test_meeting_page_state_is_not_collected_on_connect():
     result = node_fixture(mode='identity')
     assert set(result['first']) == {'profileId', 'sessionId', 'protocolVersion'}
     # Static permission envelope; functional frame tests use the actual worker.
-    manifest = json.loads(Path('chrome_extension/manifest.json').read_text())
+    manifest = json.loads(Path('chrome_extension/manifest.json').read_text(encoding='utf-8'))
     assert all('google.com' not in host and 'duckduckgo' not in host for host in manifest['host_permissions'])
 
 
