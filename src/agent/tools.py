@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Callable, Dict, List
 
+from agent.results import EVIDENCE_POLICIES, ActionResult, RemoteError
 from utils.config import config
 from utils.logger import get_logger
 from utils.telemetry import measured
@@ -121,6 +122,15 @@ class Tool:
     # Hidden capabilities are created by code, never exposed in the LLM schema.
     prepare_confirmation: Callable[..., dict] = None
 
+    # Mức bằng chứng tool có thể đưa ra (`agent.results.EVIDENCE_POLICIES`). None = chưa
+    # migration: chuỗi trả về thành kết quả legacy, giữ nguyên hành vi cũ.
+    # Xem `docs/alice_result_contract_spec.md` §5.
+    evidence_policy: str = None
+
+    def __post_init__(self):
+        if self.evidence_policy is not None and self.evidence_policy not in EVIDENCE_POLICIES:
+            raise ValueError(f"evidence_policy không hợp lệ: {self.evidence_policy}")
+
     def spec(self) -> dict:
         """Định nghĩa tool gửi cho LLM (định dạng Anthropic tool-use)."""
         return {
@@ -173,6 +183,24 @@ class NeedsConfirmation(Exception):
         self.arguments = arguments
         self.phrase = phrase
         self.preview = preview
+
+
+def _classify_output(tool, output) -> ActionResult:
+    """Output bình thường của handler -> ActionResult theo `evidence_policy` (spec §5, §9.2)."""
+    if isinstance(output, ActionResult):
+        if tool.evidence_policy == "dispatch_only" and output.status == "verified":
+            # Tool không có phép đọc lại thì không thể tự chứng nhận đã xác minh.
+            logger.warning("Hạ verified -> dispatched cho tool dispatch_only %s", tool.name)
+            return ActionResult(output.render, name=tool.name, status="dispatched",
+                                reason="accepted_unverified", layer=output.layer,
+                                side_effect_possible=output.side_effect_possible,
+                                request_id=output.request_id)
+        return output
+    text = str(output)
+    if tool.evidence_policy in ("read", "local_commit"):
+        return ActionResult(text, name=tool.name, status="verified", reason="ok", layer="local")
+    return ActionResult(text, name=tool.name, status="unknown", reason="legacy_unclassified",
+                        layer="local", legacy=True)
 
 
 class ToolRegistry:
@@ -393,5 +421,28 @@ class ToolRegistry:
                  result=str(output), event_code='returned'),
             level="SUCCESS")
         return output
+
+    def run_result(self, name: str, arguments: dict, **options) -> ActionResult:
+        """Như `run()`, nhưng luôn trả `ActionResult` — chỗ DUY NHẤT phân loại kết quả.
+
+        Vẫn ném KeyError (tool không tồn tại) và NeedsConfirmation (cần hỏi người dùng):
+        hai thứ đó không phải kết quả của một lần chạy. Xem spec §7.
+        """
+        tool = self._tools[name]
+        try:
+            output = self.run(name, arguments, **options)
+        except NeedsConfirmation:
+            raise
+        except ActionRefused as exc:
+            return ActionResult(f"Không thực hiện: {exc.ly_do}.", name=name,
+                                status="refused", reason="policy_refused", layer="local")
+        except RemoteError as exc:
+            return ActionResult(f"Lỗi khi chạy: {exc}", name=name, status=exc.status,
+                                reason=exc.reason, layer=exc.layer,
+                                side_effect_possible=exc.status == "unknown")
+        except Exception as exc:
+            return ActionResult(f"Lỗi khi chạy: {exc}", name=name, status="failed",
+                                reason="handler_exception", layer="local")
+        return _classify_output(tool, output)
 
 # Bộ tool mặc định (điều khiển máy tính) dựng từ AssistantActions

@@ -177,7 +177,8 @@ def test_loi_tool_khi_tool_no():
                 AssistantTurn(text="Xin lỗi.")]),
           registry_with(actions=actions), outcomes=so).run("mở x")
     assert so.ban_ghi[0]["ket_qua"] == "loi_tool"
-    assert "không thấy app" in so.ban_ghi[0]["chi_tiet"]
+    # Ghi mã lý do, không ghi chuỗi exception (hợp đồng kết quả §4, §11).
+    assert so.ban_ghi[0]["chi_tiet"] == "open_app: handler_exception"
 
 
 def test_loi_tool_ke_ca_khi_model_go_lai_duoc():
@@ -245,7 +246,7 @@ def test_loi_khi_chay_sau_xac_nhan_van_vao_so():
     ag.run("đóng chrome")
     ag.run("có")
     assert so.ban_ghi[0]["ket_qua"] == "loi_tool"
-    assert "app đã tắt sẵn" in so.ban_ghi[0]["chi_tiet"]
+    assert so.ban_ghi[0]["chi_tiet"] == "close_app: handler_exception"
 
 
 def test_bo_giua_chung_khi_noi_sang_chuyen_khac():
@@ -393,4 +394,4 @@ def test_loi_MCP_vao_nhat_ky_la_loi_tool_chu_khong_phai_xong():
           reg, outcomes=so).run("kiểm tra mail giúp tôi")
 
     assert so.ban_ghi[0]["ket_qua"] == "loi_tool"
-    assert "invalid_grant" in so.ban_ghi[0]["chi_tiet"]
+    assert so.ban_ghi[0]["chi_tiet"] == "gws_gmail_search: remote_error"

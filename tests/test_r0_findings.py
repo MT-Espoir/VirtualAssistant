@@ -2,6 +2,7 @@
 
 Strict xfail documents currently reproducible defects, not successful fixes.
 XPASS after a fix requires reviewing/removing the corresponding marker.
+K1/K9 became ordinary regressions with the result contract (R1.2).
 """
 import asyncio
 import json
@@ -246,9 +247,9 @@ def test_k11_invalid_token_rejected():
     asyncio.run(scenario())
 
 
-@pytest.mark.parametrize('mode', ['disconnected', 'timeout'])
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason='K1: bridge ERROR is a normal ToolResult and turn outcome xong')
-def test_k1_bridge_error_is_not_success(mode, monkeypatch, record_property):
+@pytest.mark.parametrize('mode,status,reason', [('disconnected', 'failed', 'no_client'),
+                                                ('timeout', 'unknown', 'transport_error')])
+def test_k1_bridge_error_is_not_success(mode, status, reason, monkeypatch, record_property):
     bridge = BrowserBridge()
     if mode == 'timeout':
         bridge.loop, bridge._client = object(), object()
@@ -264,6 +265,7 @@ def test_k1_bridge_error_is_not_success(mode, monkeypatch, record_property):
     observe(record_property, 'K1', scenario=mode, tool_is_error=llm.results[0].is_error,
             tool_content=llm.results[0].content, outcome=rows.records[-1]['ket_qua'])
     assert llm.results[0].is_error and rows.records[-1]['ket_qua'] != 'xong'
+    assert llm.results[0].content.endswith(f'[kết quả: {status}/{reason}]')
 
 
 class IoTFixture:
@@ -274,24 +276,24 @@ class IoTFixture:
         return {'status': 'failed', 'reason': 'fixture_node_failure'}
 
 
-@pytest.mark.parametrize('mode,name,args', [
-    ('exception', 'get_room_environment', {}),
-    ('exception', 'control_room_ac', {'action':'off', 'room_id':'fixture-room'}),
-    ('payload', 'control_room_ac', {'action':'off', 'room_id':'fixture-room'}),
+@pytest.mark.parametrize('mode,name,args,reason', [
+    ('exception', 'get_room_environment', {}, 'dependency_unavailable'),
+    ('exception', 'control_room_ac', {'action':'off', 'room_id':'fixture-room'}, 'dependency_unavailable'),
+    ('payload', 'control_room_ac', {'action':'off', 'room_id':'fixture-room'}, 'remote_error'),
 ])
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason='K9: IoT failure JSON is normal ToolResult and turn outcome xong')
-def test_k9_iot_error_is_not_success(mode, name, args, record_property):
+def test_k9_iot_error_is_not_success(mode, name, args, reason, record_property):
     registry, rows = ToolRegistry(), Records()
     register_iot(registry, SimpleNamespace(iot=IoTFixture(mode)))
     llm = ScriptLLM([ToolCall('iot', name, args)])
     Agent(llm, registry, outcomes=rows).run('fixture IoT request')
+    payload, status_line = llm.results[0].content.rsplit('\n', 1)
     observe(record_property, 'K9', scenario=name + ':' + mode,
-            tool_is_error=llm.results[0].is_error, tool_payload=json.loads(llm.results[0].content),
+            tool_is_error=llm.results[0].is_error, tool_payload=json.loads(payload),
             outcome=rows.records[-1]['ket_qua'])
     assert llm.results[0].is_error and rows.records[-1]['ket_qua'] != 'xong'
+    assert status_line == f'[kết quả: failed/{reason}]'
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason='K9: confirmed IoT failure still closes the turn as xong')
 def test_k9_confirmed_error_does_not_finish_successfully(record_property):
     registry, rows = ToolRegistry(), Records()
     register_iot(registry, SimpleNamespace(iot=IoTFixture('exception')))

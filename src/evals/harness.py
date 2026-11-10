@@ -14,6 +14,7 @@ import json
 import time
 
 from agent.agent import Agent
+from agent.results import ActionResult
 
 
 class RecordingRegistry:
@@ -61,6 +62,12 @@ class RecordingRegistry:
         # Trả câu NHƯ THỂ thành công để model coi bước đã xong (giảm gọi lặp vô ích —
         # production tool trả xác nhận thật; stub "trống nghĩa" khiến model tưởng chưa xong).
         return f"Đã thực hiện {name} thành công."
+
+    def run_result(self, name, arguments, **options):
+        """Như `run()`; stub là kết quả legacy để Agent đối xử y như trước (không tag)."""
+        return ActionResult(self.run(name, arguments, **options), name=name,
+                            status="unknown", reason="legacy_unclassified", layer="local",
+                            legacy=True)
 
 
 class RecordingRouter:

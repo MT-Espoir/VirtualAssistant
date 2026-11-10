@@ -731,22 +731,21 @@ class Agent:
         `confirmed=True` là chỗ DUY NHẤT mở cổng của registry, và chỉ tới được đây sau khi
         người dùng đã nói "có" hoặc bấm nút — xem `_resolve_pending` / `confirm_pending`.
         """
-        try:
-            output = str(self.registry.run(name, arguments, confirmed=True))
-            logger.info("🔧 (đã xác nhận) tool %s(%s) → %s", name, arguments, output[:150])
-            if name == "control_room_ac":
-                output = describe_ac_result(output, arguments)
+        result = self.registry.run_result(name, arguments, confirmed=True)
+        logger.info("🔧 (đã xác nhận) tool %s(%s) → %s/%s", name, arguments,
+                    result.status, result.reason)
+        output = result.render
+        if name == "control_room_ac":
+            output = describe_ac_result(output, arguments)
+        # Chỉ ghi LỖI, không ghi lại tên: tên đã vào sổ từ lúc hoãn để hỏi, và đường
+        # duy nhất tới đây là qua cổng duyệt đó. Cùng tiêu chí lỗi với `_run_tool` để
+        # đường đã duyệt không chốt "xong" khi thiết bị báo lỗi (K9).
+        if result.is_error:
+            self._ghi_nhan_loi(f"{name}: {result.reason}")
+        else:
             self._note_habit(name, arguments)
-            # Chỉ ghi LỖI, không ghi lại tên: tên đã vào sổ từ lúc hoãn để hỏi, và đường
-            # duy nhất tới đây là qua cổng duyệt đó.
-            self._chot_luot(dap=output)
-            return output
-        except Exception as e:
-            logger.error("Tool %s lỗi khi thực thi sau xác nhận: %s", name, e)
-            loi_text = f"Xin lỗi, tôi gặp lỗi khi thực hiện: {e}"
-            self._ghi_nhan_loi(f"{name}: {e}")
-            self._chot_luot(dap=loi_text)
-            return loi_text
+        self._chot_luot(dap=output)
+        return output
 
     # ------------------------- thói quen ------------------------- #
     def _note_habit(self, name, arguments):
@@ -775,45 +774,16 @@ class Agent:
 
     # ------------------------- tool ------------------------- #
     def _run_tool(self, call, user_text=None) -> ToolResult:
-        try:
-            output = self.registry.run(
-                call.name, call.arguments, nhiem=self._nhiem > 0,
-                user_text=user_text)
-            # Log rõ tool nào được gọi + kết quả -> thấy ngay model có gọi tool không,
-            # hay chỉ bịa câu trả lời (phân biệt lỗi tool vs lỗi model yếu).
-            logger.info("🔧 tool %s(%s) → %s", call.name, call.arguments, str(output)[:150])
-            self._note_habit(call.name, call.arguments)
-
-            content = str(output)
-            # Nội dung do bên ngoài kiểm soát đi vào hội thoại dưới role="user" — tức
-            # ĐÚNG vai model được dạy phải nghe lời. Bọc lại trước khi nó tới đó.
-            ngoai = self.registry.get(call.name).untrusted_output
-            if ngoai:
-                content = untrusted.boc(content)
-            self._ghi_nhan_tool(call.name)
-            # Lượt có chạm nội dung ngoài -> đánh dấu. Việc B sẽ KHÔNG rút bài học từ
-            # những lượt này: bài học rút ra có thể mang theo chỉ dẫn bị tiêm, và nó sẽ
-            # sống trong trí nhớ dài hạn qua nhiều phiên. Xem spec §2.6(b).
-            if ngoai:
-                # Cả cửa sổ STM cộng lượt hiện tại: câu trả lời dựa trên nội dung này còn
-                # nằm trong ngữ cảnh chừng ấy lượt nữa.
-                self._nhiem = self.stm.max_turns + 1
-                if self._luot is not None:
-                    self._luot["nguon_ngoai"] = True
-            return ToolResult(tool_call_id=call.id, name=call.name, content=content)
-        except KeyError:
+        if not self.registry.has(call.name):
             logger.error("LLM gọi tool không tồn tại: %s", call.name)
             self._ghi_nhan_tool(call.name, f"{call.name}: không có công cụ tên này")
             return ToolResult(tool_call_id=call.id, name=call.name,
                               content=f"Không có công cụ tên '{call.name}'.",
                               is_error=True)
-        except ActionRefused as e:
-            # Cùng vai với nhánh `NeedsConfirmation` dưới: `_find_refused` đã soi cả lô
-            # ngay trước đó, tới được đây nghĩa là có đường chạy tool bỏ qua bước soi.
-            logger.error("Bỏ sót cổng từ chối cho %s — registry đã chặn.", call.name)
-            self._ghi_nhan_tool(call.name, f"{call.name}: bị từ chối")
-            return ToolResult(tool_call_id=call.id, name=call.name,
-                              content=f"Không thực hiện: {e.ly_do}.", is_error=True)
+        try:
+            result = self.registry.run_result(
+                call.name, call.arguments, nhiem=self._nhiem > 0,
+                user_text=user_text)
         except NeedsConfirmation as e:
             # KHÔNG tới được bằng đường bình thường: `_find_destructive` đã soi cả lô ngay
             # trước đó. Tới được nghĩa là có đường chạy tool mới nào đó bỏ qua bước soi —
@@ -823,8 +793,38 @@ class Agent:
             return ToolResult(tool_call_id=call.id, name=call.name,
                               content=f"Cần người dùng đồng ý trước khi {e.phrase}.",
                               is_error=True)
-        except Exception as e:  # tool lỗi -> báo lại LLM thay vì làm vỡ vòng lặp
-            logger.error("Tool %s lỗi: %s", call.name, e)
-            self._ghi_nhan_tool(call.name, f"{call.name}: {e}")
+        # Log rõ tool nào được gọi + kết quả -> thấy ngay model có gọi tool không,
+        # hay chỉ bịa câu trả lời (phân biệt lỗi tool vs lỗi model yếu).
+        logger.info("🔧 tool %s(%s) → %s/%s", call.name, call.arguments,
+                    result.status, result.reason)
+        if result.status == "refused":
+            # `_find_refused` đã soi cả lô ngay trước đó, tới được đây nghĩa là có đường
+            # chạy tool bỏ qua bước soi.
+            logger.error("Bỏ sót cổng từ chối cho %s — registry đã chặn.", call.name)
+        if result.is_error:
+            # Lỗi nằm ở status chứ không chỉ ở exception: bridge ERROR hay IoT unavailable
+            # trả về bình thường vẫn phải làm lượt này KHÔNG được chốt "xong" (K1/K9).
+            self._ghi_nhan_tool(call.name, f"{call.name}: {result.reason}")
             return ToolResult(tool_call_id=call.id, name=call.name,
-                              content=f"Lỗi khi chạy: {e}", is_error=True)
+                              content=result.for_llm(), is_error=True)
+        self._note_habit(call.name, call.arguments)
+        content = result.render
+        # Nội dung do bên ngoài kiểm soát đi vào hội thoại dưới role="user" — tức
+        # ĐÚNG vai model được dạy phải nghe lời. Bọc lại trước khi nó tới đó.
+        ngoai = self.registry.get(call.name).untrusted_output
+        if ngoai:
+            content = untrusted.boc(content)
+        self._ghi_nhan_tool(call.name)
+        # Lượt có chạm nội dung ngoài -> đánh dấu. Việc B sẽ KHÔNG rút bài học từ
+        # những lượt này: bài học rút ra có thể mang theo chỉ dẫn bị tiêm, và nó sẽ
+        # sống trong trí nhớ dài hạn qua nhiều phiên. Xem spec §2.6(b).
+        if ngoai:
+            # Cả cửa sổ STM cộng lượt hiện tại: câu trả lời dựa trên nội dung này còn
+            # nằm trong ngữ cảnh chừng ấy lượt nữa.
+            self._nhiem = self.stm.max_turns + 1
+            if self._luot is not None:
+                self._luot["nguon_ngoai"] = True
+        # Dòng trạng thái đứng NGOÀI khối bọc nội dung ngoài: nó do code viết, không phải
+        # do trang web hay thư viết.
+        return ToolResult(tool_call_id=call.id, name=call.name,
+                          content=result.for_llm(content))

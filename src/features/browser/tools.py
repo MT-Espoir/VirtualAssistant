@@ -7,8 +7,47 @@ Tool của feature `browser` — Điều khiển Chrome qua extension: tab, medi
 import time
 import uuid
 
+from agent.results import ActionResult
 from agent.tools import ActionRefused, Tool, ToolRegistry
 
+# Mã lỗi của BrowserBridge -> (status, tầng). Xem `docs/alice_result_contract_spec.md` §4.
+_BRIDGE_ERRORS = {
+    "no_client": ("failed", "bridge"),
+    "selected_profile_disconnected": ("failed", "bridge"),
+    "connection_changed": ("not_attempted", "bridge"),
+    "connection_lost": ("unknown", "bridge"),
+    "transport_error": ("unknown", "bridge"),
+    "data_scope_not_authorized": ("refused", "bridge"),
+}
+
+
+def _bridge_result(name, resp, render, ok_status, mutating):
+    """Phản hồi bridge/extension -> ActionResult; câu `render` chỉ là phần diễn đạt (K1)."""
+    if not isinstance(resp, dict):
+        return ActionResult(render, name=name, status="unknown", reason="unexpected_response",
+                            layer="bridge", side_effect_possible=mutating)
+    if resp.get("type") != "ERROR":
+        return ActionResult(render, name=name, status=ok_status,
+                            reason="ok" if ok_status == "verified" else "accepted_unverified",
+                            layer="extension",
+                            side_effect_possible=mutating and ok_status != "verified")
+    reason = resp.get("reason")
+    if reason in _BRIDGE_ERRORS:
+        status, layer = _BRIDGE_ERRORS[reason]
+    else:
+        # Extension báo lỗi không kèm mã: không có trình phát/tab khớp, hoặc lỗi tiêm script.
+        message = str(resp.get("message", "")).lower()
+        missing = any(key in message for key in
+                      ("no media", "no active", "no video", "no controllable"))
+        status, layer = "failed", "extension"
+        reason = "target_not_found" if missing else "remote_error"
+    return ActionResult(render, name=name, status=status, reason=reason, layer=layer,
+                        side_effect_possible=mutating and status == "unknown")
+
+
+def _invalid(name, message):
+    return ActionResult(message, name=name, status="not_attempted",
+                        reason="invalid_arguments", layer="local")
 
 
 def register(reg, ctx):
@@ -28,12 +67,18 @@ def _register_browser_tools(reg: ToolRegistry, browser):
         try:
             cmd = build_media_command(action, value)
         except ValueError as e:
-            return str(e)
+            return _invalid("browser_media_control", str(e))
         resp = browser.send_command(**cmd)
-        return summarize_media_response(resp, action, value)
+        # Extension chạy lệnh nhưng chưa đọc lại trạng thái phát (K4): tối đa dispatched
+        # cho tới khi R2 thêm GET_MEDIA_STATE.
+        return _bridge_result("browser_media_control", resp,
+                              summarize_media_response(resp, action, value),
+                              "dispatched", mutating=True)
 
     def list_tabs():
-        return summarize_tab_list(browser.send_command(action="GET_TABS"))
+        resp = browser.send_command(action="GET_TABS")
+        return _bridge_result("browser_list_tabs", resp, summarize_tab_list(resp),
+                              "verified", mutating=False)
 
     approvals = {}
     approval_ttl = 60.0
@@ -41,7 +86,8 @@ def _register_browser_tools(reg: ToolRegistry, browser):
     def close_tab(keyword, _close_approval=None):
         """Consume only code-created, connection-bound approval; never re-query keyword."""
         if not keyword or not str(keyword).strip():
-            return "Cần cho biết từ khoá của tab cần đóng (tên trang hoặc tiêu đề)."
+            return _invalid("browser_close_tab",
+                            "Cần cho biết từ khoá của tab cần đóng (tên trang hoặc tiêu đề).")
         approved = approvals.pop(_close_approval, None)
         if (approved is None or approved["keyword"] != str(keyword).strip()
                 or time.monotonic() - approved["created"] >= approval_ttl):
@@ -78,7 +124,8 @@ def _register_browser_tools(reg: ToolRegistry, browser):
                 or len(ids) != len(approved["ids"]) or set(ids) != set(approved["ids"])
                 or resp.get("closedCount") != len(ids) or resp["failedIds"]):
             raise RuntimeError(text)
-        return text
+        return ActionResult(text, name="browser_close_tab", status="verified", reason="ok",
+                            layer="extension")
 
     def _prepare_close(keyword=None, **_):
         """Build phrase and frozen arguments from the same read-only snapshot."""
@@ -114,8 +161,11 @@ def _register_browser_tools(reg: ToolRegistry, browser):
         try:
             cmd = build_open_or_reuse(url, match_domain)
         except ValueError as e:
-            return str(e)
-        return summarize_open_or_reuse(browser.send_command(**cmd), url)
+            return _invalid("browser_open_or_reuse", str(e))
+        resp = browser.send_command(**cmd)
+        # Extension trả ngay sau create/update tab, chưa chờ trang tải (K4).
+        return _bridge_result("browser_open_or_reuse", resp,
+                              summarize_open_or_reuse(resp, url), "dispatched", mutating=True)
 
     reg.register(Tool(
         name="browser_list_tabs",
@@ -124,6 +174,7 @@ def _register_browser_tools(reg: ToolRegistry, browser):
         input_schema={"type": "object", "properties": {}},
         handler=list_tabs,
         untrusted_output=True,   # nội dung do bên ngoài kiểm soát
+        evidence_policy="read",
     ))
 
     reg.register(Tool(
@@ -145,6 +196,7 @@ def _register_browser_tools(reg: ToolRegistry, browser):
         prepare_confirmation=_prepare_close,
         # Domain vẫn là dữ liệu bên ngoài, không phải chỉ thị cho model.
         untrusted_output=True,
+        evidence_policy="read_after_write",
     ))
 
     reg.register(Tool(
@@ -165,6 +217,7 @@ def _register_browser_tools(reg: ToolRegistry, browser):
         },
         handler=open_or_reuse,
         exfil=True,
+        evidence_policy="dispatch_only",
     ))
 
     reg.register(Tool(
@@ -190,4 +243,5 @@ def _register_browser_tools(reg: ToolRegistry, browser):
             "required": ["action"],
         },
         handler=media_control,
+        evidence_policy="dispatch_only",
     ))

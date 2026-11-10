@@ -12,12 +12,13 @@ Phần LOGIC bridge (đăng ký MCP tool vào registry, heuristic destructive) t
 import asyncio
 import threading
 
+from agent.results import RemoteError
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 
-class MCPError(Exception):
+class MCPError(RemoteError):
     """Gọi MCP thất bại — NÉM chứ không trả về chuỗi trông như kết quả.
 
     Trước bản này `call_tool` trả chuỗi "(MCP báo lỗi) ..." khi hỏng. Nó đọc thì thân
@@ -30,6 +31,9 @@ class MCPError(Exception):
     ghi "xong". Mọi tool khác trong hệ đều NÉM khi hỏng; MCP là ngoại lệ duy nhất, và
     ngoại lệ đó chính là chỗ tín hiệu bị nuốt.
     """
+
+    def __init__(self, message, *, status="failed", reason="remote_error"):
+        super().__init__(message, status=status, reason=reason, layer="mcp")
 
 
 # Từ khoá gợi ý tool GHI (khó hoàn tác) -> đánh dấu destructive (Agent hỏi xác nhận).
@@ -134,7 +138,8 @@ class MCPClient:
         `ToolResult(is_error=True)`; khác biệt là bây giờ cờ lỗi ĐƯỢC BẬT.
         """
         if self.loop is None or not self.connected:
-            raise MCPError("MCP chưa kết nối (server chưa chạy?).")
+            raise MCPError("MCP chưa kết nối (server chưa chạy?).",
+                           reason="dependency_unavailable")
         try:
             fut = asyncio.run_coroutine_threadsafe(
                 self._call(name, arguments or {}), self.loop)
@@ -143,7 +148,9 @@ class MCPClient:
             raise                       # đã có nghĩa rồi, đừng bọc thêm một lớp nữa
         except Exception as e:
             logger.warning("MCP call_tool '%s' lỗi: %s", name, e)
-            raise MCPError(f"gọi '{name}' thất bại: {e}") from e
+            # Lời gọi có thể đã tới server (vd hết giờ chờ khi đang gửi thư): chưa rõ.
+            raise MCPError(f"gọi '{name}' thất bại: {e}",
+                           status="unknown", reason="transport_error") from e
 
     async def _call(self, name, arguments):
         result = await self._session.call_tool(name, arguments=arguments)
